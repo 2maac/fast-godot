@@ -59,7 +59,6 @@ class EditorExport : public Node {
 
 protected:
 	friend class EditorExportPreset;
-	void save_presets();
 	void emit_presets_runnable_changed();
 
 	void _notification(int p_what);
@@ -67,6 +66,10 @@ protected:
 
 public:
 	static EditorExport *get_singleton() { return singleton; }
+
+	// Public so a plugin that creates a preset for its platform (the Grit Fast
+	// platforms do, when the export window first opens) can persist it.
+	void save_presets();
 
 	// Encodes a platform/device pair into a single menu/device id and decodes it back.
 	static int encode_platform_device_id(int p_platform_idx, int p_device_idx) { return p_platform_idx * 10000 + p_device_idx; }

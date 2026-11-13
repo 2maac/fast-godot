@@ -170,7 +170,7 @@ String GritExportPlugin::_resolve_engine_root() const {
 }
 
 void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_preset) {
-	if (!bool(GLOBAL_GET(SETTING_ENABLED)) || p_preset.is_null()) {
+	if (p_preset.is_null()) {
 		return;
 	}
 	const Ref<EditorExportPlatform> platform = p_preset->get_platform();
@@ -184,14 +184,6 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 	// Only this editor's own platform: a Fast template is a native build.
 	if (os_name != OS::get_singleton()->get_name()) {
 		ERR_PRINT(vformat("Grit: \"%s\" cannot be built by an editor running on %s.", platform->get_name(), OS::get_singleton()->get_name()));
-		return;
-	}
-
-	// The first preset in a project is when the engine source is fetched, so the
-	// first export does not start with a silent download.
-	String engine_error;
-	if (GritProvisioner::ensure_engine(true, &engine_error).is_empty()) {
-		ERR_PRINT("Grit: " + engine_error);
 		return;
 	}
 
@@ -225,13 +217,53 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 }
 
 void GritExportPlugin::export_dialog_opened() {
-	// Check (and provision) the build tools the first time the export window is
-	// opened, rather than on every editor start.
-	GritProvisioner::run_probe();
+	// The preset for this editor's own platform is created here so the window shows
+	// something usable. Nothing is downloaded: the source is fetched when an export
+	// is actually started.
+	_ensure_native_preset();
+}
+
+void GritExportPlugin::_ensure_native_preset() {
+	EditorExport *exporter = EditorExport::get_singleton();
+	if (!exporter) {
+		return;
+	}
+	const String os_name = OS::get_singleton()->get_name();
+	const String wanted = os_name + " Fast";
+	Ref<EditorExportPlatform> platform;
+	for (int i = 0; i < exporter->get_export_platform_count(); i++) {
+		const Ref<EditorExportPlatform> candidate = exporter->get_export_platform(i);
+		if (candidate.is_valid() && candidate->get_name() == wanted) {
+			platform = candidate;
+			break;
+		}
+	}
+	if (platform.is_null()) {
+		return;
+	}
+	for (int i = 0; i < exporter->get_export_preset_count(); i++) {
+		const Ref<EditorExportPreset> existing = exporter->get_export_preset(i);
+		if (existing.is_valid() && existing->get_platform() == platform) {
+			return;
+		}
+	}
+	const Ref<EditorExportPreset> preset = platform->create_preset();
+	if (preset.is_null()) {
+		return;
+	}
+	preset->set_name(wanted);
+	preset->set_runnable(true);
+	preset->set("binary_format/architecture", os_name == "macOS" ? "arm64" : "x86_64");
+	// The exporter refuses to run without a texture format; pick the one that suits
+	// this platform so a fresh preset is exportable.
+	preset->set("texture_format/s3tc_bptc", os_name != "Android");
+	exporter->add_export_preset(preset, 0);
+	exporter->save_presets();
+	print_line("Grit: added the \"" + wanted + "\" preset.");
 }
 
 void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_preset) {
-	if (!bool(GLOBAL_GET(SETTING_ENABLED)) || p_preset.is_null()) {
+	if (p_preset.is_null()) {
 		return;
 	}
 	const Ref<EditorExportPlatform> platform = p_preset->get_platform();
@@ -589,12 +621,17 @@ Error GritExportPlugin::_prepare_compiled(const Ref<EditorExportPreset> &p_prese
 }
 
 Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path) {
-	if (!bool(GLOBAL_GET(SETTING_ENABLED))) {
-		return OK;
-	}
+
 	const Ref<EditorExportPreset> platform_preset = get_export_preset();
 	if (platform_preset.is_valid() && platform_preset->get_platform().is_valid() && platform_preset->get_platform()->get_os_name() == "macOS") {
 		_apply_default_bundle_identifier(platform_preset);
+	}
+	// The source is fetched now, not when the window opened: this is the point where
+	// a build is actually going to happen, so a progress dialog belongs here.
+	String engine_error;
+	if (GritProvisioner::ensure_engine(true, &engine_error).is_empty()) {
+		ERR_PRINT("Grit: " + engine_error);
+		return ERR_CANT_CREATE;
 	}
 
 	if (platform_preset.is_valid() && platform_preset->get_platform().is_valid() && _is_fast_platform(platform_preset->get_platform()) && !_is_host_platform(platform_preset->get_platform()->get_os_name())) {
@@ -626,9 +663,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 }
 
 void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_debug, const String &p_path, int p_flags) {
-	if (!bool(GLOBAL_GET(SETTING_ENABLED))) {
-		return;
-	}
+
 
 	const Ref<EditorExportPreset> preset = get_export_preset();
 	const bool compiled = _is_fast_platform(preset.is_valid() ? preset->get_platform() : Ref<EditorExportPlatform>());

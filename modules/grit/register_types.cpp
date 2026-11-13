@@ -72,7 +72,6 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 	// Settings, so every key here is registered with NO_EDITOR and Grit does not
 	// appear as a project settings section at all.
 	const uint32_t internal = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NO_EDITOR;
-	GLOBAL_DEF(PropertyInfo(Variant::BOOL, GritExportPlugin::SETTING_ENABLED, PROPERTY_HINT_NONE, "", internal), true);
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, "grit/export/build_profile", PROPERTY_HINT_NONE, "", internal), "");
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_NONE, "", internal), "res://.godot/grit/generated");
 	EditorNode::add_init_callback(grit_editor_init);

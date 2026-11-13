@@ -54,7 +54,6 @@ protected:
 	virtual void _get_export_options(const Ref<EditorExportPlatform> &p_export_platform, List<EditorExportPlatform::ExportOption> *r_options) const override;
 
 public:
-	static constexpr const char *SETTING_ENABLED = "grit/export/enabled";
 	static constexpr const char *SETTING_GENERATED_DIRECTORY = "grit/export/generated_directory";
 	static constexpr const char *OPTION_STRIP_SCRIPTS = "grit/strip_scripts";
 	static constexpr const char *SETTING_ENGINE_ROOT = "grit/export/engine_root";
@@ -64,6 +63,10 @@ public:
 	virtual void export_platform_added(const Ref<EditorExportPreset> &p_preset) override;
 	virtual void export_platform_removed(const Ref<EditorExportPreset> &p_preset) override;
 	virtual void export_dialog_opened() override;
+
+	// Makes sure the project has this platform's Fast preset. Called when the export
+	// window opens, so the preset is there without anything being downloaded.
+	void _ensure_native_preset();
 
 	virtual String get_name() const override { return "Grit"; }
 };

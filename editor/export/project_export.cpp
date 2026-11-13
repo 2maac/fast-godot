@@ -1645,6 +1645,11 @@ ProjectExportDialog::ProjectExportDialog() {
 	delete_preset->set_flat(true);
 	preset_hb->add_child(delete_preset);
 	delete_preset->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_delete_preset));
+	// Fast editors create their platform's preset automatically, so adding,
+	// duplicating and deleting presets are not part of this workflow.
+	add_preset->hide();
+	duplicate_preset->hide();
+	delete_preset->hide();
 
 	// Preset settings.
 
