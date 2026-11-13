@@ -50,7 +50,11 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$RELEASE_TAG" Fast_Godot_Toolchain_linux_x86_64.zip --clobber
+        run: |
+          for attempt in 1 2 3; do
+            gh release upload "$RELEASE_TAG" Fast_Godot_Toolchain_linux_x86_64.zip --clobber && break
+            echo "upload attempt $attempt failed, retrying"; sleep 15
+          done
 
   macos:
     name: macos toolchain
@@ -81,10 +85,12 @@ jobs:
           echo "$MOLTENVK_SHA256  mvk.tar" | sha256sum -c -
           mkdir -p "$B/moltenvk/macOS/lib"
           tar -xf mvk.tar -C "$B/moltenvk"
-          # The tarball holds MoltenVK/MoltenVK.xcframework; the editor looks for the
-          # LunarG layout, macOS/lib/MoltenVK.xcframework.
-          mv "$B/moltenvk/MoltenVK/MoltenVK.xcframework" "$B/moltenvk/macOS/lib/"
-          rm -rf "$B/moltenvk/MoltenVK" "$B/moltenvk/MoltenVK.xcframework" 2>/dev/null || true
+          # The tarball holds MoltenVK/MoltenVK/{static,dynamic}/MoltenVK.xcframework.
+          # Only the static one has libMoltenVK.a, which is what linking needs, and
+          # the editor looks for the LunarG layout (macOS/lib/MoltenVK.xcframework).
+          mv "$B/moltenvk/MoltenVK/MoltenVK/static/MoltenVK.xcframework" "$B/moltenvk/macOS/lib/"
+          rm -rf "$B/moltenvk/MoltenVK"
+          test -f "$B/moltenvk/macOS/lib/MoltenVK.xcframework/macos-arm64_x86_64/libMoltenVK.a"
           cat > "$B/toolchain.json" <<JSON
           {
             "name": "Fast_Godot_Toolchain_macos_arm64",
@@ -101,7 +107,11 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$RELEASE_TAG" Fast_Godot_Toolchain_macos_arm64.zip --clobber
+        run: |
+          for attempt in 1 2 3; do
+            gh release upload "$RELEASE_TAG" Fast_Godot_Toolchain_macos_arm64.zip --clobber && break
+            echo "upload attempt $attempt failed, retrying"; sleep 15
+          done
 
   windows:
     name: windows toolchain
@@ -156,4 +166,11 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "$env:RELEASE_TAG" Fast_Godot_Toolchain_win64.zip --clobber
+        run: |
+          foreach ($attempt in 1..3) {
+            gh release upload "$env:RELEASE_TAG" Fast_Godot_Toolchain_win64.zip --clobber
+            if ($LASTEXITCODE -eq 0) { break }
+            Write-Output "upload attempt $attempt failed, retrying"
+            Start-Sleep -Seconds 15
+          }
+          if ($LASTEXITCODE -ne 0) { throw "upload failed after 3 attempts" }
