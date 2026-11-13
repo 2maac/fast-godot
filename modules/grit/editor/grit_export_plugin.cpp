@@ -179,6 +179,21 @@ String GritExportPlugin::_resolve_engine_root() const {
 		}
 		dir = dir.get_base_dir();
 	}
+
+	// Nothing local: fetch the source for this build's commit. A command-line export
+	// never opens the export window or adds a preset, so this is its only chance.
+	String fetch_error;
+	if (GritProvisioner::ensure_engine(false, &fetch_error)) {
+		if (EditorSettings *settings = EditorSettings::get_singleton()) {
+			const String fetched = String(settings->get_setting("grit/engine_root"));
+			if (!fetched.is_empty() && FileAccess::exists(fetched.path_join("SConstruct"))) {
+				resolved_engine_root = fetched;
+				return resolved_engine_root;
+			}
+		}
+	} else if (!fetch_error.is_empty()) {
+		ERR_PRINT("Grit: " + fetch_error);
+	}
 	return String();
 }
 
