@@ -15,19 +15,10 @@
 
 // Pinned, not "latest": a provisioner that follows a moving target eventually
 // builds with a toolchain nobody tested. Checksums come from the release assets.
-static constexpr const char *DEFAULT_MOLTENVK_VERSION = "1.4.2";
-static constexpr const char *DEFAULT_MOLTENVK_URL = "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar";
-static constexpr const char *DEFAULT_MOLTENVK_SHA256 = "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e";
 // SCons is a Python package, so it is downloaded into the shared tools directory
 // rather than bundled in the editor. The sdist keeps script/scons.py, which is what
 // the build helper needs; the wheel does not.
-static constexpr const char *DEFAULT_SCONS_VERSION = "4.11.1";
-static constexpr const char *DEFAULT_SCONS_URL = "https://files.pythonhosted.org/packages/42/b9/b7a5c88f348a0c34594d88100872c55fa1cae863ccb222c1c438341b5503/scons-4.11.1.tar.gz";
-static constexpr const char *DEFAULT_SCONS_SHA256 = "4210d1a80a62e986029208117991b6347ccaaaab37b67463a3ff31ee065dc487";
 
-static constexpr const char *DEFAULT_WINLIBS_VERSION = "16.2.0posix-23.1.3-14.0.0-ucrt-r3";
-static constexpr const char *DEFAULT_WINLIBS_URL = "https://github.com/brechtsanders/winlibs_mingw/releases/download/16.2.0posix-23.1.3-14.0.0-ucrt-r3/winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64ucrt-14.0.0-r3.zip";
-static constexpr const char *DEFAULT_WINLIBS_SHA256 = "3c69305081e4a647144339a936244fcf7d3d9e558319e1ad7be2cd2886d4b6a1";
 
 // One editor setting per provisioned source, so a URL that goes down can be
 // redirected from the settings UI instead of a rebuild.
@@ -38,33 +29,11 @@ struct ProvisionSetting {
 };
 
 static const ProvisionSetting PROVISION_SETTINGS[] = {
-	// Bumping this resets the source settings below to the built-in defaults, which
-	// is how a corrected pinned URL reaches machines that stored the old one.
-	{ "grit/provision/sources_version", "2", "Reviewed version of the built-in source list. Raising it re-applies the defaults." },
-	{ "grit/provision/offline", "false", "Never download anything; report what is missing instead." },
-	{ "grit/provision/proxy", "", "HTTP(S) proxy for downloads. Godot's HTTPClient does not use the system proxy." },
-	{ "grit/provision/allow_unverified", "false", "Install downloads whose checksum does not match. Logged loudly on every launch." },
-
-	{ "grit/provision/moltenvk/url", DEFAULT_MOLTENVK_URL, "Primary source for the macOS Vulkan SDK (contains MoltenVK)." },
-	{ "grit/provision/moltenvk/mirrors", "", "Comma-separated fallback URLs, tried in order when the primary fails." },
-	{ "grit/provision/moltenvk/sha256", DEFAULT_MOLTENVK_SHA256, "Checksum of the expected artifact. Required unless allow_unverified is on." },
-	{ "grit/provision/moltenvk/version", DEFAULT_MOLTENVK_VERSION, "Version installed under ~/VulkanSDK/." },
-	{ "grit/provision/winlibs/version", DEFAULT_WINLIBS_VERSION, "Version installed under the editor's tools directory." },
-
-	{ "grit/provision/scons/url", DEFAULT_SCONS_URL, "SCons sdist (PyPI). Downloaded into the shared tools directory." },
-	{ "grit/provision/scons/sha256", DEFAULT_SCONS_SHA256, "Checksum of the SCons sdist." },
-	{ "grit/provision/scons/version", DEFAULT_SCONS_VERSION, "SCons version installed under the tools directory." },
-	{ "grit/provision/tools_dir", "", "Where provisioned tools are installed. Empty means the editor's data directory." },
-	{ "grit/toolchain/root", "", "A self-contained toolchain folder (unzipped Fast_Godot_Toolchain_*). When set, the editor uses it instead of downloading anything." },
-
-	{ "grit/provision/winlibs/url", DEFAULT_WINLIBS_URL, "MinGW toolchain (winlibs) archive for Windows." },
-	{ "grit/provision/winlibs/mirrors", "", "Comma-separated fallback URLs for the MinGW toolchain." },
-	{ "grit/provision/winlibs/sha256", DEFAULT_WINLIBS_SHA256, "Checksum of the MinGW toolchain archive." },
-
-	{ "grit/provision/libffi/url", "", "libffi package for the CFFI module on Windows." },
-	{ "grit/provision/libffi/mirrors", "", "Comma-separated fallback URLs for libffi." },
-	{ "grit/provision/libffi/sha256", "", "Checksum of the libffi archive." },
-
+	// The whole configuration. The rest of this list used to expose a source URL,
+	// mirrors, a checksum and a version for every piece that could be downloaded.
+	// A toolchain folder carries those pieces, and the only download left is the
+	// engine source, whose URL comes from the editor's own commit, not a setting.
+	{ "grit/toolchain/root", "", "Folder of an unzipped Fast_Godot_Toolchain_* archive. The editor takes Python, SCons and the platform toolchain from it and fetches the engine source for its own commit." },
 };
 
 void GritProvisioner::register_settings() {
