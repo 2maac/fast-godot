@@ -11,20 +11,11 @@
 #include "scene/gui/box_container.h"
 #include "scene/gui/line_edit.h"
 
-// The row is deliberately two lines: the button that fetches, and the path it filled
-// in (or that the user typed). Both write the same setting.
+// One row: the path, a button to pick an existing folder, and a button to download
+// the source into one. All three write the same setting.
 GritSourcePathEditor::GritSourcePathEditor() {
-	VBoxContainer *vbox = memnew(VBoxContainer);
-	add_child(vbox);
-
-	fetch_button = memnew(Button);
-	fetch_button->set_text(TTR("Fetch Source"));
-	fetch_button->set_tooltip_text(TTR("Download this editor's Fast_Godot source into a folder of your choice."));
-	fetch_button->connect("pressed", callable_mp(this, &GritSourcePathEditor::_fetch_pressed));
-	vbox->add_child(fetch_button);
-
 	HBoxContainer *row = memnew(HBoxContainer);
-	vbox->add_child(row);
+	add_child(row);
 
 	path_edit = memnew(LineEdit);
 	path_edit->set_h_size_flags(Control::SIZE_EXPAND_FILL);
@@ -35,8 +26,15 @@ GritSourcePathEditor::GritSourcePathEditor() {
 
 	browse_button = memnew(Button);
 	browse_button->set_text(TTR("..."));
+	browse_button->set_tooltip_text(TTR("Choose an existing Fast_Godot source folder."));
 	browse_button->connect("pressed", callable_mp(this, &GritSourcePathEditor::_browse_pressed));
 	row->add_child(browse_button);
+
+	fetch_button = memnew(Button);
+	fetch_button->set_text(TTR("Download"));
+	fetch_button->set_tooltip_text(TTR("Download this editor's Fast_Godot source into a folder."));
+	fetch_button->connect("pressed", callable_mp(this, &GritSourcePathEditor::_fetch_pressed));
+	row->add_child(fetch_button);
 
 	// Where to download to.
 	dest_dialog = memnew(EditorFileDialog);
@@ -105,12 +103,19 @@ void GritSourcePathEditor::_dest_chosen(const String &p_dir) {
 }
 
 bool GritSettingsPlugin::can_handle(Object *p_object) {
-	// EditorSettings is the object edited by the settings dialog's inspector.
-	return p_object != nullptr && p_object->is_class("EditorSettings");
+	// The settings dialog edits a SectionedInspectorFilter rather than EditorSettings
+	// itself, so the object cannot be used to decide. parse_property matches on the
+	// property path alone, which is the only thing this plugin cares about.
+	return true;
 }
 
 bool GritSettingsPlugin::parse_property(Object *p_object, const Variant::Type p_type, const String &p_path, const PropertyHint p_hint, const String &p_hint_text, const BitField<PropertyUsageFlags> p_usage, const bool p_wide) {
-	if (p_path == GritProvisioner::SETTING_SOURCE_PATH) {
+	// The settings dialog hands editors a path relative to the selected section
+	// ("source_path"), not the full setting name, so match either form.
+	const bool ours = p_path == GritProvisioner::SETTING_SOURCE_PATH ||
+			p_path == "source_path" ||
+			p_path.ends_with("/source_path");
+	if (ours) {
 		add_property_editor(p_path, memnew(GritSourcePathEditor));
 		return true;
 	}

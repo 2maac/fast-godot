@@ -132,28 +132,24 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 // must already contain the built engine objects (bin/obj) for the requested
 // target; the script only compiles the generated sources and relinks.
 String GritExportPlugin::_resolve_engine_root() const {
-	// A configured toolchain folder wins: it is the whole configuration.
-	GritProvisioner::apply_toolchain_root();
 	if (!resolved_engine_root.is_empty()) {
 		return resolved_engine_root;
 	}
-	const String configured = String(GLOBAL_GET(SETTING_ENGINE_ROOT));
+	// The source folder chosen in Editor Settings > Grit > Settings.
+	const String configured = GritProvisioner::configured_source();
 	if (!configured.is_empty()) {
 		resolved_engine_root = configured;
 		return resolved_engine_root;
 	}
 
-	// No project setting yet (first export ever, or a fresh project): find the
-	// tree this editor was built from by walking up from the executable. A staged
-	// app sits at <engine>/out/editor-staging/Fast_Godot.app/Contents/MacOS/Godot,
-	// so this covers both the tree binary and a staged bundle.
+	// Otherwise find the tree this editor was built from by walking up from the
+	// executable. A staged app sits at <engine>/out/editor-staging/..., so this
+	// covers both the tree binary and a staged bundle.
 	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
 	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
 		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools/grit_build_template.py"))) {
 			resolved_engine_root = dir;
-			ProjectSettings::get_singleton()->set_setting(SETTING_ENGINE_ROOT, dir);
-			ProjectSettings::get_singleton()->save();
-			print_line(vformat("Grit: found the engine tree at \"%s\" and saved it as \"%s\".", dir, String(SETTING_ENGINE_ROOT)));
+			print_line(vformat("Grit: using the engine tree at \"%s\".", dir));
 			return resolved_engine_root;
 		}
 		dir = dir.get_base_dir();
@@ -162,13 +158,12 @@ String GritExportPlugin::_resolve_engine_root() const {
 	// Nothing local: fetch the source for this build's commit. A command-line export
 	// never opens the export window or adds a preset, so this is its only chance.
 	String fetch_error;
-	if (GritProvisioner::ensure_engine(false, &fetch_error)) {
-		const String fetched = String(ProjectSettings::get_singleton()->get_setting(SETTING_ENGINE_ROOT));
-		if (!fetched.is_empty() && FileAccess::exists(fetched.path_join("SConstruct"))) {
-			resolved_engine_root = fetched;
-			return resolved_engine_root;
-		}
-	} else if (!fetch_error.is_empty()) {
+	const String fetched = GritProvisioner::ensure_engine(false, &fetch_error);
+	if (!fetched.is_empty()) {
+		resolved_engine_root = fetched;
+		return resolved_engine_root;
+	}
+	if (!fetch_error.is_empty()) {
 		ERR_PRINT("Grit: " + fetch_error);
 	}
 	return String();
@@ -190,7 +185,7 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 	// The first preset in a project is when the engine source is fetched, so the
 	// first export does not start with a silent download.
 	String engine_error;
-	if (!GritProvisioner::ensure_engine(true, &engine_error)) {
+	if (GritProvisioner::ensure_engine(true, &engine_error).is_empty()) {
 		ERR_PRINT("Grit: " + engine_error);
 		return;
 	}

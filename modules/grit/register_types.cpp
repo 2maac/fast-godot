@@ -37,6 +37,7 @@ static GDScriptCodeGenerator *grit_create_code_generator() {
 static void grit_editor_init() {
 	// EditorSettings exists by now; registering it earlier would be a no-op.
 	GritProvisioner::register_settings();
+	GritProvisioner::purge_obsolete_settings();
 	// Draws the source row (Fetch Source button + path entry) in Editor Settings.
 	EditorInspector::add_inspector_plugin(Ref<EditorInspectorPlugin>(memnew(GritSettingsPlugin)));
 	Ref<GritExportPlugin> export_plugin;
@@ -67,12 +68,13 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 	grit_registry->activate();
 
 #ifdef TOOLS_ENABLED
-	GLOBAL_DEF(GritExportPlugin::SETTING_ENABLED, true);
-	// Optional build profile (Engine Compilation Configuration) for compiled exports.
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, "grit/export/build_profile", PROPERTY_HINT_GLOBAL_FILE, "*.json"), "");
-	// Source tree of this build; the compiled export modes build a template there.
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_ENGINE_ROOT, PROPERTY_HINT_DIR), "");
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_DIR), "res://.godot/grit/generated");
+	// Internal state only: nothing Grit owns is meant to be edited in Project
+	// Settings, so every key here is registered with NO_EDITOR and Grit does not
+	// appear as a project settings section at all.
+	const uint32_t internal = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NO_EDITOR;
+	GLOBAL_DEF(PropertyInfo(Variant::BOOL, GritExportPlugin::SETTING_ENABLED, PROPERTY_HINT_NONE, "", internal), true);
+	GLOBAL_DEF(PropertyInfo(Variant::STRING, "grit/export/build_profile", PROPERTY_HINT_NONE, "", internal), "");
+	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_NONE, "", internal), "res://.godot/grit/generated");
 	EditorNode::add_init_callback(grit_editor_init);
 	GDScriptCompiler::set_code_generator_factory(grit_create_code_generator);
 #else

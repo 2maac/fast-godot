@@ -13,7 +13,7 @@
 // setting; the rest describe the project.
 class GritProvisioner {
 public:
-	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/toolchain/root";
+	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/settings/toolchain_root";
 	// Engine source folder, fetched with the "Fetch Source" button or chosen by hand.
 	static constexpr const char *SETTING_SOURCE_PATH = "grit/settings/source_path";
 
@@ -21,10 +21,18 @@ public:
 	// Called once when the editor starts.
 	static void register_settings();
 
-	// Fetches the engine source for this editor's commit when it is not on disk and
-	// reports what happened. With p_show_progress the download is shown and can be
-	// cancelled with Esc.
-	static bool ensure_engine(bool p_show_progress, String *r_error = nullptr);
+	// Removes keys written by earlier versions (the per-source download settings and
+	// the project-scoped engine root). They are no longer registered, so they would
+	// otherwise show up as orphaned entries in the settings trees.
+	static void purge_obsolete_settings();
+
+	// Returns the engine source tree, fetching it for this editor's commit when it is
+	// not on disk. Empty on failure, with r_error set. With p_show_progress the
+	// download is shown and can be cancelled with Esc.
+	static String ensure_engine(bool p_show_progress, String *r_error = nullptr);
+
+	// The source folder chosen in Editor Settings, when it holds a tree.
+	static String configured_source();
 
 	// Downloads this editor's engine source into p_folder (or reuses a tree that is
 	// already there) and returns the tree path, or an empty string with r_error set.
@@ -33,9 +41,6 @@ public:
 
 	// The commit this editor was built from; the engine source is fetched for it.
 	static String engine_commit();
-
-	// Records the engine root for the build helper when a toolchain folder is used.
-	static bool apply_toolchain_root();
 
 	// The interpreter that runs tools/grit_build_template.py.
 	static String python_for_build();

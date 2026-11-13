@@ -23,10 +23,57 @@ void GritProvisioner::register_settings() {
 	}
 	// The toolchain folder, and the source folder. Both are per machine, both start
 	// empty, and neither is ever filled in by the editor unless the user asks.
+	if (settings->has_setting("grit/toolchain/root")) {
+		// Carry a value over from the key used before both lived under Grit > Settings.
+		const String old = String(settings->get_setting("grit/toolchain/root")).strip_edges();
+		if (!old.is_empty()) {
+			settings->set_setting(GritProvisioner::SETTING_TOOLCHAIN_ROOT, old);
+		}
+		settings->erase("grit/toolchain/root");
+	}
 	EDITOR_DEF(GritProvisioner::SETTING_TOOLCHAIN_ROOT, "");
 	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_TOOLCHAIN_ROOT, PROPERTY_HINT_DIR));
 	EDITOR_DEF(GritProvisioner::SETTING_SOURCE_PATH, "");
 	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_SOURCE_PATH, PROPERTY_HINT_DIR));
+}
+
+void GritProvisioner::purge_obsolete_settings() {
+	EditorSettings *editor = EditorSettings::get_singleton();
+	if (editor) {
+		List<PropertyInfo> props;
+		editor->get_property_list(&props);
+		Vector<String> stale;
+		for (const PropertyInfo &prop : props) {
+			const String name = prop.name;
+			// Anything grit-scoped that is not one of the two settings we keep.
+			if (name.begins_with("grit/") &&
+					name != GritProvisioner::SETTING_SOURCE_PATH &&
+					name != GritProvisioner::SETTING_TOOLCHAIN_ROOT) {
+				stale.push_back(name);
+			}
+		}
+		for (const String &name : stale) {
+			editor->erase(name);
+		}
+	}
+	ProjectSettings *project = ProjectSettings::get_singleton();
+	if (project) {
+		List<PropertyInfo> props;
+		project->get_property_list(&props);
+		Vector<String> stale;
+		for (const PropertyInfo &prop : props) {
+			const String name = prop.name;
+			if (name.begins_with("grit/provision/") || name == "grit/export/engine_root" || name == "grit/toolchain/root") {
+				stale.push_back(name);
+			}
+		}
+		for (const String &name : stale) {
+			project->clear(name);
+		}
+		if (!stale.is_empty()) {
+			project->save();
+		}
+	}
 }
 
 static String _source_path() {
@@ -297,31 +344,28 @@ String GritProvisioner::fetch_source_to(const String &p_folder, bool p_show_prog
 	return tree;
 }
 
-bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
+String GritProvisioner::configured_source() {
+	const String chosen = _source_path();
+	return _engine_present(chosen) ? chosen : String();
+}
+
+String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
+	const String configured = configured_source();
+	if (!configured.is_empty()) {
+		return configured;
+	}
 	const String existing = _engine_root_dir();
 	if (_engine_present(existing)) {
-		ProjectSettings::get_singleton()->set_setting("grit/export/engine_root", existing);
-		return true;
-	}
-	// A checkout the user pointed at is used as-is.
-	const String configured = String(GLOBAL_GET("grit/export/engine_root"));
-	if (_engine_present(configured)) {
-		return true;
-	}
-	// The folder chosen in Editor Settings > Grit > Settings.
-	const String chosen = _source_path();
-	if (_engine_present(chosen)) {
-		ProjectSettings::get_singleton()->set_setting("grit/export/engine_root", chosen);
-		return true;
+		return existing;
 	}
 
 	const String commit = engine_commit();
 	if (commit.is_empty()) {
-		error = "this editor does not report its revision, so the engine source cannot be matched to it. Set Project Settings > Grit > Engine Root to a local Fast_Godot checkout.";
-		return false;
+		error = "this editor does not report its revision, so the engine source cannot be matched to it. Choose a source folder in Editor Settings > Grit > Settings.";
+		return String();
 	}
 	const String url = _engine_archive_url(commit);
 	String archive = OS::get_singleton()->get_cache_path().path_join("grit-engine-" + commit + ".zip");
@@ -333,12 +377,12 @@ bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	String download_error;
 	if (p_show_progress) {
 		if (!_download_engine_archive(url, archive, download_error)) {
-			error = vformat("could not download the engine source for %s from %s (%s). If this machine has no internet access, set Project Settings > Grit > Engine Root to a local Fast_Godot checkout instead.", commit, url, download_error);
-			return false;
+			error = vformat("could not download the engine source for %s from %s (%s). If this machine has no internet access, choose a local source folder in Editor Settings > Grit > Settings instead.", commit, url, download_error);
+			return String();
 		}
 	} else if (!_download(url, archive, download_error)) {
-		error = vformat("could not download the engine source for %s from %s (%s). No internet access? Set Project Settings > Grit > Engine Root to a local Fast_Godot checkout.", commit, url, download_error);
-		return false;
+		error = vformat("could not download the engine source for %s from %s (%s). No internet access? Choose a local source folder in Editor Settings > Grit > Settings.", commit, url, download_error);
+		return String();
 	}
 
 	const String dest = _engine_root_dir();
@@ -376,7 +420,7 @@ bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	if (!unpacked) {
 		DirAccess::remove_absolute(archive);
 		error = vformat("could not unpack the engine source downloaded from %s (%s).", url, unpack_error);
-		return false;
+		return String();
 	}
 	DirAccess::remove_absolute(archive);
 
@@ -394,25 +438,10 @@ bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	}
 	if (!_engine_present(tree)) {
 		error = vformat("the engine source downloaded from %s is not a usable Fast_Godot tree.", url);
-		return false;
+		return String();
 	}
-	ProjectSettings::get_singleton()->set_setting("grit/export/engine_root", tree);
 	print_line("Grit: engine source for " + commit + " is in " + tree);
-	return true;
-}
-
-bool GritProvisioner::apply_toolchain_root() {
-	const String root = _toolchain_root();
-	if (!_toolchain_usable(root)) {
-		return false;
-	}
-	// The engine is fetched separately by ensure_engine(); here only a tree that is
-	// already on disk is recorded.
-	const String engine = _engine_root_dir();
-	if (_engine_present(engine)) {
-		ProjectSettings::get_singleton()->set_setting("grit/export/engine_root", engine);
-	}
-	return true;
+	return tree;
 }
 
 String GritProvisioner::python_for_build() {
@@ -484,8 +513,6 @@ void GritProvisioner::write_build_env(const String &p_engine_root) {
 }
 
 void GritProvisioner::run_probe() {
-	apply_toolchain_root();
-
 	static bool ran = false;
 	if (ran) {
 		return;
@@ -493,7 +520,7 @@ void GritProvisioner::run_probe() {
 	ran = true;
 
 	String error;
-	if (ensure_engine(true, &error)) {
+	if (!ensure_engine(true, &error).is_empty()) {
 		print_line("Grit: build tools ready.");
 	} else {
 		ERR_PRINT("Grit: " + error);
