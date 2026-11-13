@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+env:
+  # Must match the tag the editors are published under.
+  RELEASE_TAG: v4.7.2-stable
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -168,6 +172,21 @@ jobs:
             libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev \
             libudev-dev libfontconfig1-dev libdbus-1-dev libwayland-dev \
             libwayland-bin libffi-dev libvulkan-dev rsync
+
+      # The editor downloads its engine source from this asset, so it has to exist
+      # for the commit being built, not just for the tag.
+      - name: Publish the source archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          COMMIT="$(git rev-parse HEAD)"
+          mkdir -p artifacts
+          OUT="artifacts/Fast_Godot_Source_${COMMIT}.zip"
+          git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
+          sha256sum "$OUT" > "${OUT}.sha256"
+          ls -l "$OUT"
+          gh release upload "$RELEASE_TAG" "$OUT" "${OUT}.sha256" --clobber
 
       - name: Assemble the bundle
         run: |
