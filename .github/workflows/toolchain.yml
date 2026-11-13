@@ -163,7 +163,9 @@ jobs:
               & $arTool.FullName x $ar.FullName
               Get-ChildItem *.o | ForEach-Object { $_.LastWriteTimeUtc = [datetime]"2020-01-01T00:00:00Z" }
               Remove-Item $ar.FullName -Force
-              & $arTool.FullName rcs $ar.FullName (Get-ChildItem *.o | Sort-Object Name | ForEach-Object { $_.Name })
+              # rcD: deterministic mode, without which ar stamps the symbol table
+              # member with the current time and the archive differs every run.
+              & $arTool.FullName rcsD $ar.FullName (Get-ChildItem *.o | Sort-Object Name | ForEach-Object { $_.Name })
               Pop-Location
             }
           }
