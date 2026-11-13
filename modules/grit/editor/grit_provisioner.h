@@ -29,6 +29,16 @@ public:
 	// The checklist, evaluated. Also used by the export plugin before a build.
 	static Vector<Item> collect();
 
+	// When the user points grit/toolchain/root at a self-contained toolchain folder,
+	// this wires the editor to it: engine_root, the SCons launcher and the SCons
+	// arguments the Windows build needs. Returns false when no such folder is set
+	// or it is missing a piece.
+	static bool apply_toolchain_root();
+
+	// The shell to run tools/grit_build_template.sh with on this platform, or an
+	// empty string when the script can be executed directly (macOS, Linux).
+	static String shell_for_build();
+
 private:
 	static bool _has_engine_tree(String &r_detail);
 	static bool _has_scons(String &r_detail);

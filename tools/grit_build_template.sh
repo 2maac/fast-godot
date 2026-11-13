@@ -6,6 +6,31 @@
 # only builds when grit_generated is set, so plain templates are stock Godot.
 # bin/grit/<target>/flags.txt is optional and only supplies -fmodules-cache-path.
 set -euo pipefail
+# Windows runs this script through the bundled shell (Git's sh), so nothing may
+# assume bash, GNU coreutils, rsync or sleep. Each need has a fallback below.
+SH="${GRIT_SH:-sh}"
+PYTHON_BIN="${GRIT_PYTHON:-}"
+hash_of() {
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256sum "$1" | cut -d' ' -f1
+	elif command -v shasum >/dev/null 2>&1; then
+		shasum -a 256 "$1" | cut -d' ' -f1
+	elif [ -n "$PYTHON_BIN" ]; then
+		"$PYTHON_BIN" -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "$1"
+	else
+		echo "Grit: no sha256 tool available" >&2
+		exit 8
+	fi
+}
+nap() {
+	if command -v sleep >/dev/null 2>&1; then
+		sleep "$1"
+	elif [ -n "$PYTHON_BIN" ]; then
+		"$PYTHON_BIN" -c 'import sys,time;time.sleep(float(sys.argv[1]))' "$1"
+	else
+		: # no timer; the caller's loop still makes progress
+	fi
+}
 ENGINE="$1"; GEN="$2"; TARGET="$3"; OUT="$4"; PLATFORM="${5:-macos}"; PROFILE="${6:-}"
 ARCH="${7:-arm64}"
 M="$ENGINE/bin/grit/$TARGET"
@@ -24,14 +49,14 @@ cd "$ENGINE"
 # which is how the 493-class editor happened. So the profile build runs in an
 # isolated copy and only the finished template comes back.
 [ -f "$PROFILE" ] || { echo "Grit: build profile not found: $PROFILE" >&2; exit 4; }
-JOBS="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 8)"
+JOBS="${GRIT_JOBS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-8}")}"
 # The editor's environment may not have scons on PATH; see grit_scons_bin.sh.
-SCONS_BIN="$(bash "$ENGINE/tools/grit_scons_bin.sh" "$ENGINE" || true)"
+SCONS_BIN="$("$SH" "$ENGINE/tools/grit_scons_bin.sh" "$ENGINE" || true)"
 [ -n "$SCONS_BIN" ] || { echo "Grit: scons not found. Run tools/grit_make_manifest.sh (it records bin/grit/scons_path.txt), or set GRIT_SCONS." >&2; exit 7; }
 # Rebuild with the same configuration the engine was built with. Extra SCons
 # options (vulkan_sdk_path, accesskit, ...) come from scons_args.txt next to
 # the manifest, or are detected from the Vulkan SDK; see grit_scons_args.sh.
-SCONS_ARGS="$(bash "$ENGINE/tools/grit_scons_args.sh" "$ENGINE" "$TARGET")"
+SCONS_ARGS="$("$SH" "$ENGINE/tools/grit_scons_args.sh" "$ENGINE" "$TARGET")"
 # A full rebuild must use the same compile flags as the tree the manifests
 # were captured from. -fmodules-cache-path matters most: inside a sandbox the
 # default per-user module cache is not writable, and the build dies with
@@ -48,7 +73,7 @@ fi
 # tree away after every commit and paid a full ~2 min build again. With a
 # refresh, a commit only recompiles the files that changed. The copy keeps its
 # own bin/ and SCons state, so it is never touched by the sync.
-PROFILE_HASH="$(shasum -a 256 "$PROFILE" | cut -d' ' -f1 | cut -c1-16)"
+PROFILE_HASH="$(hash_of "$PROFILE" | cut -c1-16)"
 WORK_ROOT="${GRIT_PROFILE_WORKDIR:-$ENGINE/out/grit-profiles}"
 # Platform and arch belong in the key: a Windows tree and a macOS tree cannot
 # share objects, and before this they did.
@@ -66,10 +91,13 @@ fi
 # configuration (core/disabled_classes.gen.h, modules/modules_enabled.gen.h,
 # core/version_hash.gen.cpp, ...), and overwriting this tree's copies with the
 # other tree's made SCons recompile their dependents on every single run.
-rsync -a --delete \
+# tar instead of rsync: Windows' bundled shell has no rsync. It overwrites changed
+# files and keeps the isolated tree's own bin/ and SCons state, which is what
+# makes a rebuild incremental. Stale files are left behind rather than deleted.
+( cd "$ENGINE" && tar -cf - \
 	--exclude='.git' --exclude='*.app' --exclude='.godot' \
-	--exclude='bin/' --exclude='out/' --exclude='.scons*' \
-	--exclude='*.gen.*' --exclude='compile_commands.json' "$ENGINE"/ "$SRC"/
+	--exclude='bin' --exclude='out' --exclude='.scons*' \
+	--exclude='*.gen.*' --exclude='compile_commands.json' . ) | ( cd "$SRC" && tar -xf - )
 echo "Grit: rebuild with build profile in $SRC"
 
 # The editor asks for a cancel by creating this file; the helper owns the
@@ -87,7 +115,7 @@ while kill -0 "$SPID" 2>/dev/null; do
 		rm -f "$CANCEL_FILE" "$M/scons.pid"
 		exit 3
 	fi
-	sleep 0.2
+	nap 0.2
 done
 wait "$SPID" || exit 5
 rm -f "$M/scons.pid"

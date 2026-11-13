@@ -132,6 +132,8 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 // must already contain the built engine objects (bin/obj) for the requested
 // target; the script only compiles the generated sources and relinks.
 String GritExportPlugin::_resolve_engine_root() const {
+	// A configured toolchain folder wins: it is the whole configuration.
+	GritProvisioner::apply_toolchain_root();
 	if (!resolved_engine_root.is_empty()) {
 		return resolved_engine_root;
 	}
@@ -363,9 +365,22 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		}
 	}
 	ProcessID pid = 0;
-	const Error spawn = OS::get_singleton()->create_process(script, args, &pid);
+	// On Windows the helper is a shell script and needs the bundled shell to run;
+	// on macOS and Linux it is executable on its own.
+	const String shell = GritProvisioner::shell_for_build();
+	Error spawn;
+	if (shell.is_empty()) {
+		spawn = OS::get_singleton()->create_process(script, args, &pid);
+	} else {
+		List<String> shell_args;
+		shell_args.push_back(script);
+		for (const String &arg : args) {
+			shell_args.push_back(arg);
+		}
+		spawn = OS::get_singleton()->create_process(shell, shell_args, &pid);
+	}
 	if (spawn != OK) {
-		ERR_PRINT("Grit: could not start the build helper " + script);
+		ERR_PRINT("Grit: could not start the build helper " + script + (shell.is_empty() ? String() : " through " + shell));
 		return ERR_CANT_CREATE;
 	}
 
