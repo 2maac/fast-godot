@@ -106,8 +106,15 @@ String GritProvisioner::engine_commit() {
 	return hash;
 }
 
+// The source is published as a release asset rather than fetched from the commit
+// archive URL: the asset is built by CI from the same commit as the editor, and its
+// name carries that commit so a stale download can never be mistaken for a match.
+static String _release_tag() {
+	return vformat("v%d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_STATUS);
+}
+
 static String _engine_archive_url(const String &p_commit) {
-	return "https://github.com/2maac/fast-godot/archive/" + p_commit + ".zip";
+	return vformat("https://github.com/2maac/fast-godot/releases/download/%s/Fast_Godot_Source_%s.zip", _release_tag(), p_commit);
 }
 
 // Where a fetched engine tree lives: inside the toolchain folder when there is one,
@@ -224,7 +231,8 @@ static bool _download_engine_archive(const String &p_url, const String &p_dest, 
 		const String state = total > 0
 				? vformat("%s — %d of %d MB", label, downloaded / (1024 * 1024), total / (1024 * 1024))
 				: vformat("%s — %d MB", label, downloaded / (1024 * 1024));
-		if (!progress.step(state, percent)) {
+		// step() returns true when the user cancelled, not when the step succeeded.
+		if (progress.step(state, percent)) {
 			OS::get_singleton()->kill(pid);
 			DirAccess::remove_absolute(p_dest);
 			r_error = "the download was cancelled";
