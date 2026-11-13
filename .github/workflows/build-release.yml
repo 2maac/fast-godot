@@ -153,35 +153,6 @@ jobs:
           path: packages
           if-no-files-found: error
 
-  source-archive:
-    name: source archive
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-
-      # What the editor's Download button fetches, named for the commit it belongs
-      # to so an asset can never be mistaken for a different revision.
-      - name: Publish the source archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          COMMIT="$(git rev-parse HEAD)"
-          OUT="Fast_Godot_Source_${COMMIT}.zip"
-          git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
-          ls -l "$OUT"
-          gh release upload "$RELEASE_TAG" "$OUT" --clobber
-          # The editors are replaced with every build, so only this commit's source
-          # can still be requested. Older ones would sit on the release at 80 MB each.
-          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
-            grep '^Fast_Godot_Source_' |
-            grep -v "$OUT" |
-            while read -r stale; do
-              echo "removing superseded $stale"
-              gh release delete-asset "$RELEASE_TAG" "$stale" -y
-            done
-
   linux-bundle:
     name: linux toolchain bundle
     # The bundle holds a Python and SCons that change only when this workflow or the
@@ -245,7 +216,7 @@ jobs:
 
   release:
     name: release
-    needs: [build, source-archive, linux-bundle]
+    needs: [build, linux-bundle]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:

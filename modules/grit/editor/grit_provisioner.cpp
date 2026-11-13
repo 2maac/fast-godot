@@ -120,15 +120,16 @@ String GritProvisioner::engine_commit() {
 	return hash;
 }
 
-// The source is published as a release asset rather than fetched from the commit
-// archive URL: the asset is built by CI from the same commit as the editor, and its
-// name carries that commit so a stale download can never be mistaken for a match.
+// The source comes from the release's "Source code (zip)", which GitHub generates
+// from the release tag. It is the same archive we would upload ourselves, so there
+// is nothing to publish; the tag is kept on the commit the editors were built from.
 static String _release_tag() {
 	return vformat("v%d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_STATUS);
 }
 
 static String _engine_archive_url(const String &p_commit) {
-	return vformat("https://github.com/2maac/fast-godot/releases/download/%s/Fast_Godot_Source_%s.zip", _release_tag(), p_commit);
+	(void)p_commit;
+	return vformat("https://github.com/2maac/fast-godot/archive/refs/tags/%s.zip", _release_tag());
 }
 
 // Where a fetched engine tree lives: inside the toolchain folder when there is one,
