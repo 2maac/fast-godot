@@ -7,9 +7,13 @@ title: Threaded loading fix
 This build carries one engine fix on top of Godot 4.7.2. It is small, and it is
 the reason games stop crashing while a level loads.
 
+Line numbers below refer to this tree.
+
 ## The crash
 
-`ResourceLoader::_run_load_task()` ended by releasing the load task's token:
+`ResourceLoader::_run_load_task()` — [`core/io/resource_loader.cpp:337`](https://github.com/2maac/fast-godot/blob/main/core/io/resource_loader.cpp#L337) —
+ended by releasing the load task's token. In the tree where the crash was caught
+that call was at line 675; after the fix it sits at 681.
 
 ```cpp
 load_task.load_token->unreference();
@@ -22,9 +26,10 @@ finishes. The result is a worker-thread crash:
 
 ```
 EXC_BAD_ACCESS (code=1, address=0x158)
-  RefCounted::unreference(this=0x0)
-  ResourceLoader::_run_load_task()
-  WorkerThreadPool::_process_task
+  RefCounted::unreference()            core/object/ref_counted.cpp:92
+  ResourceLoader::_run_load_task()     core/io/resource_loader.cpp:675   (pre-fix tree)
+  WorkerThreadPool::_process_task()    core/object/worker_thread_pool.cpp:142
+  WorkerThreadPool::_thread_function() core/object/worker_thread_pool.cpp:220
 ```
 
 It only happens with `ResourceLoader.load_threaded_request(path, "", true)` — the
@@ -33,13 +38,21 @@ A trivial project never reproduces it.
 
 ## The fix
 
-Both release sites are null-guarded:
+Two sites, both null-guarded:
+
+| file | line | path through the function |
+|---|---|---|
+| [`core/io/resource_loader.cpp`](https://github.com/2maac/fast-godot/blob/main/core/io/resource_loader.cpp#L511) | 511 | early return, task already completed by another thread |
+| [`core/io/resource_loader.cpp`](https://github.com/2maac/fast-godot/blob/main/core/io/resource_loader.cpp#L681) | 681 | normal completion, end of the function |
 
 ```cpp
 if (load_task.load_token) {
     load_task.load_token->unreference();
 }
 ```
+
+In the tree where the fix was first written these call sites were at lines 509
+and 675; they shifted by two and six lines as the surrounding code changed.
 
 ## How it was verified
 
@@ -60,9 +73,11 @@ rather than something introduced by Grit.
 
 The guard stops the crash; it does not repair the lifetime problem underneath it.
 Several paths keep a `ThreadLoadTask &` into a `HashMap` that other threads can
-rehash, and one of them still reads a field through that reference after the
-lock is released. A complete fix needs stable storage for those entries —
-pointers with ownership, or copying the fields that must outlive the lock.
+rehash — for example
+[`core/io/resource_loader.cpp:694`](https://github.com/2maac/fast-godot/blob/main/core/io/resource_loader.cpp#L694)
+still reads `load_task.local_path` through that reference after the lock is
+released. A complete fix needs stable storage for those entries — pointers with
+ownership, or copying the fields that must outlive the lock.
 
 Until then, the workaround is available if a future engine version regresses:
 
