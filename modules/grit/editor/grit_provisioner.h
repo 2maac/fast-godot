@@ -14,6 +14,8 @@
 class GritProvisioner {
 public:
 	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/toolchain/root";
+	// Engine source folder, fetched with the "Fetch Source" button or chosen by hand.
+	static constexpr const char *SETTING_SOURCE_PATH = "grit/settings/source_path";
 
 	// Registers grit/toolchain/root, which the export window and the build read.
 	// Called once when the editor starts.
@@ -23,6 +25,14 @@ public:
 	// reports what happened. With p_show_progress the download is shown and can be
 	// cancelled with Esc.
 	static bool ensure_engine(bool p_show_progress, String *r_error = nullptr);
+
+	// Downloads this editor's engine source into p_folder (or reuses a tree that is
+	// already there) and returns the tree path, or an empty string with r_error set.
+	// This is what the "Fetch Source" button calls.
+	static String fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error = nullptr);
+
+	// The commit this editor was built from; the engine source is fetched for it.
+	static String engine_commit();
 
 	// Records the engine root for the build helper when a toolchain folder is used.
 	static bool apply_toolchain_root();

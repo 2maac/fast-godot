@@ -21,9 +21,20 @@ void GritProvisioner::register_settings() {
 	if (!settings) {
 		return;
 	}
-	// A folder, chosen with a picker: this is the one thing a user configures.
+	// The toolchain folder, and the source folder. Both are per machine, both start
+	// empty, and neither is ever filled in by the editor unless the user asks.
 	EDITOR_DEF(GritProvisioner::SETTING_TOOLCHAIN_ROOT, "");
 	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_TOOLCHAIN_ROOT, PROPERTY_HINT_DIR));
+	EDITOR_DEF(GritProvisioner::SETTING_SOURCE_PATH, "");
+	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_SOURCE_PATH, PROPERTY_HINT_DIR));
+}
+
+static String _source_path() {
+	EditorSettings *settings = EditorSettings::get_singleton();
+	if (!settings || !settings->has_setting(GritProvisioner::SETTING_SOURCE_PATH)) {
+		return String();
+	}
+	return String(settings->get_setting(GritProvisioner::SETTING_SOURCE_PATH)).strip_edges();
 }
 
 static String _toolchain_root() {
@@ -40,7 +51,7 @@ static bool _toolchain_usable(const String &p_root) {
 }
 
 // The commit this editor was built from; the engine source is fetched for exactly it.
-static String _engine_commit() {
+String GritProvisioner::engine_commit() {
 	const String hash = String(VERSION_HASH);
 	if (hash.is_empty() || hash == "unknown") {
 		return String();
@@ -57,7 +68,8 @@ static String _engine_archive_url(const String &p_commit) {
 static String _engine_root_dir() {
 	const String root = _toolchain_root();
 	const String parent = _toolchain_usable(root) ? root : OS::get_singleton()->get_data_path().path_join("grit-tools");
-	return parent.path_join("engine").path_join(_engine_commit().is_empty() ? String("unknown") : _engine_commit());
+	const String commit = GritProvisioner::engine_commit();
+	return parent.path_join("engine").path_join(commit.is_empty() ? String("unknown") : commit);
 }
 
 static bool _engine_present(const String &p_dir) {
@@ -188,6 +200,103 @@ static bool _download_engine_archive(const String &p_url, const String &p_dest, 
 	return true;
 }
 
+// Unpacks p_archive into p_dest and returns the tree inside it, or empty.
+static String _unpack_engine(const String &p_archive, const String &p_dest, const String &p_url, String &r_error) {
+	DirAccess::remove_absolute(p_dest);
+	DirAccess::make_dir_recursive_absolute(p_dest);
+
+	bool unpacked = false;
+	String unpack_error;
+	const String python = GritProvisioner::python_for_build();
+	if (!python.is_empty()) {
+		List<String> args;
+		args.push_back("-m");
+		args.push_back("zipfile");
+		args.push_back("-e");
+		args.push_back(p_archive);
+		args.push_back(p_dest);
+		int code = -1;
+		String output;
+		const Error ran = OS::get_singleton()->execute(python, args, &output, &code);
+		unpacked = ran == OK && code == 0;
+		if (!unpacked) {
+			unpack_error = vformat("python %s exited %d: %s", python, code, output.strip_edges().right(160));
+		}
+	}
+	if (!unpacked) {
+		String tar_error;
+		if (_extract(p_archive, p_dest, tar_error)) {
+			unpacked = true;
+		} else {
+			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
+		}
+	}
+	if (!unpacked) {
+		r_error = vformat("could not unpack the engine source downloaded from %s (%s).", p_url, unpack_error);
+		return String();
+	}
+	// The archive extracts to a single fast-godot-<commit>/ directory.
+	String tree = p_dest;
+	Ref<DirAccess> dir = DirAccess::open(p_dest);
+	if (dir.is_valid()) {
+		dir->list_dir_begin();
+		for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
+			if (dir->current_is_dir() && FileAccess::exists(p_dest.path_join(name).path_join("SConstruct"))) {
+				tree = p_dest.path_join(name);
+				break;
+			}
+		}
+		dir->list_dir_end();
+	}
+	if (!_engine_present(tree)) {
+		r_error = vformat("the engine source downloaded from %s is not a usable Fast_Godot tree.", p_url);
+		return String();
+	}
+	return tree;
+}
+
+String GritProvisioner::fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error) {
+	String local_error;
+	String &error = r_error ? *r_error : local_error;
+
+	const String folder = p_folder.strip_edges();
+	if (folder.is_empty()) {
+		error = "no destination folder was chosen.";
+		return String();
+	}
+	const String commit = engine_commit();
+	if (commit.is_empty()) {
+		error = "this editor does not report its revision, so the source cannot be matched to it.";
+		return String();
+	}
+	// A tree already sitting in the chosen folder is used as-is.
+	if (_engine_present(folder)) {
+		return folder;
+	}
+	const String url = _engine_archive_url(commit);
+	String archive = OS::get_singleton()->get_cache_path().path_join("grit-engine-" + commit + ".zip");
+	if (OS::get_singleton()->get_name() == "Windows") {
+		archive = archive.replace("/", "\\");
+	}
+	String download_error;
+	if (p_show_progress) {
+		if (!_download_engine_archive(url, archive, download_error)) {
+			error = vformat("could not download the engine source for %s from %s (%s).", commit, url, download_error);
+			return String();
+		}
+	} else if (!_download(url, archive, download_error)) {
+		error = vformat("could not download the engine source for %s from %s (%s).", commit, url, download_error);
+		return String();
+	}
+	String unpack_error;
+	const String tree = _unpack_engine(archive, folder, url, unpack_error);
+	DirAccess::remove_absolute(archive);
+	if (tree.is_empty()) {
+		error = unpack_error;
+	}
+	return tree;
+}
+
 bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
@@ -202,8 +311,14 @@ bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	if (_engine_present(configured)) {
 		return true;
 	}
+	// The folder chosen in Editor Settings > Grit > Settings.
+	const String chosen = _source_path();
+	if (_engine_present(chosen)) {
+		ProjectSettings::get_singleton()->set_setting("grit/export/engine_root", chosen);
+		return true;
+	}
 
-	const String commit = _engine_commit();
+	const String commit = engine_commit();
 	if (commit.is_empty()) {
 		error = "this editor does not report its revision, so the engine source cannot be matched to it. Set Project Settings > Grit > Engine Root to a local Fast_Godot checkout.";
 		return false;

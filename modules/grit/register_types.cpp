@@ -9,6 +9,7 @@
 #ifdef TOOLS_ENABLED
 #include "compiler/grit_recording_code_generator.h"
 #include "editor/grit_export_plugin.h"
+#include "editor/grit_settings_editor.h"
 #include "editor/grit_provisioner.h"
 
 #include "core/config/project_settings.h"
@@ -36,6 +37,8 @@ static GDScriptCodeGenerator *grit_create_code_generator() {
 static void grit_editor_init() {
 	// EditorSettings exists by now; registering it earlier would be a no-op.
 	GritProvisioner::register_settings();
+	// Draws the source row (Fetch Source button + path entry) in Editor Settings.
+	EditorInspector::add_inspector_plugin(Ref<EditorInspectorPlugin>(memnew(GritSettingsPlugin)));
 	Ref<GritExportPlugin> export_plugin;
 	export_plugin.instantiate();
 	EditorExport *editor_export = EditorExport::get_singleton();
