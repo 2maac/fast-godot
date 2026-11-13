@@ -1,0 +1,153 @@
+name: toolchain
+
+# Toolchains are fixed artifacts: their contents are pinned versions of Python,
+# SCons, MinGW, libffi and MoltenVK, and they change only when those pins change.
+# Building them on every editor change produced a new digest for identical bytes.
+# This workflow runs when a pin or the assembly script changes, or by hand.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/toolchain.yml"
+      - ".github/scripts/fetch_linux_toolchain.sh"
+      - ".github/scripts/make_bundle_zip.py"
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: v4.7.2-stable
+  PYTHON_RELEASE: "20261110"
+  PYTHON_VERSION: "3.12.16"
+  SCONS_VERSION: "4.11.1"
+  SCONS_SHA256: "4210d1a80a62e986029208117991b6347ccaaaab37b67463a3ff31ee065dc487"
+  SCONS_URL: "https://files.pythonhosted.org/packages/42/b9/b7a5c88f348a0c34594d88100872c55fa1cae863ccb222c1c438341b5503/scons-4.11.1.tar.gz"
+  WINLIBS_URL: "https://github.com/brechtsanders/winlibs_mingw/releases/download/16.2.0posix-23.1.3-14.0.0-ucrt-r3/winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64ucrt-14.0.0-r3.zip"
+  WINLIBS_SHA256: "3c69305081e4a647144339a936244fcf7d3d9e558319e1ad7be2cd2886d4b6a1"
+  LIBFFI_URL: "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libffi-3.8.0-1-any.pkg.tar.zst"
+  LIBFFI_SHA256: "6dad7f3c6c900d3c64a4fe0c2764b405e678b22df3521d2284ffaeff0198b84b"
+  MOLTENVK_URL: "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar"
+  MOLTENVK_SHA256: "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e"
+
+jobs:
+  linux:
+    name: linux toolchain
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Assemble
+        run: |
+          set -e
+          B="bundle/Fast_Godot_Toolchain_linux_x86_64"
+          mkdir -p "$B"
+          .github/scripts/fetch_linux_toolchain.sh "$B"
+          python .github/scripts/make_bundle_zip.py "$B" "Fast_Godot_Toolchain_linux_x86_64.zip"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" Fast_Godot_Toolchain_linux_x86_64.zip --clobber
+
+  macos:
+    name: macos toolchain
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble
+        run: |
+          set -e
+          B="bundle/Fast_Godot_Toolchain_macos_arm64"
+          mkdir -p "$B"
+          PYTAR="cpython-${PYTHON_VERSION}+${PYTHON_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
+          curl -sSL --fail -o py.tar.gz \
+            "https://github.com/astral-sh/python-build-standalone/releases/download/${PYTHON_RELEASE}/$(echo "$PYTAR" | sed 's/+/%2B/')"
+          tar -xzf py.tar.gz -C "$B"
+          mkdir -p "$B/scons/${SCONS_VERSION}"
+          curl -sSL --fail -o scons.tar.gz "$SCONS_URL"
+          echo "$SCONS_SHA256  scons.tar.gz" | shasum -a 256 -c -
+          tar -xzf scons.tar.gz -C "$B/scons/${SCONS_VERSION}"
+          curl -sSL --fail -o mvk.tar "$MOLTENVK_URL"
+          echo "$MOLTENVK_SHA256  mvk.tar" | shasum -a 256 -c -
+          mkdir -p "$B/moltenvk/macOS/lib"
+          tar -xf mvk.tar -C "$B/moltenvk"
+          # The tarball holds MoltenVK/MoltenVK.xcframework; the editor looks for the
+          # LunarG layout, macOS/lib/MoltenVK.xcframework.
+          mv "$B/moltenvk/MoltenVK/MoltenVK.xcframework" "$B/moltenvk/macOS/lib/"
+          rm -rf "$B/moltenvk/MoltenVK" "$B/moltenvk/MoltenVK.xcframework" 2>/dev/null || true
+          cat > "$B/toolchain.json" <<JSON
+          {
+            "name": "Fast_Godot_Toolchain_macos_arm64",
+            "format": 1,
+            "engineVersion": "4.7.2-stable",
+            "platform": "macos",
+            "arch": "arm64",
+            "python": "python",
+            "scons": "scons/${SCONS_VERSION}/scons-${SCONS_VERSION}",
+            "moltenvk": "moltenvk"
+          }
+          JSON
+          python3 .github/scripts/make_bundle_zip.py "$B" Fast_Godot_Toolchain_macos_arm64.zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$RELEASE_TAG" Fast_Godot_Toolchain_macos_arm64.zip --clobber
+
+  windows:
+    name: windows toolchain
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $B = "bundle\Fast_Godot_Toolchain_win64"
+          New-Item -ItemType Directory -Force $B | Out-Null
+          $py = "cpython-$env:PYTHON_VERSION+$env:PYTHON_RELEASE-x86_64-pc-windows-msvc-install_only.tar.gz"
+          $pyUrl = "https://github.com/astral-sh/python-build-standalone/releases/download/$env:PYTHON_RELEASE/" + ($py -replace '\+','%2B')
+          curl.exe -sSL --fail -o py.tar.gz $pyUrl
+          tar.exe -xzf py.tar.gz -C $B
+          New-Item -ItemType Directory -Force "$B\scons\$env:SCONS_VERSION" | Out-Null
+          curl.exe -sSL --fail -o scons.tar.gz $env:SCONS_URL
+          $hash = (Get-FileHash scons.tar.gz -Algorithm SHA256).Hash.ToLower()
+          if ($hash -ne $env:SCONS_SHA256) { throw "scons checksum mismatch: $hash" }
+          tar.exe -xzf scons.tar.gz -C "$B\scons\$env:SCONS_VERSION"
+          curl.exe -sSL --fail -o winlibs.zip $env:WINLIBS_URL
+          tar.exe -xf winlibs.zip -C $B
+          curl.exe -sSL --fail -o libffi.pkg.tar.zst $env:LIBFFI_URL
+          New-Item -ItemType Directory -Force "$B\libffi\3.8.0" | Out-Null
+          tar.exe -xf libffi.pkg.tar.zst -C "$B\libffi\3.8.0"
+          # libffi's dl* symbols collide with SDL's dlmalloc; rename them to ffi_dl*.
+          $ar = Get-ChildItem "$B\libffi\3.8.0\mingw64\lib" -Filter "libffi*.a" | Select-Object -First 1
+          $objcopy = Get-ChildItem "$B\mingw64\bin" -Filter "objcopy.exe" | Select-Object -First 1
+          $nm = Get-ChildItem "$B\mingw64\bin" -Filter "nm.exe" | Select-Object -First 1
+          if ($ar -and $objcopy -and $nm) {
+            $syms = & $nm.FullName --defined-only $ar.FullName | ForEach-Object {
+              $parts = $_ -split '\s+'
+              if ($parts.Length -ge 3 -and $parts[2] -match '^dl') { $parts[2] }
+            } | Sort-Object -Unique
+            if ($syms) {
+              $map = Join-Path $env:RUNNER_TEMP "redefine.txt"
+              $syms | ForEach-Object { "$_ ffi_$_" } | Set-Content $map -Encoding ascii
+              & $objcopy.FullName --redefine-syms=$map $ar.FullName
+              Write-Output ("renamed {0} libffi symbols" -f $syms.Count)
+            }
+          }
+          @{
+            name = "Fast_Godot_Toolchain_win64"; format = 1; engineVersion = "4.7.2-stable"
+            platform = "windows"; arch = "x86_64"; python = "python"
+            scons = "scons/$env:SCONS_VERSION/scons-$env:SCONS_VERSION"
+            mingw = "mingw64"; libffi = "libffi/3.8.0/mingw64"
+          } | ConvertTo-Json | Set-Content "$B\toolchain.json" -Encoding ascii
+          python .github/scripts/make_bundle_zip.py $B Fast_Godot_Toolchain_win64.zip
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$env:RELEASE_TAG" Fast_Godot_Toolchain_win64.zip --clobber
