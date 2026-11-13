@@ -71,6 +71,14 @@ scons platform=<macos|linuxbsd|windows> target=editor -j"$(nproc)"
 
 `accesskit` is disabled by default; `vulkan=yes` is what the shipped builds use.
 
+## Engine fixes
+
+The fork carries one fix on top of Godot 4.7.2: a null-token crash in
+`ResourceLoader::_run_load_task()` that kills a worker thread when a scene loads
+with `load_threaded_request(..., use_sub_threads = true)`. It reproduces on
+official 4.7.2 (7 of 8 runs) and never after the fix (32 runs). See
+[docs/threaded-loading-fix.md](docs/threaded-loading-fix.md).
+
 ## Status
 
 - macOS and Linux editors build and export.
