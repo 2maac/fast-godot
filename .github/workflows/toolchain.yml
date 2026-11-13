@@ -172,18 +172,18 @@ jobs:
           # A fixed string, not ConvertTo-Json: hashtable key order is not guaranteed,
           # which made the manifest differ between identical builds.
           $json = @"
-{
-  "name": "Fast_Godot_Toolchain_win64",
-  "format": 1,
-  "engineVersion": "4.7.2-stable",
-  "platform": "windows",
-  "arch": "x86_64",
-  "python": "python",
-  "scons": "scons/$env:SCONS_VERSION/scons-$env:SCONS_VERSION",
-  "mingw": "mingw64",
-  "libffi": "libffi/3.8.0/mingw64"
-}
-"@
+          {
+          "name": "Fast_Godot_Toolchain_win64",
+          "format": 1,
+          "engineVersion": "4.7.2-stable",
+          "platform": "windows",
+          "arch": "x86_64",
+          "python": "python",
+          "scons": "scons/$env:SCONS_VERSION/scons-$env:SCONS_VERSION",
+          "mingw": "mingw64",
+          "libffi": "libffi/3.8.0/mingw64"
+          }
+          "@
           [IO.File]::WriteAllText("$B\toolchain.json", $json.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))
           python .github/scripts/make_bundle_zip.py $B Fast_Godot_Toolchain_win64.zip
       - name: Publish
