@@ -54,10 +54,16 @@ jobs:
 
   macos:
     name: macos toolchain
-    runs-on: macos-14
+    # The bundle is assembled, not compiled: it is a macOS Python, SCons and
+    # MoltenVK packed together, so any runner with tar and Python can produce it.
+    # (macos-14 arm64 runners are not available to this repository.)
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
       - name: Assemble
         run: |
           set -e
@@ -69,10 +75,10 @@ jobs:
           tar -xzf py.tar.gz -C "$B"
           mkdir -p "$B/scons/${SCONS_VERSION}"
           curl -sSL --fail -o scons.tar.gz "$SCONS_URL"
-          echo "$SCONS_SHA256  scons.tar.gz" | shasum -a 256 -c -
+          echo "$SCONS_SHA256  scons.tar.gz" | sha256sum -c -
           tar -xzf scons.tar.gz -C "$B/scons/${SCONS_VERSION}"
           curl -sSL --fail -o mvk.tar "$MOLTENVK_URL"
-          echo "$MOLTENVK_SHA256  mvk.tar" | shasum -a 256 -c -
+          echo "$MOLTENVK_SHA256  mvk.tar" | sha256sum -c -
           mkdir -p "$B/moltenvk/macOS/lib"
           tar -xf mvk.tar -C "$B/moltenvk"
           # The tarball holds MoltenVK/MoltenVK.xcframework; the editor looks for the
