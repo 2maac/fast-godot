@@ -143,22 +143,6 @@ String GritExportPlugin::_resolve_engine_root() const {
 		return resolved_engine_root;
 	}
 
-	// Remembered from an earlier run: this is what makes a relocated app work, since
-	// the walk below can only succeed while the app sits inside the tree. Stored in
-	// EditorSettings rather than registered with EDITOR_DEF, which cannot run before
-	// the editor (and its settings) exist.
-	EditorSettings *editor_settings = EditorSettings::get_singleton();
-	if (editor_settings && editor_settings->has_setting("grit/engine_root")) {
-		const String remembered = String(editor_settings->get_setting("grit/engine_root"));
-		if (!remembered.is_empty() && FileAccess::exists(remembered.path_join("SConstruct"))) {
-			resolved_engine_root = remembered;
-			ProjectSettings::get_singleton()->set_setting(SETTING_ENGINE_ROOT, remembered);
-			ProjectSettings::get_singleton()->save();
-			print_line(vformat("Grit: using the engine tree remembered at \"%s\".", remembered));
-			return resolved_engine_root;
-		}
-	}
-
 	// No project setting yet (first export ever, or a fresh project): find the
 	// tree this editor was built from by walking up from the executable. A staged
 	// app sits at <engine>/out/editor-staging/Fast_Godot.app/Contents/MacOS/Godot,
@@ -169,11 +153,6 @@ String GritExportPlugin::_resolve_engine_root() const {
 			resolved_engine_root = dir;
 			ProjectSettings::get_singleton()->set_setting(SETTING_ENGINE_ROOT, dir);
 			ProjectSettings::get_singleton()->save();
-			// Also remember it globally, so moving the app does not lose the tree.
-			if (EditorSettings *settings = EditorSettings::get_singleton()) {
-				settings->set_setting("grit/engine_root", dir);
-				settings->save();
-			}
 			print_line(vformat("Grit: found the engine tree at \"%s\" and saved it as \"%s\".", dir, String(SETTING_ENGINE_ROOT)));
 			return resolved_engine_root;
 		}
@@ -184,12 +163,10 @@ String GritExportPlugin::_resolve_engine_root() const {
 	// never opens the export window or adds a preset, so this is its only chance.
 	String fetch_error;
 	if (GritProvisioner::ensure_engine(false, &fetch_error)) {
-		if (EditorSettings *settings = EditorSettings::get_singleton()) {
-			const String fetched = String(settings->get_setting("grit/engine_root"));
-			if (!fetched.is_empty() && FileAccess::exists(fetched.path_join("SConstruct"))) {
-				resolved_engine_root = fetched;
-				return resolved_engine_root;
-			}
+		const String fetched = String(ProjectSettings::get_singleton()->get_setting(SETTING_ENGINE_ROOT));
+		if (!fetched.is_empty() && FileAccess::exists(fetched.path_join("SConstruct"))) {
+			resolved_engine_root = fetched;
+			return resolved_engine_root;
 		}
 	} else if (!fetch_error.is_empty()) {
 		ERR_PRINT("Grit: " + fetch_error);

@@ -1,55 +1,37 @@
 #pragma once
 
-#include "core/string/ustring.h"
-#include "core/templates/vector.h"
+#include "core/config/engine.h"
+#include "core/object/object.h"
 
-// Checks that everything needed to build a compiled export template is present.
+// Editor-side plumbing for compiling a project into an export template.
 //
-// This is deliberately report-only for now: it walks the list on editor startup,
-// says what is there and what is missing, and shows a non-cancellable progress
-// dialog when something is missing. Downloads are the next step; the settings it
-// reads (URLs, mirrors, checksums, proxy, offline) exist already so a source can
-// be redirected without a rebuild when a host goes away.
+// Two things are configured, both in Project Settings under "grit/export":
+//   toolchain_root  the unzipped Fast_Godot_Toolchain_* folder (Python, SCons and
+//                   the platform toolchain); empty means "use the system".
+//   engine_root     a local Fast_Godot checkout, for machines that cannot download
+//                   the engine source. Empty means "fetch it for this build".
+//
+// Nothing here is an editor setting: those were the download-on-demand knobs of an
+// earlier design and are gone.
 class GritProvisioner {
 public:
-	struct Item {
-		String id;
-		String label;
-		String state; // "present", "missing", or "manual".
-		String detail;
-	};
+	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/export/toolchain_root";
 
-	// Registers the grit/provision/* editor settings. Safe to call more than once.
-	static void register_settings();
-
-	// Walks the checklist. Called when the export window opens (not at startup), and
-	// once per session. Shows a dialog only when something is missing.
-	static void run_probe();
-
-	// The checklist, evaluated. Also used by the export plugin before a build.
-	static Vector<Item> collect();
-
-	// When the user points grit/toolchain/root at a self-contained toolchain folder,
-	// this wires the editor to it: engine_root, the SCons launcher and the SCons
-	// arguments the Windows build needs. Returns false when no such folder is set
-	// or it is missing a piece.
-	static bool apply_toolchain_root();
-
-	// The interpreter that runs tools/grit_build_template.py for this machine.
-	static String python_for_build();
-
-	// Records the interpreter, SCons package, PATH additions and SCons options the
-	// build helper must use, in <engine>/bin/grit/build_env.json.
-	static void write_build_env(const String &p_engine_root);
-
-	// Makes sure the engine source for this build's commit is on disk, downloading it
-	// when it is not. With p_show_progress the download is shown and can be cancelled
-	// with Esc. Returns false and sets nothing on failure; the caller reports.
+	// Fetches the engine source for this editor's commit when it is not on disk and
+	// reports what happened. With p_show_progress the download is shown and can be
+	// cancelled with Esc.
 	static bool ensure_engine(bool p_show_progress, String *r_error = nullptr);
 
-private:
-	static bool _has_engine_tree(String &r_detail);
-	static bool _has_scons(String &r_detail);
-	static bool _has_compiler(String &r_detail);
-	static bool _has_moltenvk(String &r_detail);
+	// Records the engine root for the build helper when a toolchain folder is used.
+	static bool apply_toolchain_root();
+
+	// The interpreter that runs tools/grit_build_template.py.
+	static String python_for_build();
+
+	// Writes <engine>/bin/grit/build_env.json: interpreter, SCons package, PATH
+	// additions, SCons options and the engine revision the build belongs to.
+	static void write_build_env(const String &p_engine_root);
+
+	// Runs at editor start and when the export window opens.
+	static void run_probe();
 };
