@@ -153,6 +153,18 @@ jobs:
               $syms | ForEach-Object { "$_ ffi_$_" } | Set-Content $map -Encoding ascii
               & $objcopy.FullName --redefine-syms=$map $ar.FullName
               Write-Output ("renamed {0} libffi symbols" -f $syms.Count)
+              # objcopy stamps rewritten members with the current time, so the same
+              # input produced a different archive every run. Repack with fixed
+              # timestamps and a sorted order to make the bundle reproducible.
+              $arTool = Get-ChildItem "$B\mingw64\bin" -Filter "ar.exe" | Select-Object -First 1
+              $work = Join-Path $env:RUNNER_TEMP "ffi-repack"
+              New-Item -ItemType Directory -Force $work | Out-Null
+              Push-Location $work
+              & $arTool.FullName x $ar.FullName
+              Get-ChildItem *.o | ForEach-Object { $_.LastWriteTimeUtc = [datetime]"2020-01-01T00:00:00Z" }
+              Remove-Item $ar.FullName -Force
+              & $arTool.FullName rcs $ar.FullName (Get-ChildItem *.o | Sort-Object Name | ForEach-Object { $_.Name })
+              Pop-Location
             }
           }
           @{
