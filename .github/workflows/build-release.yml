@@ -174,21 +174,21 @@ jobs:
           set -e
           B="bundle/Fast_Godot_Toolchain_linux_x86_64"
           mkdir -p "$B"
-          # engine source, without this checkout's build output or VCS metadata
-          rsync -a --exclude='.git' --exclude='bin' --exclude='out' --exclude='.godot' . "$B/engine/"
+          # Toolchain only: the editor fetches the engine source for its own commit,
+          # so a bundle can never go stale against an editor build.
           .github/scripts/fetch_linux_toolchain.sh "$B"
           cat "$B/toolchain.json"
           du -sh "$B"
 
       # The point of the job: prove that the bundle alone builds. A plain template
       # (no grit_generated) exercises the compiler, the bundled Python and SCons.
-      - name: Smoke build from the bundle
+      - name: Smoke build with the bundle
         run: |
           set -e
           B="$PWD/bundle/Fast_Godot_Toolchain_linux_x86_64"
           export PATH="$B/python/bin:$PATH"
           export PYTHONPATH="$B/scons/4.11.1/scons-4.11.1"
-          cd "$B/engine"
+          # The bundle's own toolchain builds this checkout's engine.
           python -m SCons platform=linuxbsd arch=x86_64 target=template_release \
             vulkan=yes accesskit=no use_volk=yes -j"$(nproc)"
           ls -la bin/godot.linuxbsd.template_release.x86_64
@@ -198,7 +198,6 @@ jobs:
         run: |
           set -e
           B="bundle/Fast_Godot_Toolchain_linux_x86_64"
-          rm -rf "$B/engine/bin" "$B/engine/out" "$B"/engine/.sconsign*
           ( cd bundle && zip -qr Fast_Godot_Toolchain_linux_x86_64.zip Fast_Godot_Toolchain_linux_x86_64 )
           ( cd bundle && sha256sum Fast_Godot_Toolchain_linux_x86_64.zip > Fast_Godot_Toolchain_linux_x86_64.zip.sha256 )
           ls -l bundle/Fast_Godot_Toolchain_linux_x86_64.zip*

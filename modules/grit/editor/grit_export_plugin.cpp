@@ -195,6 +195,14 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 		return;
 	}
 
+	// The first preset in a project is when the engine source is fetched, so the
+	// first export does not start with a silent download.
+	String engine_error;
+	if (!GritProvisioner::ensure_engine(true, &engine_error)) {
+		ERR_PRINT("Grit: " + engine_error);
+		return;
+	}
+
 	if (os_name == "macOS") {
 		_apply_default_bundle_identifier(p_preset);
 		// This engine's templates are arm64 (the tree is built with arch=arm64). A new

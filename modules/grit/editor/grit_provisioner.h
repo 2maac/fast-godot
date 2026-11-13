@@ -42,6 +42,11 @@ public:
 	// build helper must use, in <engine>/bin/grit/build_env.json.
 	static void write_build_env(const String &p_engine_root);
 
+	// Makes sure the engine source for this build's commit is on disk, downloading it
+	// when it is not. With p_show_progress the download is shown and can be cancelled
+	// with Esc. Returns false and sets nothing on failure; the caller reports.
+	static bool ensure_engine(bool p_show_progress, String *r_error = nullptr);
+
 private:
 	static bool _has_engine_tree(String &r_detail);
 	static bool _has_scons(String &r_detail);
