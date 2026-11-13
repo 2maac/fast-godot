@@ -7,6 +7,7 @@
 #include "core/os/os.h"
 #include "core/version.h"
 #include "editor/editor_node.h"
+#include "editor/settings/editor_settings.h"
 #include "servers/display/display_server.h"
 
 // Everything this module needs comes from two project settings:
@@ -15,8 +16,22 @@
 // The engine source is otherwise fetched for this editor's own commit, which is what
 // keeps a toolchain folder from ever going stale.
 
+void GritProvisioner::register_settings() {
+	EditorSettings *settings = EditorSettings::get_singleton();
+	if (!settings) {
+		return;
+	}
+	// A folder, chosen with a picker: this is the one thing a user configures.
+	EDITOR_DEF(GritProvisioner::SETTING_TOOLCHAIN_ROOT, "");
+	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_TOOLCHAIN_ROOT, PROPERTY_HINT_DIR));
+}
+
 static String _toolchain_root() {
-	return String(GLOBAL_GET(GritProvisioner::SETTING_TOOLCHAIN_ROOT)).strip_edges();
+	EditorSettings *settings = EditorSettings::get_singleton();
+	if (!settings || !settings->has_setting(GritProvisioner::SETTING_TOOLCHAIN_ROOT)) {
+		return String();
+	}
+	return String(settings->get_setting(GritProvisioner::SETTING_TOOLCHAIN_ROOT)).strip_edges();
 }
 
 static bool _toolchain_usable(const String &p_root) {

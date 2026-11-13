@@ -34,6 +34,8 @@ static GDScriptCodeGenerator *grit_create_code_generator() {
 
 #ifdef TOOLS_ENABLED
 static void grit_editor_init() {
+	// EditorSettings exists by now; registering it earlier would be a no-op.
+	GritProvisioner::register_settings();
 	Ref<GritExportPlugin> export_plugin;
 	export_plugin.instantiate();
 	EditorExport *editor_export = EditorExport::get_singleton();
@@ -67,8 +69,6 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, "grit/export/build_profile", PROPERTY_HINT_GLOBAL_FILE, "*.json"), "");
 	// Source tree of this build; the compiled export modes build a template there.
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_ENGINE_ROOT, PROPERTY_HINT_DIR), "");
-	// Unzipped Fast_Godot_Toolchain_* folder. Empty means use the system toolchain.
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_TOOLCHAIN_ROOT, PROPERTY_HINT_DIR), "");
 	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_DIR), "res://.godot/grit/generated");
 	EditorNode::add_init_callback(grit_editor_init);
 	GDScriptCompiler::set_code_generator_factory(grit_create_code_generator);

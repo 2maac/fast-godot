@@ -5,17 +5,19 @@
 
 // Editor-side plumbing for compiling a project into an export template.
 //
-// Two things are configured, both in Project Settings under "grit/export":
-//   toolchain_root  the unzipped Fast_Godot_Toolchain_* folder (Python, SCons and
-//                   the platform toolchain); empty means "use the system".
-//   engine_root     a local Fast_Godot checkout, for machines that cannot download
-//                   the engine source. Empty means "fetch it for this build".
+// Two places, deliberately:
+//   Editor Settings > Grit > Toolchain    the toolchain folder (grit/toolchain/root)
+//   Project Settings > Grit               engine_root, enabled, generated_directory
 //
-// Nothing here is an editor setting: those were the download-on-demand knobs of an
-// earlier design and are gone.
+// The toolchain folder is per machine, not per project, which is why it is an editor
+// setting; the rest describe the project.
 class GritProvisioner {
 public:
-	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/export/toolchain_root";
+	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/toolchain/root";
+
+	// Registers grit/toolchain/root, which the export window and the build read.
+	// Called once when the editor starts.
+	static void register_settings();
 
 	// Fetches the engine source for this editor's commit when it is not on disk and
 	// reports what happened. With p_show_progress the download is shown and can be
