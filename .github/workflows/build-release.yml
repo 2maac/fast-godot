@@ -172,6 +172,15 @@ jobs:
           git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
           ls -l "$OUT"
           gh release upload "$RELEASE_TAG" "$OUT" --clobber
+          # The editors are replaced with every build, so only this commit's source
+          # can still be requested. Older ones would sit on the release at 80 MB each.
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
+            grep '^Fast_Godot_Source_' |
+            grep -v "$OUT" |
+            while read -r stale; do
+              echo "removing superseded $stale"
+              gh release delete-asset "$RELEASE_TAG" "$stale" -y
+            done
 
   linux-bundle:
     name: linux toolchain bundle
