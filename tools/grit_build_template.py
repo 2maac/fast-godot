@@ -110,10 +110,38 @@ def main(argv):
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
     os.makedirs(work_dir, exist_ok=True)
-    log_path = os.path.join(work_dir, "last_build.log")
+    # Deliberately not last_build.log: the editor tails that one while the build
+    # runs, and on Windows its open handle denies the helper's write.
+    log_path = os.path.join(work_dir, "build.log")
 
     # Everything below reports into the log the editor follows for progress.
-    log = open(log_path, "w", encoding="utf-8", buffering=1)
+    # Written before anything else and never tailed, so a failure before the log is
+    # usable still leaves a trace of what ran.
+    try:
+        with open(os.path.join(work_dir, "helper_argv.txt"), "w", encoding="utf-8") as diag:
+            diag.write("argv: %r\npython: %s\n" % (sys.argv, sys.executable))
+    except OSError:
+        pass
+
+    # The editor tails this file while the build runs. On Windows a reader without
+    # share-write makes open() fail with a sharing violation, so retry briefly
+    # instead of dying with exit 1 and an empty log.
+    log = None
+    last_error = None
+    for _ in range(100):
+        try:
+            log = open(log_path, "w", encoding="utf-8", buffering=1)
+            break
+        except OSError as err:
+            last_error = err
+            time.sleep(0.1)
+    if log is None:
+        try:
+            with open(os.path.join(work_dir, "helper_error.txt"), "w", encoding="utf-8") as diag:
+                diag.write("could not open %s: %r\n" % (log_path, last_error))
+        except OSError:
+            pass
+        raise SystemExit("Grit: could not open the build log at %s (%r)" % (log_path, last_error))
     sys.stdout = log
     sys.stderr = log
     print("Grit: helper started (python %s)" % sys.version.split()[0], flush=True)
@@ -218,6 +246,12 @@ if __name__ == "__main__":
         raise
     except Exception:
         import traceback
+        try:
+            with open(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])) if len(sys.argv) > 1 else ".", "bin", "grit", "helper_error.txt"), "w", encoding="utf-8") as diag:
+                diag.write("argv: %r\n\n" % (sys.argv,))
+                traceback.print_exc(file=diag)
+        except OSError:
+            pass
         traceback.print_exc()
         sys.stdout.flush()
         print("Grit: internal error in the build helper", flush=True)

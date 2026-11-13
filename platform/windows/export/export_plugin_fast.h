@@ -2,6 +2,9 @@
 
 #include "export_plugin.h"
 
+#include "core/config/project_settings.h"
+#include "core/io/file_access.h"
+
 // "Windows Fast": compiles the project's scripts into a per-project template. The
 // _fast suffix keeps it apart from the stock windows_* templates.
 class EditorExportPlatformWindowsFast : public EditorExportPlatformWindows {
@@ -13,5 +16,24 @@ public:
 	}
 	virtual String get_template_file_name(const String &p_target, const String &p_arch) const override {
 		return "windows_fast_" + p_target + "_" + p_arch + ".exe";
+	}
+
+	// The Fast template belongs to the project (<project>/exports), so presets never
+	// carry a custom_template path and the stock templates are never touched.
+	static String template_dir() {
+		return ProjectSettings::get_singleton()->globalize_path("res://exports");
+	}
+	virtual String find_export_template(const String &p_template_file_name, String *r_err = nullptr) const override {
+		const String path = template_dir().path_join(p_template_file_name);
+		if (FileAccess::exists(path)) {
+			return path;
+		}
+		if (r_err) {
+			*r_err += TTR("No export template found at the expected path:") + "\n" + path + "\n";
+		}
+		return String();
+	}
+	virtual bool exists_export_template(const String &p_template_file_name, String *r_err) const override {
+		return FileAccess::exists(template_dir().path_join(p_template_file_name));
 	}
 };

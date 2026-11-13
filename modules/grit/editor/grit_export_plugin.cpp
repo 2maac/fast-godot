@@ -381,7 +381,10 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 
 	// Run the build as a child process and follow its log, so the editor stays
 	// responsive and the modal progress reports what is happening.
-	const String log_path = engine_root.path_join("bin/grit").path_join(p_debug ? "debug" : "release").path_join("last_build.log");
+	// The helper writes build.log. It must not be last_build.log: this loop keeps a
+	// read handle on the file it tails, and on Windows that denies the helper's write,
+	// which failed every editor-driven build with a bare exit 1.
+	const String log_path = engine_root.path_join("bin/grit").path_join(p_debug ? "debug" : "release").path_join("build.log");
 	// Empty the log before spawning. The helper truncates it as well, but the poll
 	// below can run before it does, and would then show the previous build's last
 	// line as if it belonged to this one.
