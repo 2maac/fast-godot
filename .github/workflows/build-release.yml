@@ -153,8 +153,31 @@ jobs:
           path: packages
           if-no-files-found: error
 
+  source-archive:
+    name: source archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # What the editor's Download button fetches, named for the commit it belongs
+      # to so an asset can never be mistaken for a different revision.
+      - name: Publish the source archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          COMMIT="$(git rev-parse HEAD)"
+          OUT="Fast_Godot_Source_${COMMIT}.zip"
+          git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
+          ls -l "$OUT"
+          gh release upload "$RELEASE_TAG" "$OUT" --clobber
+
   linux-bundle:
     name: linux toolchain bundle
+    # The bundle holds a Python and SCons that change only when this workflow or the
+    # pinned versions do, so it is built for a release, not for every dispatch.
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     steps:
@@ -172,21 +195,6 @@ jobs:
             libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev \
             libudev-dev libfontconfig1-dev libdbus-1-dev libwayland-dev \
             libwayland-bin libffi-dev libvulkan-dev rsync
-
-      # The editor downloads its engine source from this asset, so it has to exist
-      # for the commit being built, not just for the tag.
-      - name: Publish the source archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          COMMIT="$(git rev-parse HEAD)"
-          mkdir -p artifacts
-          OUT="artifacts/Fast_Godot_Source_${COMMIT}.zip"
-          git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
-          sha256sum "$OUT" > "${OUT}.sha256"
-          ls -l "$OUT"
-          gh release upload "$RELEASE_TAG" "$OUT" "${OUT}.sha256" --clobber
 
       - name: Assemble the bundle
         run: |
@@ -218,19 +226,17 @@ jobs:
           set -e
           B="bundle/Fast_Godot_Toolchain_linux_x86_64"
           ( cd bundle && zip -qr Fast_Godot_Toolchain_linux_x86_64.zip Fast_Godot_Toolchain_linux_x86_64 )
-          ( cd bundle && sha256sum Fast_Godot_Toolchain_linux_x86_64.zip > Fast_Godot_Toolchain_linux_x86_64.zip.sha256 )
-          ls -l bundle/Fast_Godot_Toolchain_linux_x86_64.zip*
-          cat bundle/Fast_Godot_Toolchain_linux_x86_64.zip.sha256
+          ls -l bundle/Fast_Godot_Toolchain_linux_x86_64.zip
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-toolchain-bundle
-          path: bundle/Fast_Godot_Toolchain_linux_x86_64.zip*
+          path: bundle/Fast_Godot_Toolchain_linux_x86_64.zip
           if-no-files-found: error
 
   release:
     name: release
-    needs: [build, linux-bundle]
+    needs: [build, source-archive, linux-bundle]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
@@ -258,4 +264,3 @@ jobs:
           files: |
             artifacts/Fast_Godot_v*.zip
             artifacts/Fast_Godot_Toolchain_linux_x86_64.zip
-            artifacts/Fast_Godot_Toolchain_linux_x86_64.zip.sha256
