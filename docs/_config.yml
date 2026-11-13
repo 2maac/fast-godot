@@ -1,0 +1,9 @@
+title: Fast_Godot
+theme: jekyll-theme-midnight
+description: Godot 4.7.2 with Grit and CFFI
+# Renders .md pages without front matter and rewrites links between them.
+plugins:
+  - jekyll-optional-front-matter
+  - jekyll-relative-links
+relative_links:
+  enabled: true

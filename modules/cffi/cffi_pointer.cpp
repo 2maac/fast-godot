@@ -1,0 +1,304 @@
+#include "cffi_compat.hpp"
+
+#include "cffi_array_type.hpp"
+#include "cffi_owned_array.hpp"
+#include "cffi_owned_value.hpp"
+#include "cffi_pointer.hpp"
+#include "cffi_struct_type.hpp"
+
+namespace cffi {
+
+class CFFIPointerType;
+
+CFFIPointer::CFFIPointer() {}
+CFFIPointer::CFFIPointer(Ref<CFFIType> element_type, uint8_t *address)
+	: element_type(element_type)
+	, address(address)
+{
+}
+
+int64_t CFFIPointer::get_address() const {
+	return (intptr_t) address;
+}
+
+uint8_t *CFFIPointer::address_offset_by(int offset) const {
+	return address + element_type->get_size() * offset;
+}
+
+Ref<CFFIPointer> CFFIPointer::offset_by(int offset) const {
+	return memnew(CFFIPointer(element_type, address_offset_by(offset)));
+}
+
+Variant CFFIPointer::get_value(int index) const {
+	Variant value;
+	if (element_type->data_to_variant(address_offset_by(index), value)) {
+		return value;
+	}
+	else {
+		return Variant();
+	}
+}
+
+bool CFFIPointer::set_value(const Variant& value, int index) const {
+	return element_type->variant_to_data(value, address_offset_by(index));
+}
+
+Ref<CFFIType> CFFIPointer::get_element_type() const {
+	return element_type;
+}
+
+Ref<CFFIPointer> CFFIPointer::cast_elements(const Variant& type) const {
+	Ref<CFFIType> new_type = CFFIType::from_variant(type, nullptr);
+	if (new_type.is_valid()) {
+		return Ref<CFFIPointer>(memnew(CFFIPointer(new_type, address)));
+	}
+	else {
+		return nullptr;
+	}
+}
+
+Ref<CFFIOwnedValue> CFFIPointer::duplicate() const {
+	return memnew(CFFIOwnedValue(element_type, address));
+}
+
+Ref<CFFIOwnedArray> CFFIPointer::duplicate_array(int64_t length) const {
+	ERR_FAIL_COND_V_MSG(length <= 0, nullptr, "Length must be positive");
+	return memnew(CFFIOwnedArray(element_type, length, address));
+}
+
+String CFFIPointer::get_string_from_ascii(int length) const {
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(char), "", String("Element mismatch, expected char, found %s") % element_type->get_name());
+	return String::latin1(Span<char>((char *) address, length));
+}
+
+String CFFIPointer::get_string_from_utf8(int length) const {
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(char), "", String("Element mismatch, expected char, found %s") % element_type->get_name());
+	return String::utf8((const char *) address, length);
+}
+
+String CFFIPointer::get_string_from_utf16(int length) const {
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(char16_t), "", String("Element mismatch, expected char16_t, found %s") % element_type->get_name());
+	return String::utf16((const char16_t *) address, length);
+}
+
+String CFFIPointer::get_string_from_utf32(int length) const {
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(char32_t), "", String("Element mismatch, expected char32_t, found %s") % element_type->get_name());
+	return String::utf32(Span<char32_t>((char32_t *) address, length));
+}
+
+String CFFIPointer::get_string_from_wchar(int length) const {
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(wchar_t), "", String("Element mismatch, expected wchar_t, found %s") % element_type->get_name());
+	#ifdef _WIN32
+	return String::utf16((const char16_t *) address, length);
+#else
+	return String::utf32(Span<char32_t>((char32_t *) address, length));
+#endif
+}
+
+PackedByteArray CFFIPointer::to_byte_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedByteArray(), "Buffer length cannot be negative");
+	int64_t length_in_bytes = length * element_type->get_size();
+	PackedByteArray array;
+	array.resize(length_in_bytes);
+	memcpy(array.ptrw(), address, length_in_bytes);
+	return array;
+}
+
+PackedInt32Array CFFIPointer::to_int32_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedInt32Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(int32_t), PackedInt32Array(), String("Element mismatch, expected int32_t, found %s") % element_type->get_name());
+	PackedInt32Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(int32_t));
+	return array;
+}
+
+PackedInt64Array CFFIPointer::to_int64_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedInt64Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(int64_t), PackedInt64Array(), String("Element mismatch, expected int64_t, found %s") % element_type->get_name());
+	PackedInt64Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(int64_t));
+	return array;
+}
+
+PackedFloat32Array CFFIPointer::to_float32_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedFloat32Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(float), PackedFloat32Array(), String("Element mismatch, expected float, found %s") % element_type->get_name());
+	PackedFloat32Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(float));
+	return array;
+}
+
+PackedFloat64Array CFFIPointer::to_float64_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedFloat64Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(double), PackedFloat64Array(), String("Element mismatch, expected double, found %s") % element_type->get_name());
+	PackedFloat64Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(double));
+	return array;
+}
+
+PackedVector2Array CFFIPointer::to_vector2_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedVector2Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(Vector2), PackedVector2Array(), String("Element mismatch, expected Vector2, found %s") % element_type->get_name());
+	PackedVector2Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(Vector2));
+	return array;
+}
+
+PackedVector3Array CFFIPointer::to_vector3_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedVector3Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(Vector3), PackedVector3Array(), String("Element mismatch, expected Vector3, found %s") % element_type->get_name());
+	PackedVector3Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(Vector3));
+	return array;
+}
+
+PackedVector4Array CFFIPointer::to_vector4_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedVector4Array(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(Vector4), PackedVector4Array(), String("Element mismatch, expected Vector4, found %s") % element_type->get_name());
+	PackedVector4Array array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(Vector4));
+	return array;
+}
+
+PackedColorArray CFFIPointer::to_color_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, PackedColorArray(), "Buffer length cannot be negative");
+	ERR_FAIL_COND_V_EDMSG(element_type->get_size() != sizeof(Color), PackedColorArray(), String("Element mismatch, expected Color, found %s") % element_type->get_name());
+	PackedColorArray array;
+	array.resize(length);
+	memcpy(array.ptrw(), address, length * sizeof(Color));
+	return array;
+}
+
+Array CFFIPointer::to_array(int length) const {
+	ERR_FAIL_COND_V_EDMSG(length < 0, Array(), "Array length cannot be negative");
+	Array array;
+	array.resize(length);
+	for (int i = 0; i < length; i++) {
+		if (!element_type->data_to_variant(address_offset_by(i), array[i])) {
+			return Array();
+		}
+	}
+	return array;
+}
+
+Ref<CFFIPointer> CFFIPointer::get_field(const StringName& field) const {
+	if (element_type->type_kind() != CFFIType::TypeKind::Struct) {
+		return nullptr;
+	}
+	auto struct_type = static_cast<CFFIStructType *>(element_type.ptr());
+
+	int64_t offset = 0;
+	const Ref<CFFIType> *found = struct_type->find_field(field, offset);
+	if (found == nullptr) {
+		return nullptr;
+	}
+	return memnew(CFFIPointer(*found, address + offset));
+}
+
+Dictionary CFFIPointer::to_dictionary() const {
+	auto struct_type = Object::cast_to<CFFIStructType>(element_type.ptr());
+	ERR_FAIL_COND_V_EDMSG(!struct_type, Dictionary(), "Only struct and union values support to_dictionary");
+	return struct_type->get_dictionary_from_struct_data(address);
+}
+
+void CFFIPointer::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("get_address"), &CFFIPointer::get_address);
+	ClassDB::bind_method(D_METHOD("cast_elements", "element_type"), &CFFIPointer::cast_elements);
+	ClassDB::bind_method(D_METHOD("duplicate"), &CFFIPointer::duplicate);
+	ClassDB::bind_method(D_METHOD("duplicate_array", "size"), &CFFIPointer::duplicate_array);
+	ClassDB::bind_method(D_METHOD("get_element_type"), &CFFIPointer::get_element_type);
+	ClassDB::bind_method(D_METHOD("get_field", "field_name"), &CFFIPointer::get_field);
+	ClassDB::bind_method(D_METHOD("get_string_from_ascii", "length"), &CFFIPointer::get_string_from_ascii, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_string_from_utf8", "length"), &CFFIPointer::get_string_from_utf8, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_string_from_utf16", "length"), &CFFIPointer::get_string_from_utf16, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_string_from_utf32", "length"), &CFFIPointer::get_string_from_utf32, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_string_from_wchar", "length"), &CFFIPointer::get_string_from_wchar, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("get_value", "index"), &CFFIPointer::get_value, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("offset_by", "offset"), &CFFIPointer::offset_by);
+	ClassDB::bind_method(D_METHOD("set_value", "value", "index"), &CFFIPointer::set_value, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("to_array", "length"), &CFFIPointer::to_array);
+	ClassDB::bind_method(D_METHOD("to_byte_array", "length"), &CFFIPointer::to_byte_array);
+	ClassDB::bind_method(D_METHOD("to_int32_array", "length"), &CFFIPointer::to_int32_array);
+	ClassDB::bind_method(D_METHOD("to_int64_array", "length"), &CFFIPointer::to_int64_array);
+	ClassDB::bind_method(D_METHOD("to_float32_array", "length"), &CFFIPointer::to_float32_array);
+	ClassDB::bind_method(D_METHOD("to_float64_array", "length"), &CFFIPointer::to_float64_array);
+	ClassDB::bind_method(D_METHOD("to_vector2_array", "length"), &CFFIPointer::to_vector2_array);
+	ClassDB::bind_method(D_METHOD("to_vector3_array", "length"), &CFFIPointer::to_vector3_array);
+	ClassDB::bind_method(D_METHOD("to_vector4_array", "length"), &CFFIPointer::to_vector4_array);
+	ClassDB::bind_method(D_METHOD("to_color_array", "length"), &CFFIPointer::to_color_array);
+	ClassDB::bind_method(D_METHOD("to_dictionary"), &CFFIPointer::to_dictionary);
+
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "address", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "", "get_address");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "element_type", PROPERTY_HINT_NONE, CFFIType::get_class_static(), PROPERTY_USAGE_NONE), "", "get_element_type");
+}
+
+bool CFFIPointer::_get(const StringName& property_name, Variant& r_value) const {
+	// A property is either a struct field or one of the pointer's own properties
+	// ("address", "element_type"). Only claim the name when it really is a field:
+	// erroring on an unknown field here would shadow those properties.
+	if (element_type->type_kind() != CFFIType::TypeKind::Struct) {
+		return false;
+	}
+	auto struct_type = static_cast<CFFIStructType *>(element_type.ptr());
+	int64_t field_offset = 0;
+	const Ref<CFFIType> *found = struct_type->find_field(property_name, field_offset);
+	if (found == nullptr) {
+		return false;
+	}
+	const Ref<CFFIType> &field_type = *found;
+	uint8_t *field_address = address + field_offset;
+
+	// One object per access, as before: each branch knows the type it wants, and
+	// building a CFFIPointer up front would leave it discarded on the two array
+	// paths.
+	if (field_type->type_kind() == CFFIType::TypeKind::Struct) {
+		r_value = memnew(CFFIPointer(field_type, field_address));
+	}
+	else if (field_type->type_kind() == CFFIType::TypeKind::Array) {
+		auto array_type = static_cast<CFFIArrayType *>(field_type.ptr());
+		int64_t length = array_type->get_length();
+		if (length > 0) {
+			// Span the ELEMENT type. Spanning the array type itself would stride
+			// by sizeof(T[N]) per element and read past the field.
+			r_value = memnew(CFFISpan(array_type->get_element_type(), field_address, length));
+		}
+		else {
+			// Zero-length array, ie. a flexible array member: the element count
+			// lives elsewhere, so hand back the first element. A pointer to `T[0]`
+			// would stride by zero bytes and be unusable for indexing.
+			r_value = memnew(CFFIPointer(array_type->get_element_type(), field_address));
+		}
+	}
+	else {
+		// Read the field straight through its type. Building a CFFIPointer only
+		// to call get_value() on it allocated and freed an object per read, to
+		// reach a method that does nothing but forward to data_to_variant() -
+		// which is what this is, minus the object.
+		field_type->data_to_variant(field_address, r_value);
+	}
+	return true;
+}
+
+bool CFFIPointer::_set(const StringName& property_name, const Variant& value) {
+	auto field_ptr = get_field(property_name);
+	if (field_ptr.is_valid()) {
+		field_ptr->set_value(value);
+		return true;
+	}
+	else {
+		return false;
+	}
+}
+
+String CFFIPointer::_to_string() const {
+	return String("[%s:(%s*) 0x%x]") % make_array(get_class_static(), element_type->get_name(), (uint64_t) address);
+}
+
+}

@@ -1,0 +1,63 @@
+#ifndef __CFFI_SCOPE_HPP__
+#define __CFFI_SCOPE_HPP__
+
+#include "core/templates/hash_map.h"
+#include "core/object/ref_counted.h"
+
+
+namespace cffi {
+
+class CFFICallableFunction;
+class CFFIStructType;
+class CFFIType;
+
+/**
+ * CFFI type scopes, so that different libraries can have distinct struct definitions with the same name.
+ */
+class CFFIScope : public RefCounted {
+	GDCLASS(CFFIScope, RefCounted);
+public:
+	/**
+	 * Finds a type by name.
+	 *
+	 * If the base type name cannot be found in this scope, the global scope (the `CFFI` singleton) is searched.
+	 * `name` is parsed using `CFFITypeParser`, so pointers and CV qualifiers are supported.
+	 *
+	 * This method is called when accessing properties by name, so that `some_cffi_scope["int"]` returns the CFFIType for `int`.
+	 */
+	Ref<CFFIType> find_type(const String& name) const;
+	/**
+	 * Defines a new struct type.
+	 *
+	 * `name` cannot have any pointer levels.
+	 * If a struct with the same name is found in this scope, `null` is returned and an error printed.
+	 *
+	 * @see CFFIStructType::from_dictionary
+	 */
+	Ref<CFFIStructType> define_struct(const String& name, const Dictionary& fields);
+
+	/**
+	 * Create a new CFFICallableFunction from a Callable and the function's prototype.
+	 *
+	 * This way you can pass Callables to native code as function pointers.
+	 * You are responsible for keeping the CFFICallableFunction alive while native code has access to it.
+	 *
+	 * If `callable` or any of the passed types are not valid, `null` is returned and an error printed.
+	 */
+	Ref<CFFICallableFunction> create_function(const Callable& callable, const Variant& return_type, const Array& argument_types);
+
+protected:
+	bool _get(const StringName& property_name, Variant& r_value) const;
+	static void _bind_methods();
+
+	void setup_builtin_types();
+
+	HashMap<String, Ref<CFFIType>> defined_types;
+	static const HashMap<String, Ref<CFFIType>>& get_globally_defined_types();
+
+	friend class CFFI;
+};
+
+}
+
+#endif  // __CFFI_SCOPE_HPP__

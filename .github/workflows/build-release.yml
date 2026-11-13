@@ -1,0 +1,180 @@
+name: build-release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-arm64-editor,    os: macos-15,    platform: macos,    arch: arm64,  target: editor,        extra: '' }
+          - { name: linux-x86_64-editor,   os: ubuntu-22.04, platform: linuxbsd, arch: x86_64, target: editor,        extra: 'use_volk=yes' }
+          - { name: windows-x86_64-editor, os: windows-2022, platform: windows,  arch: x86_64, target: editor,        extra: 'use_volk=yes' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install SCons
+        run: python -m pip install --upgrade "scons>=4.4"
+
+      - name: Linux dependencies
+        if: matrix.platform == 'linuxbsd'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev \
+            libudev-dev libfontconfig1-dev libdbus-1-dev libwayland-dev \
+            libwayland-bin libffi-dev
+
+      # Windows builds with MinGW: one downloadable toolchain (compiler, CRT,
+      # headers, import libraries) and no Visual Studio or Windows SDK to install.
+      # libffi comes from the same MSYS2 prefix, so nothing is MSVC-ABI any more.
+      - name: MinGW toolchain (windows)
+        if: matrix.platform == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          path-type: inherit
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-libffi
+
+      - name: libffi (windows)
+        if: matrix.platform == 'windows'
+        shell: msys2 {0}
+        run: |
+          # MINGW_PREFIX is set by the MSYS2 shell; the path must be Windows-style
+          # for the SCons build that runs outside it.
+          echo "CFFI_LIBFFI=$(cygpath -m "$MINGW_PREFIX")" >> "$GITHUB_ENV"
+          # The SCons build runs in the runner's shell, so the compiler has to be
+          # reachable from there too.
+          echo "$(cygpath -w "$MINGW_PREFIX/bin")" >> "$GITHUB_PATH"
+          ls "$MINGW_PREFIX/lib" | grep -i ffi || true
+
+      # libffi's closure object ships its own dlmalloc and Godot's SDL ships
+      # another, so the link fails on dlbulk_free, dlmalloc_footprint_limit and
+      # friends. Copy the archive and rename libffi's copies to ffi_dl*.
+      - name: libffi dlmalloc isolation (windows)
+        if: matrix.platform == 'windows'
+        shell: msys2 {0}
+        run: |
+          set -e
+          SRC="$MINGW_PREFIX/lib/libffi.a"
+          DEST="$RUNNER_TEMP/libffi-fixed/libffi.a"
+          mkdir -p "$(dirname "$DEST")"
+          cp "$SRC" "$DEST"
+          SYMS=$(nm --defined-only "$DEST" 2>/dev/null | awk '$3 ~ /^dl/ {print $3}' | sort -u)
+          if [ -z "$SYMS" ]; then
+            echo "no dl* symbols in libffi; nothing to rename"
+          else
+            for sym in $SYMS; do echo "$sym ffi_$sym"; done > "$RUNNER_TEMP/redefines.txt"
+            objcopy --redefine-syms="$RUNNER_TEMP/redefines.txt" "$DEST"
+            echo "renamed: $(wc -l < "$RUNNER_TEMP/redefines.txt") symbols"
+          fi
+          echo "CFFI_LIBFFI=$(cygpath -m "$RUNNER_TEMP")/libffi-fixed-prefix" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/libffi-fixed-prefix/lib" "$RUNNER_TEMP/libffi-fixed-prefix/include"
+          cp "$DEST" "$RUNNER_TEMP/libffi-fixed-prefix/lib/"
+          cp -R "$MINGW_PREFIX/include/." "$RUNNER_TEMP/libffi-fixed-prefix/include/"
+
+      # Windows needs the D3D12 Agility SDK, or the build stops with exit 255.
+      - name: D3D12 SDK (windows)
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: python misc/scripts/install_d3d12_sdk_windows.py
+
+      # macOS has no system Vulkan: it links MoltenVK from the LunarG SDK.
+      - name: Vulkan SDK (macOS)
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          command -v jq >/dev/null || brew install jq
+          sh misc/scripts/install_vulkan_sdk_macos.sh
+
+      # Linux and Windows use volk, which loads the Vulkan loader at runtime, so
+      # only the headers/libs need to exist at build time.
+      - name: Vulkan headers (Linux)
+        if: matrix.platform == 'linuxbsd'
+        run: sudo apt-get install -y libvulkan-dev
+
+      # The MinGW link has failed with a bare "ld returned 8"; keep the disk state in
+      # the log so a full volume is not mistaken for a link error.
+      - name: Disk space (windows)
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          df -h || true
+          du -sh bin 2>/dev/null || true
+
+      - name: Build
+        shell: bash
+        run: |
+          EXTRA="${{ matrix.extra }}"
+          if [ "${{ matrix.platform }}" = "windows" ]; then
+            EXTRA="$EXTRA use_mingw=yes cffi_libffi_path=$CFFI_LIBFFI verbose=yes"
+          fi
+          python -m SCons platform=${{ matrix.platform }} arch=${{ matrix.arch }} \
+            target=${{ matrix.target }} -j4 vulkan=yes accesskit=no $EXTRA
+
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          PKG=$(python -c 'import version; print("%d.%d.%d-%s" % (version.major, version.minor, version.patch, version.status))')
+          TPZ=$(python -c 'import version; print("%d.%d.%d.%s" % (version.major, version.minor, version.patch, version.status))')
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+          echo "tpz=$TPZ" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        shell: bash
+        run: .github/scripts/package.sh "${{ matrix.platform }}" "${{ matrix.target }}" "${{ matrix.arch }}" "${{ steps.version.outputs.pkg }}" packages
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: packages
+          if-no-files-found: error
+
+  release:
+    name: release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: version
+        run: |
+          PKG=$(python3 -c 'import version; print("%d.%d.%d-%s" % (version.major, version.minor, version.patch, version.status))')
+          TPZ=$(python3 -c 'import version; print("%d.%d.%d.%s" % (version.major, version.minor, version.patch, version.status))')
+          echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
+          echo "tpz=$TPZ" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List files
+        run: ls -lR artifacts
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Fast_Godot ${{ steps.version.outputs.pkg }} (Grit + CFFI)
+          files: |
+            artifacts/Fast_Godot_v*.zip

@@ -1,0 +1,55 @@
+#!/usr/bin/env python
+from misc.utility.scons_hints import *
+
+import glob
+import os
+
+from methods import print_error
+
+Import("env")
+Import("env_modules")
+
+env_cffi = env_modules.Clone()
+env_cffi.add_source_files(env.modules_sources, "*.cpp")
+
+if env["platform"] == "windows":
+    # No libffi in the Windows SDK/MSVC runtime: it has to come from somewhere.
+    prefix = env.get("cffi_libffi_path", "")
+    if not prefix:
+        print_error(
+            "cffi: cffi_libffi_path is required on Windows.\n"
+            "Point it at a libffi prefix containing include/ and lib/, e.g.\n"
+            "  vcpkg install libffi:x64-windows-static-md\n"
+            "  scons ... cffi_libffi_path=C:/vcpkg/installed/x64-windows-static-md"
+        )
+        env.Exit(255)
+    env_cffi.Prepend(CPPPATH=[prefix + "/include"])
+    # Declarations otherwise carry __declspec(dllimport) and fail to link
+    # against the static library.
+    env_cffi.Append(CPPDEFINES=["FFI_STATIC"])
+
+    # Godot appends the build triple to every LIBS entry, which is meant for
+    # libraries it builds itself. Link the file by path instead.
+    lib_dir = os.path.join(prefix, "lib")
+    candidates = [p for p in glob.glob(os.path.join(lib_dir, "*")) if "ffi" in os.path.basename(p).lower() and p.endswith((".lib", ".a"))]
+    if not candidates:
+        print_error("cffi: no libffi library found in " + lib_dir)
+        env.Exit(255)
+    # Prefer the static archive over an import library (libffi.dll.a).
+    preferred = [p for p in candidates if os.path.basename(p).lower() in ("libffi.a", "libffi.lib", "ffi.a", "ffi.lib")]
+    if preferred:
+        candidates = preferred
+    # env_cffi only archives the module objects; the executable is linked through
+    # env, so the library has to be added there or the symbols stay unresolved.
+    #
+    # LINKFLAGS lands before the objects on the link line, and GNU ld only pulls an
+    # archive member that satisfies a reference it has already seen, so a plain path
+    # leaves every ffi_* symbol unresolved. --whole-archive forces the members in,
+    # which makes the position irrelevant.
+    archive = sorted(candidates)[0]
+    env.Append(LINKFLAGS=["-Wl,--whole-archive", archive, "-Wl,--no-whole-archive"])
+    # The dlmalloc clash with SDL is resolved in CI by renaming libffi's symbols
+    # inside the archive, so no linker override is needed here.
+else:
+    # System libffi: shipped with the macOS SDK and by mainstream Linux distros.
+    env.Append(LIBS=["ffi"])

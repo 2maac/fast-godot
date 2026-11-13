@@ -1,0 +1,262 @@
+#ifndef __CFFI_POINTER_HPP__
+#define __CFFI_POINTER_HPP__
+
+#include "core/object/ref_counted.h"
+
+#include "cffi_type.hpp"
+
+
+namespace cffi {
+
+class CFFIOwnedArray;
+class CFFIOwnedValue;
+
+/**
+ * FFI pointers wrapped in a RefCounted object.
+ *
+ * This class is merely a representation of raw pointers in a Godot object.
+ * Users are responsible for knowing when a pointer is valid or not and manage them accordingly.
+ * @warning Misuse of pointers may crash your application and/or the Godot editor.
+ */
+class CFFIPointer : public RefCounted {
+	GDCLASS(CFFIPointer, RefCounted);
+public:
+	/**
+	 * Necessary to define a Godot class.
+	 * @warning Never use this constructor.
+	 */
+	CFFIPointer();
+	/**
+	 * Create a new pointer from an existing `address`, pointing to elements of type `element_type`.
+	 */
+	CFFIPointer(Ref<CFFIType> element_type, uint8_t *address);
+
+	/**
+	 * Get the pointer address as an integer.
+	 *
+	 * Useful to compare pointers for equality.
+	 */
+	int64_t get_address() const;
+	/**
+	 * Get the raw pointer address, offset by `offset`.
+	 *
+	 * To get the base pointer, call this with `offset` as 0.
+	 */
+	uint8_t *address_offset_by(int offset) const;
+	/**
+	 * Returns a new pointer pointing to the base address offset by `offset` elements.
+	 *
+	 * Calling this with a 0 offset returns a copy of the base pointer.
+	 * @note The element type is taken into consideration when offsetting pointers.
+	 *       For example, a pointer to `uint32_t` offset by 1 element will offset the pointer by 4 bytes.
+	 */
+	Ref<CFFIPointer> offset_by(int offset) const;
+	/**
+	 * Get the value at `index`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer index is valid before dereferencing it.
+	 *
+	 * @see CFFIType::data_to_variant
+	 */
+	Variant get_value(int index = 0) const;
+	/**
+	 * Set the value at `index`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer index is valid before dereferencing it.
+	 * Not all types support all kinds of values.
+	 * For example, trying to set an element of struct type with a value of `true` will give an error.
+	 *
+	 * @return Whether the value was set correctly.
+	 * @see CFFIType::variant_to_data
+	 */
+	bool set_value(const Variant& value, int index = 0) const;
+
+	/**
+	 * @return Element type.
+	 */
+	Ref<CFFIType> get_element_type() const;
+	/**
+	 * Get a new pointer with the same base address, but pointing to a different element type.
+	 *
+	 * Use this to cast between pointer types.
+	 *
+	 * @param element_type  Element type. Should be a string or a `CFFIType`.
+	 */
+	Ref<CFFIPointer> cast_elements(const Variant& element_type) const;
+
+	/**
+	 * Duplicate data into a new `CFFIOwnedValue`.
+	 *
+	 * @note This only duplicates the data at the base address, that is, the element at offset 0.
+	 */
+	Ref<CFFIOwnedValue> duplicate() const;
+
+	/**
+	 * Duplicate data into a new `CFFIOwnedArray`.
+	 *
+	 * @param size  The number of elements to duplicate. Must be a positive number.
+	 */
+	Ref<CFFIOwnedArray> duplicate_array(int64_t length) const;
+
+	/**
+	 * Get a String from this pointer, using ASCII encoding.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 * This pointer should point to elements with 1 byte, such as `char` or `int8_t`.
+	 * It's an error to read ASCII strings from elements with more than 1 byte.
+	 *
+	 * @param length  String length, in bytes.
+	 *                Use -1 to read null-terminated ASCII strings.
+	 */
+	String get_string_from_ascii(int length = -1) const;
+	/**
+	 * Get a String from this pointer, using UTF-8 encoding.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 * This pointer should point to elements with 1 byte, such as `char` or `int8_t`.
+	 * It's an error to read UTF-8 strings from elements with more than 1 byte.
+	 *
+	 * @param length  String length, in bytes.
+	 *                Use -1 to read null-terminated UTF-8 strings.
+	 */
+	String get_string_from_utf8(int length = -1) const;
+	/**
+	 * Get a String from this pointer, using UTF-16 encoding.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 * This pointer should point to elements with 2 bytes, such as `char16_t` or `int16_t`.
+	 * It's an error to read UTF-16 strings from elements with any size other than 2 bytes.
+	 *
+	 * @param length  String length, in 2-byte chars.
+	 *                Use -1 to read null-terminated UTF-16 strings.
+	 */
+	String get_string_from_utf16(int length = -1) const;
+	/**
+	 * Get a String from this pointer, using UTF-32 encoding.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 * This pointer should point to elements with 4 bytes, such as `char32_t` or `int32_t`.
+	 * It's an error to read UTF-32 strings from elements with any size other than 2 bytes.
+	 *
+	 * @param length  String length, in 2-byte chars.
+	 *                Use -1 to read null-terminated UTF-32 strings.
+	 */
+	String get_string_from_utf32(int length = -1) const;
+	/**
+	 * Get a String from a pointer to `wchar_t`.
+	 *
+	 * @param length  String length, in `sizeof(wchar_t)` chars.
+	 *                Use -1 to read null-terminated wide strings.
+	 */
+	String get_string_from_wchar(int length = -1) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedByteArray`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 *                For example, a buffer of length 2 taken from a pointer to `int32_t` would have 8 bytes.
+	 */
+	PackedByteArray to_byte_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedInt32Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedInt32Array to_int32_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedInt64Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedInt64Array to_int64_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedFloat32Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedFloat32Array to_float32_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedFloat64Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedFloat64Array to_float64_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedVector2Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedVector2Array to_vector2_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedVector3Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedVector3Array to_vector3_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedVector4Array`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedVector4Array to_vector4_array(int length) const;
+	/**
+	 * Get a copy of the memory pointed by this pointer as a `PackedColorArray`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Buffer length, in number of elements.
+	 */
+	PackedColorArray to_color_array(int length) const;
+	/**
+	 * Get an Array with the values pointed by this pointer using `get_value`.
+	 *
+	 * @warning Users are responsible for knowing if a pointer is valid before dereferencing it.
+	 *
+	 * @param length  Array length, in number of elements.
+	 */
+	Array to_array(int length) const;
+
+	// MARK: Struct/Union values only
+	/**
+	 * Get the address of a Struct or Union field.
+	 *
+	 * @note Only available on values of Struct or Union types.
+	 *
+	 * @return The address of the existing field, or null if it cannot be found.
+	 */
+	Ref<CFFIPointer> get_field(const StringName& field_name) const;
+	/**
+	 * Get a Dictionary representation of this value.
+	 *
+	 * @note Only available on values of Struct or Union types.
+	 */
+	Dictionary to_dictionary() const;
+
+protected:
+	static void _bind_methods();
+	bool _get(const StringName& property_name, Variant& r_value) const;
+	bool _set(const StringName& property_name, const Variant& value);
+	virtual String _to_string() const;
+
+	Ref<CFFIType> element_type;
+	uint8_t *address;
+};
+
+}
+
+#endif  // __CFFI_POINTER_HPP__

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="CFFIPointerType" inherits="CFFIType" api_type="extension" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="https://raw.githubusercontent.com/godotengine/godot/master/doc/class.xsd">
+	<brief_description>
+		[CFFIType] specialized for pointer types.
+	</brief_description>
+	<description>
+	</description>
+	<tutorials>
+	</tutorials>
+	<methods>
+		<method name="from" qualifiers="static">
+			<return type="CFFIPointerType" />
+			<param index="0" name="type" type="Variant" />
+			<description>
+				Creates a new [CFFIPointerType] with the specified element type.
+				If [param type] is not a valid CFFI type, returns [code]null[/code].
+	 			See [method CFFI.find_type].
+			</description>
+		</method>
+	</methods>
+	<members>
+		<member name="element_type" type="CFFIType" setter="" getter="get_element_type">
+			Type of pointed elements.
+		</member>
+	</members>
+</class>

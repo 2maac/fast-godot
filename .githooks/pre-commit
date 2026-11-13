@@ -1,0 +1,22 @@
+#!/bin/sh
+# Every module directory must be listed in modules/ALLOWED. That keeps private
+# modules out of this repository without naming any of them here.
+status=0
+for path in $(git diff --cached --name-only); do
+	case "$path" in
+		modules/*/*)
+			module=$(echo "$path" | cut -d/ -f2)
+			if ! grep -qx "$module" modules/ALLOWED; then
+				echo "pre-commit: module '$module' is not listed in modules/ALLOWED" >&2
+				status=1
+			fi
+			;;
+	esac
+	case "$path" in
+		bin/*|build/*|.sconsign*|.scons_env.json|*.gen.*)
+			echo "pre-commit: refusing build state ($path)" >&2
+			status=1
+			;;
+	esac
+done
+exit $status

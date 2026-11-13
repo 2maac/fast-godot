@@ -1,0 +1,21 @@
+name: module-allowlist
+
+on: [push, pull_request]
+
+jobs:
+  modules-are-public:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Every module directory must be listed in modules/ALLOWED
+        run: |
+          set -e
+          status=0
+          for d in modules/*/; do
+            name=$(basename "$d")
+            if ! grep -qx "$name" modules/ALLOWED; then
+              echo "::error::module '$name' is not listed in modules/ALLOWED"
+              status=1
+            fi
+          done
+          exit $status
