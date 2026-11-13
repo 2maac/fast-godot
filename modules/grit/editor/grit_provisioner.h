@@ -13,9 +13,9 @@
 // setting; the rest describe the project.
 class GritProvisioner {
 public:
-	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/settings/toolchain_root";
+	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/settings/toolchain_root_folder_path";
 	// Engine source folder, fetched with the "Fetch Source" button or chosen by hand.
-	static constexpr const char *SETTING_SOURCE_PATH = "grit/settings/source_path";
+	static constexpr const char *SETTING_SOURCE_PATH = "grit/settings/source_code_root_folder_path";
 
 	// Registers grit/toolchain/root, which the export window and the build read.
 	// Called once when the editor starts.
@@ -33,6 +33,10 @@ public:
 
 	// The source folder chosen in Editor Settings, when it holds a tree.
 	static String configured_source();
+
+	// Downloads this platform's toolchain bundle into p_folder, unpacks it and
+	// returns the folder that holds toolchain.json, or empty with r_error set.
+	static String fetch_toolchain_to(const String &p_folder, bool p_show_progress, String *r_error = nullptr);
 
 	// Downloads this editor's engine source into p_folder (or reuses a tree that is
 	// already there) and returns the tree path, or an empty string with r_error set.

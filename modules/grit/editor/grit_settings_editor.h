@@ -6,23 +6,21 @@ class Button;
 class EditorFileDialog;
 class LineEdit;
 
-// Editor Settings > Grit > Settings has one row, and it needs to do two things that
-// a plain setting cannot: offer a "Fetch Source" button that downloads this editor's
-// engine source into a folder the user picks, and show the resulting path in an
-// entry the user can also type into. Both are drawn by GritSourcePathEditor, which
-// is installed for that one property by GritSettingsPlugin.
-class GritSourcePathEditor : public EditorProperty {
-	GDCLASS(GritSourcePathEditor, EditorProperty);
+// A settings row that is a path plus the buttons to use it: pick an existing folder,
+// or download the thing into one. The same row serves both the source and the
+// toolchain; the mode decides what the download fetches.
+class GritPathEditor : public EditorProperty {
+	GDCLASS(GritPathEditor, EditorProperty);
 
-	Button *fetch_button = nullptr;
+	bool toolchain = false;
 	LineEdit *path_edit = nullptr;
 	Button *browse_button = nullptr;
+	Button *download_button = nullptr;
 	EditorFileDialog *browse_dialog = nullptr;
 	EditorFileDialog *dest_dialog = nullptr;
-	String pending_dest;
 
 	void _browse_pressed();
-	void _fetch_pressed();
+	void _download_pressed();
 	void _dest_chosen(const String &p_dir);
 	void _browse_chosen(const String &p_dir);
 	void _text_submitted(const String &p_text);
@@ -32,7 +30,7 @@ protected:
 	void update_property() override;
 
 public:
-	GritSourcePathEditor();
+	GritPathEditor(bool p_toolchain, const String &p_label);
 };
 
 class GritSettingsPlugin : public EditorInspectorPlugin {

@@ -23,6 +23,20 @@ void GritProvisioner::register_settings() {
 	}
 	// The toolchain folder, and the source folder. Both are per machine, both start
 	// empty, and neither is ever filled in by the editor unless the user asks.
+	if (settings->has_setting("grit/settings/toolchain_root")) {
+		const String old = String(settings->get_setting("grit/settings/toolchain_root")).strip_edges();
+		if (!old.is_empty()) {
+			settings->set_setting(GritProvisioner::SETTING_TOOLCHAIN_ROOT, old);
+		}
+		settings->erase("grit/settings/toolchain_root");
+	}
+	if (settings->has_setting("grit/settings/source_path")) {
+		const String old = String(settings->get_setting("grit/settings/source_path")).strip_edges();
+		if (!old.is_empty()) {
+			settings->set_setting(GritProvisioner::SETTING_SOURCE_PATH, old);
+		}
+		settings->erase("grit/settings/source_path");
+	}
 	if (settings->has_setting("grit/toolchain/root")) {
 		// Carry a value over from the key used before both lived under Grit > Settings.
 		const String old = String(settings->get_setting("grit/toolchain/root")).strip_edges();
@@ -308,6 +322,99 @@ static String _unpack_engine(const String &p_archive, const String &p_dest, cons
 		return String();
 	}
 	return tree;
+}
+
+// The published toolchain bundle for the platform this editor runs on.
+static String _toolchain_asset_name() {
+	const String os = OS::get_singleton()->get_name();
+	if (os == "Windows") {
+		return "Fast_Godot_Toolchain_win64.zip";
+	}
+	if (os == "macOS") {
+		return "Fast_Godot_Toolchain_macos_arm64.zip";
+	}
+	return "Fast_Godot_Toolchain_linux_x86_64.zip";
+}
+
+String GritProvisioner::fetch_toolchain_to(const String &p_folder, bool p_show_progress, String *r_error) {
+	String local_error;
+	String &error = r_error ? *r_error : local_error;
+
+	const String folder = p_folder.strip_edges();
+	if (folder.is_empty()) {
+		error = "no destination folder was chosen.";
+		return String();
+	}
+	// Something usable already in the folder is taken as-is.
+	if (FileAccess::exists(folder.path_join("toolchain.json"))) {
+		return folder;
+	}
+	const String url = vformat("https://github.com/2maac/fast-godot/releases/download/%s/%s", _release_tag(), _toolchain_asset_name());
+	String archive = OS::get_singleton()->get_cache_path().path_join(_toolchain_asset_name());
+	if (OS::get_singleton()->get_name() == "Windows") {
+		archive = archive.replace("/", "\\");
+	}
+	String download_error;
+	if (p_show_progress) {
+		if (!_download_engine_archive(url, archive, download_error)) {
+			error = vformat("could not download the toolchain from %s (%s).", url, download_error);
+			return String();
+		}
+	} else if (!_download(url, archive, download_error)) {
+		error = vformat("could not download the toolchain from %s (%s).", url, download_error);
+		return String();
+	}
+
+	DirAccess::make_dir_recursive_absolute(folder);
+	bool unpacked = false;
+	String unpack_error;
+	const String python = python_for_build();
+	if (!python.is_empty()) {
+		List<String> args;
+		args.push_back("-m");
+		args.push_back("zipfile");
+		args.push_back("-e");
+		args.push_back(archive);
+		args.push_back(folder);
+		int code = -1;
+		String output;
+		const Error ran = OS::get_singleton()->execute(python, args, &output, &code);
+		unpacked = ran == OK && code == 0;
+		if (!unpacked) {
+			unpack_error = vformat("python exited %d: %s", code, output.strip_edges().right(160));
+		}
+	}
+	if (!unpacked) {
+		String tar_error;
+		if (_extract(archive, folder, tar_error)) {
+			unpacked = true;
+		} else {
+			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
+		}
+	}
+	DirAccess::remove_absolute(archive);
+	if (!unpacked) {
+		error = vformat("could not unpack the toolchain downloaded from %s (%s).", url, unpack_error);
+		return String();
+	}
+	// The archive extracts to a single Fast_Godot_Toolchain_<platform>/ directory.
+	String root = folder;
+	Ref<DirAccess> dir = DirAccess::open(folder);
+	if (dir.is_valid()) {
+		dir->list_dir_begin();
+		for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
+			if (dir->current_is_dir() && FileAccess::exists(folder.path_join(name).path_join("toolchain.json"))) {
+				root = folder.path_join(name);
+				break;
+			}
+		}
+		dir->list_dir_end();
+	}
+	if (!FileAccess::exists(root.path_join("toolchain.json"))) {
+		error = vformat("the toolchain downloaded from %s has no toolchain.json.", url);
+		return String();
+	}
+	return root;
 }
 
 String GritProvisioner::fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error) {
