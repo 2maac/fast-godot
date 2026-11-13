@@ -35,9 +35,12 @@ public:
 	// or it is missing a piece.
 	static bool apply_toolchain_root();
 
-	// The shell to run tools/grit_build_template.sh with on this platform, or an
-	// empty string when the script can be executed directly (macOS, Linux).
-	static String shell_for_build();
+	// The interpreter that runs tools/grit_build_template.py for this machine.
+	static String python_for_build();
+
+	// Records the interpreter, SCons package, PATH additions and SCons options the
+	// build helper must use, in <engine>/bin/grit/build_env.json.
+	static void write_build_env(const String &p_engine_root);
 
 private:
 	static bool _has_engine_tree(String &r_detail);

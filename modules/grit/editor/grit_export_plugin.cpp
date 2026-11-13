@@ -128,7 +128,7 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 }
 
 // Builds an export template that contains the project's generated code, by
-// running tools/grit_build_template.sh inside the engine source tree. That tree
+// running tools/grit_build_template.py inside the engine source tree. That tree
 // must already contain the built engine objects (bin/obj) for the requested
 // target; the script only compiles the generated sources and relinks.
 String GritExportPlugin::_resolve_engine_root() const {
@@ -165,7 +165,7 @@ String GritExportPlugin::_resolve_engine_root() const {
 	// so this covers both the tree binary and a staged bundle.
 	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
 	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
-		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools/grit_build_template.sh"))) {
+		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools/grit_build_template.py"))) {
 			resolved_engine_root = dir;
 			ProjectSettings::get_singleton()->set_setting(SETTING_ENGINE_ROOT, dir);
 			ProjectSettings::get_singleton()->save();
@@ -273,7 +273,11 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree from \"%s\". Set the project setting \"%s\" to it (Project Settings > Grit), then export again.", OS::get_singleton()->get_executable_path(), String(SETTING_ENGINE_ROOT)));
 		return ERR_UNCONFIGURED;
 	}
-	const String script = engine_root.path_join("tools/grit_build_template.sh");
+	const String script = engine_root.path_join("tools/grit_build_template.py");
+	if (!FileAccess::exists(script)) {
+		ERR_PRINT(vformat("Grit: the engine tree at \"%s\" has no tools/grit_build_template.py. It is older than this editor; use the current toolchain bundle or checkout.", engine_root));
+		return ERR_FILE_NOT_FOUND;
+	}
 	if (!FileAccess::exists(script)) {
 		ERR_PRINT("Grit: build helper not found: " + script);
 		return ERR_FILE_NOT_FOUND;
@@ -364,26 +368,23 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			stale_log->close();
 		}
 	}
-	ProcessID pid = 0;
-	// On Windows the helper is a shell script and needs the bundled shell to run;
-	// on macOS and Linux it is executable on its own.
-	const String shell = GritProvisioner::shell_for_build();
-	Error spawn;
-	if (shell.is_empty()) {
-		spawn = OS::get_singleton()->create_process(script, args, &pid);
-	} else {
-		// Through the bundled shell, the helper is reached via the wrapper that sets
-		// PATH to the bundle's tools.
-		const String wrapper = engine_root.path_join("bin/grit/build-wrapper.sh");
-		List<String> shell_args;
-		shell_args.push_back(FileAccess::exists(wrapper) ? wrapper : script);
-		for (const String &arg : args) {
-			shell_args.push_back(arg);
-		}
-		spawn = OS::get_singleton()->create_process(shell, shell_args, &pid);
+	// The helper is Python: the toolchain bundle already ships an interpreter, and
+	// this way no platform needs a shell, rsync or coreutils.
+	const String python = GritProvisioner::python_for_build();
+	if (python.is_empty()) {
+		ERR_PRINT("Grit: no Python interpreter found to run the build helper.");
+		return ERR_CANT_CREATE;
 	}
+	GritProvisioner::write_build_env(engine_root);
+	ProcessID pid = 0;
+	List<String> python_args;
+	python_args.push_back(script);
+	for (const String &arg : args) {
+		python_args.push_back(arg);
+	}
+	const Error spawn = OS::get_singleton()->create_process(python, python_args, &pid);
 	if (spawn != OK) {
-		ERR_PRINT("Grit: could not start the build helper " + script + (shell.is_empty() ? String() : " through " + shell));
+		ERR_PRINT("Grit: could not start the build helper " + script + " through " + python);
 		return ERR_CANT_CREATE;
 	}
 
