@@ -565,7 +565,10 @@ bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 		return false;
 	}
 	const String url = _engine_archive_url(commit);
-	const String archive = OS::get_singleton()->get_cache_path().path_join("grit-engine-" + commit + ".zip");
+	String archive = OS::get_singleton()->get_cache_path().path_join("grit-engine-" + commit + ".zip");
+	if (OS::get_singleton()->get_name() == "Windows") {
+		archive = archive.replace("/", "\\");
+	}
 	print_line("Grit: downloading the engine source for " + commit + " from " + url);
 
 	String download_error;
@@ -582,18 +585,37 @@ bool GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	const String dest = _engine_root_dir();
 	DirAccess::remove_absolute(dest);
 	DirAccess::make_dir_recursive_absolute(dest);
+	// Unpack with Python when it works (it is portable), otherwise with tar, which
+	// reads zip on Windows and macOS. One of the two always applies.
+	bool unpacked = false;
+	String unpack_error;
 	const String python = GritProvisioner::python_for_build();
-	List<String> args;
-	args.push_back("-m");
-	args.push_back("zipfile");
-	args.push_back("-e");
-	args.push_back(archive);
-	args.push_back(dest);
-	int code = -1;
-	String output;
-	if (python.is_empty() || OS::get_singleton()->execute(python, args, &output, &code) != OK || code != 0) {
+	if (!python.is_empty()) {
+		List<String> args;
+		args.push_back("-m");
+		args.push_back("zipfile");
+		args.push_back("-e");
+		args.push_back(archive);
+		args.push_back(dest);
+		int code = -1;
+		String output;
+		const Error ran = OS::get_singleton()->execute(python, args, &output, &code);
+		unpacked = ran == OK && code == 0;
+		if (!unpacked) {
+			unpack_error = vformat("python %s exited %d: %s", python, code, output.strip_edges().right(160));
+		}
+	}
+	if (!unpacked) {
+		String tar_error;
+		if (_extract(archive, dest, tar_error)) {
+			unpacked = true;
+		} else {
+			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
+		}
+	}
+	if (!unpacked) {
 		DirAccess::remove_absolute(archive);
-		error = vformat("could not unpack the engine source downloaded from %s (%s).", url, output.strip_edges().right(200));
+		error = vformat("could not unpack the engine source downloaded from %s (%s).", url, unpack_error);
 		return false;
 	}
 	DirAccess::remove_absolute(archive);
@@ -641,7 +663,9 @@ String GritProvisioner::python_for_build() {
 		const String bundled = root.path_join("python").path_join(
 				OS::get_singleton()->get_name() == "Windows" ? "python.exe" : "bin/python3");
 		if (FileAccess::exists(bundled)) {
-			return bundled;
+			// Windows will not reliably start a program whose path uses forward
+			// slashes, and this value is handed straight to create_process.
+			return OS::get_singleton()->get_name() == "Windows" ? bundled.replace("/", "\\") : bundled;
 		}
 	}
 	for (const char *candidate : { "python3", "python" }) {
