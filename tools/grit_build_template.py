@@ -155,7 +155,11 @@ def main(argv):
     extra = env.get("scons_args", "").split()
 
     with open(profile, "rb") as handle:
-        profile_hash = hashlib.sha256(handle.read()).hexdigest()[:16]
+        key = hashlib.sha256(handle.read())
+    # The engine revision is part of the key: a tree seeded by another revision
+    # keeps *.gen.* files that are not refreshed, and then fails to link.
+    key.update((env.get("engine_id") or "").encode("utf-8"))
+    profile_hash = key.hexdigest()[:16]
     work_root = os.environ.get("GRIT_PROFILE_WORKDIR") or os.path.join(engine, "out", "grit-profiles")
     source = os.path.join(work_root, "%s-%s-%s-%s" % (profile_hash, platform, arch, target))
 
@@ -188,7 +192,9 @@ def main(argv):
         child_env["PYTHONPATH"] = env["pythonpath"]
 
     announce("Grit: " + " ".join(command))
-    process = subprocess.Popen(command, cwd=source, env=child_env)
+    # Redirecting sys.stdout does not touch fd 1, so the child's output has to be
+    # sent to the log explicitly or every scons error would vanish.
+    process = subprocess.Popen(command, cwd=source, env=child_env, stdout=log, stderr=log)
     cancel_file = os.path.join(work_dir, "cancel_build")
     try:
         os.remove(cancel_file)
