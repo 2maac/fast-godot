@@ -181,6 +181,11 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 	if (os_name != "macOS" && os_name != "Linux" && os_name != "Windows") {
 		return;
 	}
+	// Only this editor's own platform: a Fast template is a native build.
+	if (os_name != OS::get_singleton()->get_name()) {
+		ERR_PRINT(vformat("Grit: \"%s\" cannot be built by an editor running on %s.", platform->get_name(), OS::get_singleton()->get_name()));
+		return;
+	}
 
 	// The first preset in a project is when the engine source is fetched, so the
 	// first export does not start with a silent download.
@@ -308,6 +313,16 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	} else {
 		plat_id = plat_id.to_lower();
 	}
+	// A Fast template is a native build and always has been; this refuses outright
+	// rather than starting one. A preset can be copied in from another project, and
+	// its platform string would otherwise be trusted.
+	const String native_os = OS::get_singleton()->get_name();
+	const String native_id = native_os == "macOS" ? "macos" : (native_os == "Linux" ? "linuxbsd" : native_os.to_lower());
+	if (plat_id != native_id) {
+		ERR_PRINT(vformat("Grit: this editor runs on %s and can only build %s templates; this preset asks for %s.", native_os, native_id, plat_id));
+		return ERR_UNAVAILABLE;
+	}
+
 	// Arch for a *native* build of this platform. Nothing is cross-compiled: a Fast
 	// template is only ever built for the platform the editor runs on.
 	String arch = "arm64";
