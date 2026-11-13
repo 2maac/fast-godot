@@ -116,6 +116,7 @@ def main(argv):
     log = open(log_path, "w", encoding="utf-8", buffering=1)
     sys.stdout = log
     sys.stderr = log
+    print("Grit: helper started (python %s)" % sys.version.split()[0], flush=True)
 
     if not os.path.isdir(generated):
         fail("Grit: no generated code in %s" % generated, 3)
@@ -211,4 +212,13 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    try:
+        sys.exit(main(sys.argv))
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
+        print("Grit: internal error in the build helper", flush=True)
+        sys.exit(1)

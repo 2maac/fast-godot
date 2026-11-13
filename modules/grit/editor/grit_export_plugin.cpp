@@ -466,7 +466,7 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		return ERR_SKIP;
 	}
 	if (exit_code != 0) {
-		ERR_PRINT("Grit: template build failed (exit " + itos(exit_code) + ").");
+		ERR_PRINT("Grit: template build failed (exit " + itos(exit_code) + ") running \"" + python + "\" \"" + script + "\" for engine \"" + engine_root + "\".");
 		Ref<FileAccess> log_file = FileAccess::open(log_path, FileAccess::READ);
 		if (log_file.is_valid()) {
 			ERR_PRINT(log_file->get_as_text().right(2000));
