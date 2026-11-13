@@ -372,8 +372,11 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	if (shell.is_empty()) {
 		spawn = OS::get_singleton()->create_process(script, args, &pid);
 	} else {
+		// Through the bundled shell, the helper is reached via the wrapper that sets
+		// PATH to the bundle's tools.
+		const String wrapper = engine_root.path_join("bin/grit/build-wrapper.sh");
 		List<String> shell_args;
-		shell_args.push_back(script);
+		shell_args.push_back(FileAccess::exists(wrapper) ? wrapper : script);
 		for (const String &arg : args) {
 			shell_args.push_back(arg);
 		}
