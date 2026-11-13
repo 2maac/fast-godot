@@ -149,9 +149,70 @@ jobs:
           path: packages
           if-no-files-found: error
 
+  linux-bundle:
+    name: linux toolchain bundle
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxcursor-dev libxinerama-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev \
+            libudev-dev libfontconfig1-dev libdbus-1-dev libwayland-dev \
+            libwayland-bin libffi-dev libvulkan-dev rsync
+
+      - name: Assemble the bundle
+        run: |
+          set -e
+          B="bundle/Fast_Godot_Toolchain_linux_x86_64"
+          mkdir -p "$B"
+          # engine source, without this checkout's build output or VCS metadata
+          rsync -a --exclude='.git' --exclude='bin' --exclude='out' --exclude='.godot' . "$B/engine/"
+          .github/scripts/fetch_linux_toolchain.sh "$B"
+          cat "$B/toolchain.json"
+          du -sh "$B"
+
+      # The point of the job: prove that the bundle alone builds. A plain template
+      # (no grit_generated) exercises the compiler, the bundled Python and SCons.
+      - name: Smoke build from the bundle
+        run: |
+          set -e
+          B="$PWD/bundle/Fast_Godot_Toolchain_linux_x86_64"
+          export PATH="$B/python/bin:$PATH"
+          export PYTHONPATH="$B/scons/4.11.1/scons-4.11.1"
+          cd "$B/engine"
+          python -m SCons platform=linuxbsd arch=x86_64 target=template_release \
+            vulkan=yes accesskit=no use_volk=yes -j"$(nproc)"
+          ls -la bin/godot.linuxbsd.template_release.x86_64
+          ./bin/godot.linuxbsd.template_release.x86_64 --version
+
+      - name: Package
+        run: |
+          set -e
+          B="bundle/Fast_Godot_Toolchain_linux_x86_64"
+          rm -rf "$B/engine/bin" "$B/engine/out" "$B"/engine/.sconsign*
+          ( cd bundle && zip -qr Fast_Godot_Toolchain_linux_x86_64.zip Fast_Godot_Toolchain_linux_x86_64 )
+          ( cd bundle && sha256sum Fast_Godot_Toolchain_linux_x86_64.zip > Fast_Godot_Toolchain_linux_x86_64.zip.sha256 )
+          ls -l bundle/Fast_Godot_Toolchain_linux_x86_64.zip*
+          cat bundle/Fast_Godot_Toolchain_linux_x86_64.zip.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-toolchain-bundle
+          path: bundle/Fast_Godot_Toolchain_linux_x86_64.zip*
+          if-no-files-found: error
+
   release:
     name: release
-    needs: build
+    needs: [build, linux-bundle]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
@@ -178,3 +239,5 @@ jobs:
           name: Fast_Godot ${{ steps.version.outputs.pkg }} (Grit + CFFI)
           files: |
             artifacts/Fast_Godot_v*.zip
+            artifacts/Fast_Godot_Toolchain_linux_x86_64.zip
+            artifacts/Fast_Godot_Toolchain_linux_x86_64.zip.sha256
