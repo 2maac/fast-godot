@@ -113,6 +113,10 @@ def main(argv):
         fail(__doc__, 2)
     engine, generated, target, out_path, platform = argv[1], argv[2], argv[3], argv[4], argv[5]
     profile, arch = argv[6], argv[7] if len(argv) > 7 else "arm64"
+    # HTML5 Fast preset option "Optimized": the web platform builds with -Os to keep
+    # the download small; -O3 is measurably faster on Grit-compiled code and costs
+    # ~7 MB of wasm. Native platforms are always -O3 for release builds.
+    optimized = len(argv) > 8 and argv[8] == "optimized"
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -172,6 +176,8 @@ def main(argv):
         # headers). A Fast export has to run from any static host, so build the
         # template single-threaded; this also drops proxy_to_pthread.
         extra.append("threads=no")
+        if optimized:
+            extra.append("optimize=speed")
 
     with open(profile, "rb") as handle:
         key = hashlib.sha256(handle.read())

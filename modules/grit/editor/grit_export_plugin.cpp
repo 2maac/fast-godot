@@ -412,6 +412,17 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	}
 	args.push_back(build_profile);
 	args.push_back(arch);
+	// "Optimized" (HTML5 Fast only) asks for -O3 instead of the web platform's
+	// default -Os. It is passed as an extra argument: the helper ignores it for
+	// the native platforms, and an older helper simply does not read it.
+	String web_optimization = "size";
+	{
+		const Ref<EditorExportPreset> optimization_preset = get_export_preset();
+		if (optimization_preset.is_valid() && optimization_preset->has("grit/optimized") && bool(optimization_preset->get("grit/optimized"))) {
+			web_optimization = "optimized";
+		}
+	}
+	args.push_back(web_optimization);
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 

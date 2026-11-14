@@ -40,6 +40,14 @@ public:
 		return FileAccess::exists(template_path());
 	}
 
+	virtual void get_export_options(List<ExportOption> *r_options) const override {
+		EditorExportPlatformWeb::get_export_options(r_options);
+		// Godot builds the web template with -Os to keep the download small. For a
+		// Fast export the compiled functions are the point, and -O3 is measurably
+		// faster on them, so offer it per preset even though the wasm grows.
+		r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "grit/optimized"), true));
+	}
+
 	// The template is produced by the export itself, so "no template yet" must not
 	// disable the Export button. Any other configuration error still does.
 	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const override {
