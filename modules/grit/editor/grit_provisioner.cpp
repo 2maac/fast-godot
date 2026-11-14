@@ -189,6 +189,110 @@ static bool _extract(const String &p_archive, const String &p_dest, String &r_er
 	return true;
 }
 
+// Python's zipfile extraction does not restore the executable bits stored in the
+// archive. A toolchain unpacked that way has a python that cannot run (exit 126),
+// and every later download fails; emsdk's emcc and node lose their bits too.
+// Extract through this script instead: it restores the recorded mode and
+// recreates symlinks, which is what unzip(1) does.
+static const char *GRIT_UNZIP_SCRIPT = R"GRITUNZIP(
+import os
+import stat
+import sys
+import zipfile
+
+archive, destination = sys.argv[1], sys.argv[2]
+root = os.path.abspath(destination)
+with zipfile.ZipFile(archive) as bundle:
+    for info in bundle.infolist():
+        name = info.filename
+        if not name:
+            continue
+        out = os.path.abspath(os.path.join(root, name))
+        if out != root and not out.startswith(root + os.sep):
+            continue
+        if name.endswith("/"):
+            os.makedirs(out, exist_ok=True)
+            continue
+        parent = os.path.dirname(out)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        mode = (info.external_attr >> 16) & 0xFFFF
+        if stat.S_ISLNK(mode):
+            target = bundle.read(info).decode("utf-8")
+            if os.path.lexists(out):
+                os.remove(out)
+            try:
+                os.symlink(target, out)
+                continue
+            except OSError:
+                pass
+        with bundle.open(info) as source, open(out, "wb") as sink:
+            while True:
+                chunk = source.read(1 << 20)
+                if not chunk:
+                    break
+                sink.write(chunk)
+        if mode:
+            os.chmod(out, mode)
+)GRITUNZIP";
+
+static bool _extract_zip_with_python(const String &p_python, const String &p_archive, const String &p_dest, String &r_error) {
+	const String script = OS::get_singleton()->get_cache_path().path_join("grit_unzip.py");
+	{
+		Ref<FileAccess> file = FileAccess::open(script, FileAccess::WRITE);
+		if (file.is_null()) {
+			r_error = "could not write " + script;
+			return false;
+		}
+		file->store_string(GRIT_UNZIP_SCRIPT);
+		file->close();
+	}
+	List<String> args;
+	args.push_back(script);
+	args.push_back(p_archive);
+	args.push_back(p_dest);
+	String output;
+	int code = -1;
+	const Error ran = OS::get_singleton()->execute(p_python, args, &output, &code);
+	if (ran != OK || code != 0) {
+		r_error = vformat("python %s exited %d: %s", p_python, code, output.strip_edges().right(160));
+		return false;
+	}
+	return true;
+}
+
+// Unpacks a zip with mode restoration, trying the toolchain interpreter first and
+// a system one after it (a toolchain unpacked by an older editor has a python
+// that cannot run, and that would otherwise make recovery impossible), then tar.
+static bool _unpack_zip(const String &p_archive, const String &p_dest, String &r_error) {
+	Vector<String> candidates;
+	const String bundled = GritProvisioner::python_for_build();
+	if (!bundled.is_empty()) {
+		candidates.push_back(bundled);
+	}
+	if (!candidates.has("python3")) {
+		candidates.push_back("python3");
+	}
+	if (!candidates.has("python")) {
+		candidates.push_back("python");
+	}
+	String errors;
+	for (const String &python : candidates) {
+		String error;
+		if (_extract_zip_with_python(python, p_archive, p_dest, error)) {
+			return true;
+		}
+		errors += (errors.is_empty() ? "" : "; ") + error;
+	}
+	String tar_error;
+	if (_extract(p_archive, p_dest, tar_error)) {
+		return true;
+	}
+	errors += (errors.is_empty() ? "" : "; ") + tar_error;
+	r_error = errors;
+	return false;
+}
+
 // Content-Length of a URL, or 0 when the server does not say.
 static int64_t _remote_size(const String &p_url) {
 	List<String> args;
@@ -274,33 +378,8 @@ static String _unpack_engine(const String &p_archive, const String &p_dest, cons
 	DirAccess::remove_absolute(p_dest);
 	DirAccess::make_dir_recursive_absolute(p_dest);
 
-	bool unpacked = false;
 	String unpack_error;
-	const String python = GritProvisioner::python_for_build();
-	if (!python.is_empty()) {
-		List<String> args;
-		args.push_back("-m");
-		args.push_back("zipfile");
-		args.push_back("-e");
-		args.push_back(p_archive);
-		args.push_back(p_dest);
-		int code = -1;
-		String output;
-		const Error ran = OS::get_singleton()->execute(python, args, &output, &code);
-		unpacked = ran == OK && code == 0;
-		if (!unpacked) {
-			unpack_error = vformat("python %s exited %d: %s", python, code, output.strip_edges().right(160));
-		}
-	}
-	if (!unpacked) {
-		String tar_error;
-		if (_extract(p_archive, p_dest, tar_error)) {
-			unpacked = true;
-		} else {
-			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
-		}
-	}
-	if (!unpacked) {
+	if (!_unpack_zip(p_archive, p_dest, unpack_error)) {
 		r_error = vformat("could not unpack the engine source downloaded from %s (%s).", p_url, unpack_error);
 		return String();
 	}
@@ -366,32 +445,8 @@ String GritProvisioner::fetch_toolchain_to(const String &p_folder, bool p_show_p
 	}
 
 	DirAccess::make_dir_recursive_absolute(folder);
-	bool unpacked = false;
 	String unpack_error;
-	const String python = python_for_build();
-	if (!python.is_empty()) {
-		List<String> args;
-		args.push_back("-m");
-		args.push_back("zipfile");
-		args.push_back("-e");
-		args.push_back(archive);
-		args.push_back(folder);
-		int code = -1;
-		String output;
-		const Error ran = OS::get_singleton()->execute(python, args, &output, &code);
-		unpacked = ran == OK && code == 0;
-		if (!unpacked) {
-			unpack_error = vformat("python exited %d: %s", code, output.strip_edges().right(160));
-		}
-	}
-	if (!unpacked) {
-		String tar_error;
-		if (_extract(archive, folder, tar_error)) {
-			unpacked = true;
-		} else {
-			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
-		}
-	}
+	const bool unpacked = _unpack_zip(archive, folder, unpack_error);
 	DirAccess::remove_absolute(archive);
 	if (!unpacked) {
 		error = vformat("could not unpack the toolchain downloaded from %s (%s).", url, unpack_error);
@@ -562,12 +617,26 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 String GritProvisioner::python_for_build() {
 	const String root = _toolchain_root();
 	if (_toolchain_usable(root)) {
-		const String bundled = root.path_join("python").path_join(
+		String bundled = root.path_join("python").path_join(
 				OS::get_singleton()->get_name() == "Windows" ? "python.exe" : "bin/python3");
+		// Windows will not reliably start a program whose path uses forward
+		// slashes, and this value is handed straight to create_process.
+		if (OS::get_singleton()->get_name() == "Windows") {
+			bundled = bundled.replace("/", "\\");
+		}
 		if (FileAccess::exists(bundled)) {
-			// Windows will not reliably start a program whose path uses forward
-			// slashes, and this value is handed straight to create_process.
-			return OS::get_singleton()->get_name() == "Windows" ? bundled.replace("/", "\\") : bundled;
+			// A toolchain unpacked by an editor that used python's zipfile lost
+			// the executable bits, and running it then fails with exit 126. Do
+			// not hand that to the build: fall back to the system interpreter.
+			List<String> probe;
+			probe.push_back("--version");
+			String output;
+			int code = -1;
+			OS::get_singleton()->execute(bundled, probe, &output, &code);
+			if (code == 0) {
+				return bundled;
+			}
+			WARN_PRINT(vformat("Grit: the toolchain python at \"%s\" cannot run (exit %d); using the system interpreter instead. If the build fails, re-download the toolchain.", bundled, code));
 		}
 	}
 	for (const char *candidate : { "python3", "python" }) {
