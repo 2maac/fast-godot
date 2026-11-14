@@ -22,6 +22,7 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 	path_edit->set_placeholder(toolchain ? TTR("Folder containing the Fast_Godot toolchain") : TTR("Folder containing the Fast_Godot source"));
 	path_edit->connect("text_submitted", callable_mp(this, &GritPathEditor::_text_submitted));
 	path_edit->connect("text_changed", callable_mp(this, &GritPathEditor::_text_changed));
+	path_edit->connect("focus_exited", callable_mp(this, &GritPathEditor::_focus_exited));
 	row->add_child(path_edit);
 
 	browse_button = memnew(Button);
@@ -62,9 +63,13 @@ void GritPathEditor::update_property() {
 }
 
 void GritPathEditor::_text_changed(const String &p_text) {
-	if (path_edit && p_text == path_edit->get_text()) {
-		return;
-	}
+	// Commit as the text changes: a pasted path must take effect without the user
+	// knowing to press Enter, which is what the first version required.
+	emit_changed(get_edited_property(), p_text);
+}
+
+void GritPathEditor::_focus_exited() {
+	emit_changed(get_edited_property(), path_edit->get_text().strip_edges());
 }
 
 void GritPathEditor::_text_submitted(const String &p_text) {

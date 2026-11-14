@@ -25,6 +25,7 @@ class GritPathEditor : public EditorProperty {
 	void _browse_chosen(const String &p_dir);
 	void _text_submitted(const String &p_text);
 	void _text_changed(const String &p_text);
+	void _focus_exited();
 
 protected:
 	void update_property() override;
