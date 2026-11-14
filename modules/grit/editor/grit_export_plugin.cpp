@@ -146,13 +146,15 @@ static bool _is_inside(const String &p_path, const String &p_root) {
 // must already contain the built engine objects (bin/obj) for the requested
 // target; the script only compiles the generated sources and relinks.
 String GritExportPlugin::_resolve_engine_root() const {
-	if (!resolved_engine_root.is_empty()) {
-		return resolved_engine_root;
-	}
-	// The source folder chosen in Editor Settings > Grit > Settings.
+	// The source folder chosen in Editor Settings > Grit > Settings is read fresh
+	// every time: it can change mid-session and must win over anything resolved
+	// earlier (a walk-up hit or a fetched tree), or the new path would only take
+	// effect after restarting the editor.
 	const String configured = GritProvisioner::configured_source();
 	if (!configured.is_empty()) {
-		resolved_engine_root = configured;
+		return configured;
+	}
+	if (!resolved_engine_root.is_empty()) {
 		return resolved_engine_root;
 	}
 
@@ -694,6 +696,20 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		if (!toolchain_root.is_empty() && _is_inside(toolchain_root, project_root)) {
 			ERR_PRINT(vformat("Grit: the toolchain is inside the project (\"%s\"). Move it out of the project folder and set Editor Settings > Grit > Settings > ToolChain Root Folder Path to the new location; otherwise its files are imported and packed as game content.", toolchain_root));
 			return ERR_INVALID_DATA;
+		}
+		// A tree left behind by an earlier download into the project does just as much
+		// damage even after the setting was pointed elsewhere: Grit compiles every
+		// script under res:// and would die on the engine's script templates. Name it
+		// instead of failing on the first one.
+		Ref<DirAccess> project_dir = DirAccess::open("res://");
+		if (project_dir.is_valid()) {
+			for (const String &name : project_dir->get_directories()) {
+				const String candidate = String("res://") + name;
+				if (FileAccess::exists(candidate.path_join("SConstruct")) && FileAccess::exists(candidate.path_join("tools").path_join("grit_build_template.py"))) {
+					ERR_PRINT(vformat("Grit: %s is a Fast_Godot source tree inside the project. Move it out (the Source Code Root Folder Path may point elsewhere, but every script under res:// is treated as project content), then export again.", candidate));
+					return ERR_INVALID_DATA;
+				}
+			}
 		}
 	}
 
