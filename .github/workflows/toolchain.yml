@@ -11,6 +11,7 @@ on:
     paths:
       - ".github/workflows/toolchain.yml"
       - ".github/scripts/fetch_linux_toolchain.sh"
+      - ".github/scripts/make_linux_compiler.sh"
       - ".github/scripts/make_bundle_zip.py"
 
 permissions:
@@ -53,6 +54,7 @@ jobs:
           mkdir -p "$B"
           .github/scripts/fetch_linux_toolchain.sh "$B"
           cp -R "$EMSDK" "$B/emsdk"
+          .github/scripts/make_linux_compiler.sh "$B"
           python .github/scripts/make_bundle_zip.py "$B" "Fast_Godot_Toolchain_linux_x86_64.zip"
       - name: Publish
         env:

@@ -164,6 +164,22 @@ def main(argv):
 
     env = read_env(engine)
     extra = env.get("scons_args", "").split()
+    extra_paths = list(env.get("path_add") or [])
+    if platform == "linuxbsd":
+        # A Linux toolchain can carry its own compiler (Zig): the bundle then needs
+        # no distribution -dev packages. Godot vendors the X11/ALSA headers and
+        # dlopens those libraries, so the compiler is all that was missing.
+        compiler_dir = os.path.join(env.get("toolchain_root") or "", "compiler")
+        clang = os.path.join(compiler_dir, "clang")
+        clangxx = os.path.join(compiler_dir, "clang++")
+        if os.path.isfile(clang) and os.path.isfile(clangxx):
+            # Zig links its own libc++ statically; -static-libstdc++ is not a
+            # thing there, so the static-cpp flag has to go.
+            extra += ["CC=" + clang, "CXX=" + clangxx, "use_static_cpp=no"]
+            extra_paths.insert(0, compiler_dir)  # ar, ranlib, pkg-config stub
+            announce("Grit: using the bundled Linux compiler %s" % clang)
+        else:
+            announce("Grit: the toolchain has no compiler; using the system C++ toolchain")
     if platform == "web":
         # Web inherits nothing from the host build: vulkan, mingw, d3d12 and the
         # libffi path are all meaningless for wasm, and passing them in makes the
@@ -210,9 +226,8 @@ def main(argv):
     # The build has to see the toolchain it was provisioned with, even though the
     # editor process it was started from does not.
     child_env = dict(os.environ)
-    path_add = env.get("path_add") or []
-    if path_add:
-        child_env["PATH"] = os.pathsep.join(path_add + [child_env.get("PATH", "")])
+    if extra_paths:
+        child_env["PATH"] = os.pathsep.join(extra_paths + [child_env.get("PATH", "")])
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
     if platform == "web":
