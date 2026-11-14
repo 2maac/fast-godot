@@ -302,7 +302,7 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path) {
 	const String engine_root = _resolve_engine_root();
 	if (engine_root.is_empty()) {
-		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree from \"%s\". Set the project setting \"%s\" to it (Project Settings > Grit), then export again.", OS::get_singleton()->get_executable_path(), String(SETTING_ENGINE_ROOT)));
+		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Open Editor Settings > Grit > Settings and choose or download a source folder, then export again.", OS::get_singleton()->get_executable_path()));
 		return ERR_UNCONFIGURED;
 	}
 	const String script = engine_root.path_join("tools/grit_build_template.py");
@@ -646,7 +646,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		// does not exist here.
 		return OK;
 	}
-	const String managed_templates = String(GLOBAL_GET(SETTING_ENGINE_ROOT)).path_join("bin/grit_templates");
+	const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
 	_apply_default_bundle_identifier(p_preset);
 	if (p_preset.is_valid()) {
 		for (const char *key : { "custom_template/debug", "custom_template/release" }) {
@@ -672,7 +672,7 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 	// older build left behind so the stock template is genuinely what runs.
 	if (!compiled) {
 		stripped_sources.clear();
-		const String managed_templates = String(GLOBAL_GET(SETTING_ENGINE_ROOT)).path_join("bin/grit_templates");
+		const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
 		if (preset.is_valid()) {
 			for (const char *key : { "custom_template/debug", "custom_template/release" }) {
 				if (String(preset->get(key)).begins_with(managed_templates)) {
@@ -697,7 +697,7 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 	const Error error = _prepare_compiled(preset, p_debug);
 	if (error != OK) {
 		if (preset.is_valid()) {
-			const String managed_templates = String(GLOBAL_GET(SETTING_ENGINE_ROOT)).path_join("bin/grit_templates");
+			const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
 			preset->set(p_debug ? "custom_template/debug" : "custom_template/release", managed_templates.path_join(".build-did-not-complete"));
 			ERR_PRINT("Grit: compiled build did not complete; the export is abandoned. Run it again (or switch the toolbar to VM for a normal export).");
 		}

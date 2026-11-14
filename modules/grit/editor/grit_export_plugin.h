@@ -56,7 +56,6 @@ protected:
 public:
 	static constexpr const char *SETTING_GENERATED_DIRECTORY = "grit/export/generated_directory";
 	static constexpr const char *OPTION_STRIP_SCRIPTS = "grit/strip_scripts";
-	static constexpr const char *SETTING_ENGINE_ROOT = "grit/export/engine_root";
 
 	// Runs when the user adds an export preset: checks the build environment and
 	// builds/installs the stock template if it is missing.
