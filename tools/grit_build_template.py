@@ -248,16 +248,35 @@ def main(argv):
         fail("Grit: scons exited with %d" % code, 5)
 
     if platform == "web":
-        # The web template is a zip whose entries the exporter renames per export.
-        prefix = "godot.web.template_%s" % target
-        produced = sorted(glob.glob(os.path.join(source, "bin", prefix + "*")))
+        # The exporter renames "godot" to the export name and expects canonical
+        # entries, so the build's arch-suffixed names are rewritten here and the
+        # loader's internal references follow the new names.
+        prefix = "godot.web.template_%s.wasm32" % target
+        produced = {}
+        for item in sorted(glob.glob(os.path.join(source, "bin", prefix + "*"))):
+            produced[os.path.basename(item)[len(prefix):]] = item
         if not produced:
             fail("Grit: build finished but no %s* files were produced in %s/bin" % (prefix, source), 6)
+        # extension -> canonical entry name
+        canonical = {".wasm": "godot.wasm", ".js": "godot.js", ".engine.js": "godot.engine.js", ".wrapped.js": "godot.wrapped.js"}
+        shell_dir = os.path.join(engine, "misc", "dist", "html")
+        extras = [("full-size.html", "godot.html"), ("offline.html", "godot.offline.html")]
         out_zip = out_path if out_path.endswith(".zip") else out_path + ".zip"
         with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as bundle:
-            for item in produced:
-                bundle.write(item, os.path.basename(item))
-        announce("Grit: produced %s (%d files)" % (out_zip, len(produced)))
+            for suffix, entry in canonical.items():
+                if suffix not in produced:
+                    continue
+                with open(produced[suffix], "rb") as handle:
+                    data = handle.read()
+                # Point every textual reference at the canonical name.
+                for build_suffix, canonical_suffix in canonical.items():
+                    data = data.replace(prefix.encode() + build_suffix.encode(), canonical_suffix.encode())
+                bundle.writestr(entry, data)
+            for source_name, entry in extras:
+                path = os.path.join(shell_dir, source_name)
+                if os.path.isfile(path):
+                    bundle.write(path, entry)
+        announce("Grit: produced %s" % out_zip)
         return 0
 
     if platform == "macos":
