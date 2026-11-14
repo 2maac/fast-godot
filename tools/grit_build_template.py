@@ -258,7 +258,10 @@ def main(argv):
         if not produced:
             fail("Grit: build finished but no %s* files were produced in %s/bin" % (prefix, source), 6)
         # extension -> canonical entry name
-        canonical = {".wasm": "godot.wasm", ".js": "godot.js", ".engine.js": "godot.engine.js", ".wrapped.js": "godot.wrapped.js"}
+        # The shell does `new Engine(...)`, so the file it loads must be the wrapped
+        # bundle (loader + engine API). Mapping the plain emscripten loader here was
+        # what produced "ReferenceError: Engine is not defined".
+        canonical = {".wasm": "godot.wasm", ".wrapped.js": "godot.js", ".js": "godot.loader.js", ".engine.js": "godot.engine.js"}
         shell_dir = os.path.join(engine, "misc", "dist", "html")
         extras = [("full-size.html", "godot.html"), ("offline.html", "godot.offline.html")]
         out_zip = out_path if out_path.endswith(".zip") else out_path + ".zip"
