@@ -155,6 +155,10 @@ def main(argv):
     env = read_env(engine)
     extra = env.get("scons_args", "").split()
     if platform == "web":
+        # Web inherits nothing from the host build: vulkan, mingw, d3d12 and the
+        # libffi path are all meaningless for wasm, and passing them in makes the
+        # build configure drivers that do not exist on this platform.
+        extra = [arg for arg in extra if not arg.startswith(("vulkan", "use_mingw", "cffi_libffi_path", "accesskit", "d3d12", "winrt", "angle"))]
         # HTML5 Fast never includes CFFI: libffi has no wasm target here.
         extra.append("module_cffi_enabled=no")
 
@@ -194,17 +198,55 @@ def main(argv):
         child_env["PATH"] = os.pathsep.join(path_add + [child_env.get("PATH", "")])
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
-    if platform == "macos":
-        binary = os.path.join(source, "bin", "godot.macos.template_%s.%s" % (target, arch))
-    elif platform == "windows":
-        binary = os.path.join(source, "bin", "godot.windows.template_%s.%s.exe" % (target, arch))
-    else:
-        binary = os.path.join(source, "bin", "godot.linuxbsd.template_%s.%s" % (target, arch))
-    if not os.path.isfile(binary):
-        fail("Grit: build finished but %s is missing" % binary, 6)
+    if platform == "web":
+        # emcc, and the node it drives, come from the toolchain folder.
+        emsdk = os.path.join(env.get("toolchain_root", ""), "emsdk")
+        if os.path.isdir(emsdk):
+            em = os.path.join(emsdk, "upstream", "emscripten")
+            nodes = sorted(glob.glob(os.path.join(emsdk, "node", "*", "bin")))
+            child_env["EMSDK"] = emsdk
+            config = os.path.join(emsdk, ".emscripten")
+            if os.path.isfile(config):
+                child_env["EM_CONFIG"] = config
+            child_env["PATH"] = os.pathsep.join([em] + nodes + [child_env.get("PATH", "")])
+        else:
+            announce("Grit: no emsdk in the toolchain folder; web build relies on PATH")
 
-    os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
-    shutil.copy2(binary, out_path)
+    announce("Grit: " + " ".join(command))
+    # Redirecting sys.stdout does not touch fd 1, so the child's output has to be
+    # sent to the log explicitly or every scons error would vanish.
+    process = subprocess.Popen(command, cwd=source, env=child_env, stdout=log, stderr=log)
+    cancel_file = os.path.join(work_dir, "cancel_build")
+    try:
+        os.remove(cancel_file)
+    except OSError:
+        pass
+    with open(os.path.join(work_dir, "scons.pid"), "w", encoding="ascii") as handle:
+        handle.write(str(process.pid))
+
+    while True:
+        code = process.poll()
+        if code is not None:
+            break
+        if os.path.exists(cancel_file):
+            announce("Grit: cancel requested, stopping scons")
+            process.kill()
+            process.wait()
+            for stale in (cancel_file, os.path.join(work_dir, "scons.pid")):
+                try:
+                    os.remove(stale)
+                except OSError:
+                    pass
+            sys.exit(3)
+        time.sleep(0.2)
+
+    try:
+        os.remove(os.path.join(work_dir, "scons.pid"))
+    except OSError:
+        pass
+    if code != 0:
+        fail("Grit: scons exited with %d" % code, 5)
+
     if platform == "web":
         # The web template is a zip whose entries the exporter renames per export.
         prefix = "godot.web.template_%s" % target
@@ -218,6 +260,17 @@ def main(argv):
         announce("Grit: produced %s (%d files)" % (out_zip, len(produced)))
         return 0
 
+    if platform == "macos":
+        binary = os.path.join(source, "bin", "godot.macos.template_%s.%s" % (target, arch))
+    elif platform == "windows":
+        binary = os.path.join(source, "bin", "godot.windows.template_%s.%s.exe" % (target, arch))
+    else:
+        binary = os.path.join(source, "bin", "godot.linuxbsd.template_%s.%s" % (target, arch))
+    if not os.path.isfile(binary):
+        fail("Grit: build finished but %s is missing" % binary, 6)
+
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
+    shutil.copy2(binary, out_path)
     if platform == "macos":
         package_macos(out_path, out_path, engine)
         os.remove(out_path)

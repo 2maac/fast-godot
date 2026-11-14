@@ -522,9 +522,12 @@ for tool in custom_tools:
 env.Prepend(CPPPATH=["#"])
 
 # configure ENV for platform
-# This fork exports desktop targets only. Android, iOS, visionOS and Web exporters
-# are not built, so they never appear in the export dialog's platform list.
-platform_exporters = [p for p in platform_exporters if p in ("linuxbsd", "macos", "windows")]
+# This fork exports its own platforms only. Android, iOS and visionOS exporters are
+# not built, so they never appear in the export dialog's platform list. Web is the
+# exception: HTML5 Fast is cross-compiled and offered from every host.
+# HTML5 is the one exporter that is not host-specific: it cross-compiles from
+# every platform, so its Fast variant is registered everywhere.
+platform_exporters = [p for p in platform_exporters if p in ("linuxbsd", "macos", "windows", "web")]
 
 env.platform_exporters = platform_exporters
 env.platform_apis = platform_apis

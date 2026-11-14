@@ -655,7 +655,9 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		return ERR_CANT_CREATE;
 	}
 
-	if (platform_preset.is_valid() && platform_preset->get_platform().is_valid() && _is_fast_platform(platform_preset->get_platform()) && !_is_host_platform(platform_preset->get_platform()->get_os_name())) {
+	// HTML5 is cross-compiled by Emscripten on every host, so it is exempt.
+	const bool web_target = platform_preset.is_valid() && platform_preset->get_platform().is_valid() && platform_preset->get_platform()->get_name() == "HTML5 Fast";
+	if (!web_target && platform_preset.is_valid() && platform_preset->get_platform().is_valid() && _is_fast_platform(platform_preset->get_platform()) && !_is_host_platform(platform_preset->get_platform()->get_os_name())) {
 		ERR_PRINT(vformat("Grit: \"%s\" templates are built on a %s host; this build does not cross-compile. Export for that platform from its own editor, or add the stock \"%s\" platform instead.",
 				platform_preset->get_platform()->get_name(),
 				platform_preset->get_platform()->get_os_name(),
