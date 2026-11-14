@@ -283,7 +283,15 @@ def main(argv):
         if missing:
             fail("Grit: template build produced no %s" % ", ".join(prefix + suffix for suffix in missing), 6)
         shell_dir = os.path.join(engine, "misc", "dist", "html")
-        extras = [("full-size.html", "godot.html"), ("offline.html", "godot.offline.html")]
+        libs_dir = os.path.join(engine, "platform", "web", "js", "libs")
+        extras = [
+            (os.path.join(shell_dir, "full-size.html"), "godot.html"),
+            (os.path.join(shell_dir, "offline.html"), "godot.offline.html"),
+            # The engine fetches these at runtime; without them the page logs
+            # "Failed to load worklet module script" 404s and has no audio.
+            (os.path.join(libs_dir, "audio.worklet.js"), "godot.audio.worklet.js"),
+            (os.path.join(libs_dir, "audio.position.worklet.js"), "godot.audio.position.worklet.js"),
+        ]
         out_zip = out_path if out_path.endswith(".zip") else out_path + ".zip"
         with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as bundle:
             for suffix, entry in canonical.items():
@@ -297,10 +305,11 @@ def main(argv):
                     for marker in ("", ".nothreads"):
                         data = data.replace((prefix + marker + build_suffix).encode(), canonical_suffix.encode())
                 bundle.writestr(entry, data)
-            for source_name, entry in extras:
-                path = os.path.join(shell_dir, source_name)
+            for path, entry in extras:
                 if os.path.isfile(path):
                     bundle.write(path, entry)
+                elif entry.endswith(".worklet.js"):
+                    fail("Grit: build finished but %s is missing" % path, 6)
         announce("Grit: produced %s" % out_zip)
         return 0
 
