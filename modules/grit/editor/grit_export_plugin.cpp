@@ -128,6 +128,19 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 	}
 }
 
+// Absolute, normalized form of a folder setting, which may be written as res://.
+static String _absolute_dir(const String &p_path) {
+	String path = p_path.strip_edges();
+	if (path.begins_with("res://")) {
+		path = ProjectSettings::get_singleton()->globalize_path(path);
+	}
+	return path.simplify_path().trim_suffix("/");
+}
+
+static bool _is_inside(const String &p_path, const String &p_root) {
+	return !p_path.is_empty() && (p_path == p_root || p_path.begins_with(p_root + "/"));
+}
+
 // Builds an export template that contains the project's generated code, by
 // running tools/grit_build_template.py inside the engine source tree. That tree
 // must already contain the built engine objects (bin/obj) for the requested
@@ -664,6 +677,24 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 	if (GritProvisioner::ensure_engine(true, &engine_error).is_empty()) {
 		ERR_PRINT("Grit: " + engine_error);
 		return ERR_CANT_CREATE;
+	}
+
+	// Neither the engine source nor the toolchain may live inside the project: the
+	// editor's file scan tries to import them, the Grit compiler then tries to
+	// compile the engine's own scripts (which do not parse as project scripts), and
+	// the export would pack either tree as game content.
+	{
+		const String project_root = _absolute_dir(ProjectSettings::get_singleton()->globalize_path("res://"));
+		const String engine_root = _absolute_dir(_resolve_engine_root());
+		if (!engine_root.is_empty() && _is_inside(engine_root, project_root)) {
+			ERR_PRINT(vformat("Grit: the Fast_Godot source tree is inside the project (\"%s\"). Move it out of the project folder and set Editor Settings > Grit > Settings > Source Code Root Folder Path to the new location; otherwise its scripts are scanned, compiled and packed as game content.", engine_root));
+			return ERR_INVALID_DATA;
+		}
+		const String toolchain_root = _absolute_dir(GritProvisioner::configured_toolchain());
+		if (!toolchain_root.is_empty() && _is_inside(toolchain_root, project_root)) {
+			ERR_PRINT(vformat("Grit: the toolchain is inside the project (\"%s\"). Move it out of the project folder and set Editor Settings > Grit > Settings > ToolChain Root Folder Path to the new location; otherwise its files are imported and packed as game content.", toolchain_root));
+			return ERR_INVALID_DATA;
+		}
 	}
 
 	// HTML5 is cross-compiled by Emscripten on every host, so it is exempt.

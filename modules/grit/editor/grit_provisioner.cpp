@@ -120,15 +120,16 @@ String GritProvisioner::engine_commit() {
 	return hash;
 }
 
-// The source comes from the release, as an asset named for the commit it holds.
-// CI publishes it from the same commit as the editors and removes the previous one,
-// so a fetch can never yield a tree that does not match this editor.
 static String _release_tag() {
 	return vformat("v%d.%d.%d-%s", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, VERSION_STATUS);
 }
 
+// GitHub generates this archive for any commit, so the source needs no release
+// asset of its own. It also pins the fetch to the exact tree this editor was built
+// from: the release tag is moved on every publish, so a tag archive would hand an
+// older editor a different engine revision.
 static String _engine_archive_url(const String &p_commit) {
-	return vformat("https://github.com/2maac/fast-godot/releases/download/%s/Fast_Godot_Source_%s.zip", _release_tag(), p_commit);
+	return vformat("https://github.com/2maac/fast-godot/archive/%s.zip", p_commit);
 }
 
 // Where a fetched engine tree lives: inside the toolchain folder when there is one,
@@ -517,6 +518,11 @@ String GritProvisioner::fetch_source_to(const String &p_folder, bool p_show_prog
 String GritProvisioner::configured_source() {
 	const String chosen = _source_path();
 	return _engine_present(chosen) ? chosen : String();
+}
+
+String GritProvisioner::configured_toolchain() {
+	const String root = _toolchain_root();
+	return _toolchain_usable(root) ? root : String();
 }
 
 String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {

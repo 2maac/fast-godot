@@ -196,23 +196,3 @@ jobs:
           COMMIT="$(git rev-parse HEAD)"
           gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/${RELEASE_TAG}" \
             -f sha="$COMMIT" -F force=true >/dev/null && echo "tag ${RELEASE_TAG} -> $COMMIT"
-
-      # The editor downloads its source from this release, so the asset has to be
-      # the commit that produced these editors. Older ones are removed: they would
-      # sit there at 80 MB each and none of them could be requested any more.
-      - name: Source archive
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -e
-          COMMIT="$(git rev-parse HEAD)"
-          OUT="artifacts/Fast_Godot_Source_${COMMIT}.zip"
-          git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
-          gh release upload "$RELEASE_TAG" "$OUT" --clobber
-          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
-            grep '^Fast_Godot_Source_' |
-            grep -vxF "$(basename "$OUT")" |
-            while read -r stale; do
-              echo "removing superseded $stale"
-              gh release delete-asset "$RELEASE_TAG" "$stale" -y
-            done

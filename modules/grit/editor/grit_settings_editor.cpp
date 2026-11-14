@@ -2,7 +2,9 @@
 
 #include "modules/grit/editor/grit_provisioner.h"
 
+#include "core/config/project_settings.h"
 #include "core/object/callable_mp.h"
+#include "core/os/os.h"
 #include "editor/file_system/editor_paths.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/settings/editor_settings.h"
@@ -41,6 +43,9 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 	dest_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
 	dest_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
 	dest_dialog->set_title(toolchain ? TTR("Choose a folder for the toolchain") : TTR("Choose a folder for the Fast_Godot source"));
+	// Never start inside the project: whatever is downloaded here is engine source
+	// or a toolchain, and inside res:// it would be scanned, imported and exported.
+	dest_dialog->set_current_dir(OS::get_singleton()->get_system_dir(OS::SYSTEM_DIR_DOCUMENTS));
 	dest_dialog->connect("dir_selected", callable_mp(this, &GritPathEditor::_dest_chosen));
 	add_child(dest_dialog);
 
@@ -90,6 +95,14 @@ void GritPathEditor::_browse_chosen(const String &p_dir) {
 }
 
 void GritPathEditor::_dest_chosen(const String &p_dir) {
+	// A source tree or toolchain inside res:// is not game content: the editor would
+	// scan it, Grit would try to compile its scripts and the export would pack it.
+	const String project_root = ProjectSettings::get_singleton()->globalize_path("res://").simplify_path().trim_suffix("/");
+	const String chosen = p_dir.simplify_path().trim_suffix("/");
+	if (chosen == project_root || chosen.begins_with(project_root + "/")) {
+		ERR_PRINT(vformat("Grit: choose a folder outside the project. \"%s\" is inside the project, so the downloaded tree would be scanned and exported as game content.", p_dir));
+		return;
+	}
 	String error;
 	// The archive is unpacked into the chosen folder and discarded.
 	const String root = toolchain
