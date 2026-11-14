@@ -117,12 +117,22 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 		_apply_default_bundle_identifier(preset);
 	}
 	if (preset.is_valid() && p_export_platform.is_valid() && _is_fast_platform(p_export_platform)) {
+		// Only macOS needs the preset to name its template: its platform check looks
+		// the archive up through custom_template. Linux and Windows Fast resolve it
+		// through find_export_template, and a leftover custom_template there makes the
+		// stock exporter validate a stale file ("Mismatching custom export template
+		// executable architecture: found invalid").
+		const bool macos = p_export_platform->get_os_name() == "macOS";
 		for (int i = 0; i < 2; i++) {
 			const bool debug = i == 1;
 			const String key = debug ? "custom_template/debug" : "custom_template/release";
-			const String path = _compiled_template_path(debug);
-			if (!path.is_empty() && FileAccess::exists(path) && String(preset->get(key)) != path) {
-				preset->set(key, path);
+			if (macos) {
+				const String path = _compiled_template_path(debug);
+				if (!path.is_empty() && FileAccess::exists(path) && String(preset->get(key)) != path) {
+					preset->set(key, path);
+				}
+			} else if (!String(preset->get(key)).is_empty()) {
+				preset->set(key, "");
 			}
 		}
 	}
@@ -760,8 +770,14 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 	const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
 	_apply_default_bundle_identifier(p_preset);
 	if (p_preset.is_valid()) {
+		const Ref<EditorExportPlatform> clear_platform = platform_preset.is_valid() ? platform_preset->get_platform() : Ref<EditorExportPlatform>();
+		const bool clear_fast = clear_platform.is_valid() && _is_fast_platform(clear_platform) && clear_platform->get_os_name() != "macOS";
 		for (const char *key : { "custom_template/debug", "custom_template/release" }) {
-			if (String(p_preset->get(key)).begins_with(managed_templates)) {
+			// Native Fast platforms (Linux/Windows) resolve their template themselves;
+			// a stale custom_template makes the exporter reject the file's arch before
+			// the freshly built template is used. Legacy managed paths are cleared for
+			// every platform, macOS included.
+			if (clear_fast || String(p_preset->get(key)).begins_with(managed_templates)) {
 				p_preset->set(key, "");
 			}
 		}
