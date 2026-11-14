@@ -36,4 +36,32 @@ public:
 	virtual bool exists_export_template(const String &p_template_file_name, String *r_err) const override {
 		return FileAccess::exists(template_dir().path_join(p_template_file_name));
 	}
+
+	// The template is produced by the export itself, so "no template yet" must not
+	// disable the Export button. Any other configuration error still does.
+	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const override {
+		String message;
+		bool missing = false;
+		const bool base_valid = EditorExportPlatformWindows::has_valid_export_configuration(p_preset, message, missing, p_debug);
+		if (base_valid) {
+			r_error = message;
+			r_missing_templates = missing;
+			return true;
+		}
+		if (!missing) {
+			r_error = message;
+			r_missing_templates = missing;
+			return false;
+		}
+		// Drop the template lines, keep whatever else is wrong.
+		Vector<String> kept;
+		for (const String &line : message.split("\n")) {
+			if (!line.begins_with("No export template found")) {
+				kept.push_back(line);
+			}
+		}
+		r_error = String("\n").join(kept).strip_edges();
+		r_missing_templates = false;
+		return r_error.is_empty();
+	}
 };
