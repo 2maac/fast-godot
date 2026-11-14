@@ -16,6 +16,7 @@ The editor writes bin/grit/build_env.json next to the build; it carries the path
 the build has to use (SCons package, MinGW, the interpreter itself).
 """
 
+import glob
 import hashlib
 import json
 import os
@@ -153,6 +154,9 @@ def main(argv):
 
     env = read_env(engine)
     extra = env.get("scons_args", "").split()
+    if platform == "web":
+        # HTML5 Fast never includes CFFI: libffi has no wasm target here.
+        extra.append("module_cffi_enabled=no")
 
     with open(profile, "rb") as handle:
         key = hashlib.sha256(handle.read())
@@ -190,42 +194,6 @@ def main(argv):
         child_env["PATH"] = os.pathsep.join(path_add + [child_env.get("PATH", "")])
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
-
-    announce("Grit: " + " ".join(command))
-    # Redirecting sys.stdout does not touch fd 1, so the child's output has to be
-    # sent to the log explicitly or every scons error would vanish.
-    process = subprocess.Popen(command, cwd=source, env=child_env, stdout=log, stderr=log)
-    cancel_file = os.path.join(work_dir, "cancel_build")
-    try:
-        os.remove(cancel_file)
-    except OSError:
-        pass
-    with open(os.path.join(work_dir, "scons.pid"), "w", encoding="ascii") as handle:
-        handle.write(str(process.pid))
-
-    while True:
-        code = process.poll()
-        if code is not None:
-            break
-        if os.path.exists(cancel_file):
-            announce("Grit: cancel requested, stopping scons")
-            process.kill()
-            process.wait()
-            for stale in (cancel_file, os.path.join(work_dir, "scons.pid")):
-                try:
-                    os.remove(stale)
-                except OSError:
-                    pass
-            sys.exit(3)
-        time.sleep(0.2)
-
-    try:
-        os.remove(os.path.join(work_dir, "scons.pid"))
-    except OSError:
-        pass
-    if code != 0:
-        fail("Grit: scons exited with %d" % code, 5)
-
     if platform == "macos":
         binary = os.path.join(source, "bin", "godot.macos.template_%s.%s" % (target, arch))
     elif platform == "windows":
@@ -237,6 +205,19 @@ def main(argv):
 
     os.makedirs(os.path.dirname(os.path.abspath(out_path)) or ".", exist_ok=True)
     shutil.copy2(binary, out_path)
+    if platform == "web":
+        # The web template is a zip whose entries the exporter renames per export.
+        prefix = "godot.web.template_%s" % target
+        produced = sorted(glob.glob(os.path.join(source, "bin", prefix + "*")))
+        if not produced:
+            fail("Grit: build finished but no %s* files were produced in %s/bin" % (prefix, source), 6)
+        out_zip = out_path if out_path.endswith(".zip") else out_path + ".zip"
+        with zipfile.ZipFile(out_zip, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for item in produced:
+                bundle.write(item, os.path.basename(item))
+        announce("Grit: produced %s (%d files)" % (out_zip, len(produced)))
+        return 0
+
     if platform == "macos":
         package_macos(out_path, out_path, engine)
         os.remove(out_path)

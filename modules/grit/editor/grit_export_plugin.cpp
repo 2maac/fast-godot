@@ -22,6 +22,7 @@
 #include "core/version.h"
 #include "editor/editor_node.h"
 #include "modules/grit/editor/grit_provisioner.h"
+#include "platform/web/export/export_plugin_fast.h"
 #include "editor/export/editor_export.h"
 #include "platform/macos/export/export_plugin_fast.h"
 #include "editor/file_system/editor_paths.h"
@@ -228,40 +229,52 @@ void GritExportPlugin::_ensure_native_preset() {
 	if (!exporter) {
 		return;
 	}
-	const String os_name = OS::get_singleton()->get_name();
-	const String wanted = os_name + " Fast";
-	Ref<EditorExportPlatform> platform;
-	for (int i = 0; i < exporter->get_export_platform_count(); i++) {
-		const Ref<EditorExportPlatform> candidate = exporter->get_export_platform(i);
-		if (candidate.is_valid() && candidate->get_name() == wanted) {
-			platform = candidate;
-			break;
+	// This editor's own platform, plus HTML5: wasm is cross-compiled from every
+	// host, so the web preset is offered everywhere.
+	const Vector<String> wanted = { OS::get_singleton()->get_name() + " Fast", "HTML5 Fast" };
+	for (const String &name : wanted) {
+		Ref<EditorExportPlatform> platform;
+		for (int i = 0; i < exporter->get_export_platform_count(); i++) {
+			const Ref<EditorExportPlatform> candidate = exporter->get_export_platform(i);
+			if (candidate.is_valid() && candidate->get_name() == name) {
+				platform = candidate;
+				break;
+			}
 		}
-	}
-	if (platform.is_null()) {
-		return;
-	}
-	for (int i = 0; i < exporter->get_export_preset_count(); i++) {
-		const Ref<EditorExportPreset> existing = exporter->get_export_preset(i);
-		if (existing.is_valid() && existing->get_platform() == platform) {
-			return;
+		if (platform.is_null()) {
+			continue;
 		}
+		bool exists = false;
+		for (int i = 0; i < exporter->get_export_preset_count(); i++) {
+			const Ref<EditorExportPreset> existing = exporter->get_export_preset(i);
+			if (existing.is_valid() && existing->get_platform() == platform) {
+				exists = true;
+				break;
+			}
+		}
+		if (exists) {
+			continue;
+		}
+		const Ref<EditorExportPreset> preset = platform->create_preset();
+		if (preset.is_null()) {
+			continue;
+		}
+		preset->set_name(name);
+		preset->set_runnable(true);
+		if (name == "HTML5 Fast") {
+			// No threads by default: it needs cross-origin isolation on the server.
+			preset->set("variant/thread_support", false);
+			preset->set("variant/extensions_support", false);
+		} else {
+			preset->set("binary_format/architecture", OS::get_singleton()->get_name() == "macOS" ? "arm64" : "x86_64");
+		}
+		// The exporter refuses to run without a texture format.
+		preset->set("texture_format/s3tc_bptc", true);
+		exporter->add_export_preset(preset, 0);
+		exporter->save_presets();
+		print_line("Grit: added the \"" + name + "\" preset.");
 	}
-	const Ref<EditorExportPreset> preset = platform->create_preset();
-	if (preset.is_null()) {
-		return;
-	}
-	preset->set_name(wanted);
-	preset->set_runnable(true);
-	preset->set("binary_format/architecture", os_name == "macOS" ? "arm64" : "x86_64");
-	// The exporter refuses to run without a texture format; pick the one that suits
-	// this platform so a fresh preset is exportable.
-	preset->set("texture_format/s3tc_bptc", os_name != "Android");
-	exporter->add_export_preset(preset, 0);
-	exporter->save_presets();
-	print_line("Grit: added the \"" + wanted + "\" preset.");
 }
-
 void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_preset) {
 	if (p_preset.is_null()) {
 		return;
@@ -342,6 +355,8 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		plat_id = "linuxbsd";
 	} else if (plat_id == "Windows") {
 		plat_id = "windows";
+	} else if (plat_id == "HTML5") {
+		plat_id = "web";
 	} else {
 		plat_id = plat_id.to_lower();
 	}
@@ -350,15 +365,17 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// its platform string would otherwise be trusted.
 	const String native_os = OS::get_singleton()->get_name();
 	const String native_id = native_os == "macOS" ? "macos" : (native_os == "Linux" ? "linuxbsd" : native_os.to_lower());
-	if (plat_id != native_id) {
+	// HTML5 is the one target that is not native: Emscripten cross-compiles to wasm
+	// from every host, which is why its preset exists on all of them.
+	if (plat_id != "web" && plat_id != native_id) {
 		ERR_PRINT(vformat("Grit: this editor runs on %s and can only build %s templates; this preset asks for %s.", native_os, native_id, plat_id));
 		return ERR_UNAVAILABLE;
 	}
 
 	// Arch for a *native* build of this platform. Nothing is cross-compiled: a Fast
 	// template is only ever built for the platform the editor runs on.
-	String arch = "arm64";
-	if (plat_id != "macos") {
+	String arch = plat_id == "web" ? String("wasm32") : String("arm64");
+	if (plat_id != "macos" && plat_id != "web") {
 		const Ref<EditorExportPreset> arch_preset = get_export_preset();
 		arch = arch_preset.is_valid() ? String(arch_preset->get("binary_format/architecture")) : String();
 		if (arch.is_empty()) {
@@ -590,6 +607,10 @@ static String _fast_template_name(const String &p_os, bool p_debug, const String
 String GritExportPlugin::_compiled_template_path(bool p_debug) const {
 	const Ref<EditorExportPreset> preset = get_export_preset();
 	const Ref<EditorExportPlatform> platform = preset.is_valid() ? preset->get_platform() : Ref<EditorExportPlatform>();
+	// HTML5 takes one zip of wasm/js/html for both variants, like macOS does.
+	if (platform.is_valid() && platform->get_name() == "HTML5 Fast") {
+		return ProjectSettings::get_singleton()->globalize_path("res://exports").path_join(EditorExportPlatformWebFast::TEMPLATE_FILE);
+	}
 	if (platform.is_valid() && platform->get_os_name() != "macOS") {
 		// Other platforms take one binary per target, named the way their platform
 		// expects (windows_fast_release_x86_64.exe, linux_fast_release.x86_64).

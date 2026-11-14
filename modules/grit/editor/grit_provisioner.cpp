@@ -618,6 +618,7 @@ void GritProvisioner::write_build_env(const String &p_engine_root) {
 	json += "  \"pythonpath\": \"" + pythonpath.replace("\\", "/") + "\",\n";
 	json += "  \"scons_args\": \"" + args.replace("\\", "/") + "\",\n";
 	json += "  \"engine_id\": \"" + String(VERSION_HASH) + "\",\n";
+	json += "  \"toolchain_root\": \"" + root.replace("\\", "/") + "\",\n";
 	json += "  \"path_add\": [";
 	for (int i = 0; i < path_add.size(); i++) {
 		json += String(i == 0 ? "" : ", ") + "\"" + path_add[i].replace("\\", "/") + "\"";

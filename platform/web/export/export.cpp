@@ -31,6 +31,7 @@
 #include "export.h"
 
 #include "export_plugin.h"
+#include "export_plugin_fast.h"
 
 #include "core/object/class_db.h"
 #include "editor/export/editor_export.h"
@@ -51,7 +52,9 @@ void register_web_exporter() {
 	EditorSettings::get_singleton()->add_property_hint(PropertyInfo(Variant::STRING, "export/web/tls_key", PROPERTY_HINT_GLOBAL_FILE, "*.key"));
 	EditorSettings::get_singleton()->add_property_hint(PropertyInfo(Variant::STRING, "export/web/tls_certificate", PROPERTY_HINT_GLOBAL_FILE, "*.crt,*.pem"));
 
-	Ref<EditorExportPlatformWeb> platform;
+	// Only "HTML5 Fast" is offered, matching the native platforms: the project's
+	// scripts are compiled into the wasm template rather than shipped as GDScript.
+	Ref<EditorExportPlatformWebFast> platform;
 	platform.instantiate();
 	EditorExport::get_singleton()->add_export_platform(platform);
 }

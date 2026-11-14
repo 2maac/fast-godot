@@ -29,6 +29,9 @@ env:
   LIBFFI_SHA256: "6dad7f3c6c900d3c64a4fe0c2764b405e678b22df3521d2284ffaeff0198b84b"
   MOLTENVK_URL: "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar"
   MOLTENVK_SHA256: "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e"
+  # Emscripten for HTML5 Fast: the wasm template is built from the project's Grit
+  # code at export time, so every platform's bundle has to carry the compiler.
+  EM_VERSION: "4.0.11"
 
 jobs:
   linux:
@@ -40,12 +43,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: ${{ env.EM_VERSION }}
       - name: Assemble
         run: |
           set -e
           B="bundle/Fast_Godot_Toolchain_linux_x86_64"
           mkdir -p "$B"
           .github/scripts/fetch_linux_toolchain.sh "$B"
+          cp -R "$EMSDK" "$B/emsdk"
           python .github/scripts/make_bundle_zip.py "$B" "Fast_Godot_Toolchain_linux_x86_64.zip"
       - name: Publish
         env:
@@ -67,6 +74,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: ${{ env.EM_VERSION }}
       - name: Assemble
         run: |
           set -e
@@ -102,6 +112,7 @@ jobs:
             "moltenvk": "moltenvk"
           }
           JSON
+          cp -R "$EMSDK" "$B/emsdk"
           python3 .github/scripts/make_bundle_zip.py "$B" Fast_Godot_Toolchain_macos_arm64.zip
       - name: Publish
         env:
@@ -118,6 +129,9 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - uses: emscripten-core/setup-emsdk@v16
+        with:
+          version: ${{ env.EM_VERSION }}
       - name: Assemble
         shell: pwsh
         run: |
@@ -184,6 +198,7 @@ jobs:
           }
           "@
           [IO.File]::WriteAllText("$B\toolchain.json", $json.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))
+          Copy-Item $env:EMSDK "$B\emsdk" -Recurse
           python .github/scripts/make_bundle_zip.py $B Fast_Godot_Toolchain_win64.zip
       - name: Publish
         shell: pwsh
