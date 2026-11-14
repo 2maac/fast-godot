@@ -3,7 +3,12 @@ name: build-release
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
+
+# The release must describe main, so a newer push supersedes a build in flight.
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -156,7 +161,6 @@ jobs:
   release:
     name: release
     needs: build
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,6 +183,36 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          # Always the same release, whichever ref triggered this run.
+          tag_name: ${{ env.RELEASE_TAG }}
           name: Fast_Godot ${{ steps.version.outputs.pkg }} (Grit + CFFI)
           files: |
             artifacts/Fast_Godot_v*.zip
+
+      - name: Point the release tag at this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          COMMIT="$(git rev-parse HEAD)"
+          gh api -X PATCH "repos/${{ github.repository }}/git/refs/tags/${RELEASE_TAG}" \
+            -f sha="$COMMIT" -F force=true >/dev/null && echo "tag ${RELEASE_TAG} -> $COMMIT"
+
+      # The editor downloads its source from this release, so the asset has to be
+      # the commit that produced these editors. Older ones are removed: they would
+      # sit there at 80 MB each and none of them could be requested any more.
+      - name: Source archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          COMMIT="$(git rev-parse HEAD)"
+          OUT="artifacts/Fast_Godot_Source_${COMMIT}.zip"
+          git archive --format=zip --prefix="fast-godot-${COMMIT}/" -o "$OUT" HEAD
+          gh release upload "$RELEASE_TAG" "$OUT" --clobber
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
+            grep '^Fast_Godot_Source_' |
+            grep -v "$OUT" |
+            while read -r stale; do
+              echo "removing superseded $stale"
+              gh release delete-asset "$RELEASE_TAG" "$stale" -y
+            done
