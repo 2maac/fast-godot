@@ -69,7 +69,13 @@ def seed_tree(engine, dest, generated):
         target_dir = dest if rel == "." else os.path.join(dest, rel)
         os.makedirs(target_dir, exist_ok=True)
         for name in files:
-            if name.endswith(".gen.*") or name.startswith(SKIP_GLOBS):
+            # Every .gen.* file in a checkout is a build product (modules_enabled.gen.h,
+            # register_module_types.gen.cpp, shader tables...). Seeding one would import
+            # another platform's configuration into this tree: a stale
+            # modules_enabled.gen.h made register_module_types call modules the web
+            # build had compiled out, which is the "undefined symbol" link failure.
+            # (The old check was a literal `endswith(".gen.*")`, so it never matched.)
+            if ".gen." in name or name.startswith(SKIP_GLOBS):
                 continue
             source = os.path.join(root, name)
             if os.path.abspath(source).replace("\\", "/").startswith(generated_dir):
@@ -161,6 +167,11 @@ def main(argv):
         extra = [arg for arg in extra if not arg.startswith(("vulkan", "use_mingw", "cffi_libffi_path", "accesskit", "d3d12", "winrt", "angle"))]
         # HTML5 Fast never includes CFFI: libffi has no wasm target here.
         extra.append("module_cffi_enabled=no")
+        # Godot's web template defaults to threads=yes, which needs
+        # SharedArrayBuffer and therefore cross-origin isolation (COOP/COEP
+        # headers). A Fast export has to run from any static host, so build the
+        # template single-threaded; this also drops proxy_to_pthread.
+        extra.append("threads=no")
 
     with open(profile, "rb") as handle:
         key = hashlib.sha256(handle.read())
@@ -254,7 +265,13 @@ def main(argv):
         prefix = "godot.web.template_%s.wasm32" % target
         produced = {}
         for item in sorted(glob.glob(os.path.join(source, "bin", prefix + "*"))):
-            produced[os.path.basename(item)[len(prefix):]] = item
+            suffix = os.path.basename(item)[len(prefix):]
+            # A threads=no build is named <prefix>.nothreads.<ext>; the extra marker
+            # must not hide the file from the canonical mapping below (that silently
+            # packaged a template with only the HTML shells).
+            if suffix.startswith(".nothreads."):
+                suffix = suffix[len(".nothreads"):]
+            produced[suffix] = item
         if not produced:
             fail("Grit: build finished but no %s* files were produced in %s/bin" % (prefix, source), 6)
         # extension -> canonical entry name
@@ -262,6 +279,9 @@ def main(argv):
         # bundle (loader + engine API). Mapping the plain emscripten loader here was
         # what produced "ReferenceError: Engine is not defined".
         canonical = {".wasm": "godot.wasm", ".wrapped.js": "godot.js", ".js": "godot.loader.js", ".engine.js": "godot.engine.js"}
+        missing = [suffix for suffix in (".wasm", ".wrapped.js") if suffix not in produced]
+        if missing:
+            fail("Grit: template build produced no %s" % ", ".join(prefix + suffix for suffix in missing), 6)
         shell_dir = os.path.join(engine, "misc", "dist", "html")
         extras = [("full-size.html", "godot.html"), ("offline.html", "godot.offline.html")]
         out_zip = out_path if out_path.endswith(".zip") else out_path + ".zip"
@@ -271,9 +291,11 @@ def main(argv):
                     continue
                 with open(produced[suffix], "rb") as handle:
                     data = handle.read()
-                # Point every textual reference at the canonical name.
+                # Point every textual reference at the canonical name (both the plain
+                # and the threads=no spelling of the build file names).
                 for build_suffix, canonical_suffix in canonical.items():
-                    data = data.replace(prefix.encode() + build_suffix.encode(), canonical_suffix.encode())
+                    for marker in ("", ".nothreads"):
+                        data = data.replace((prefix + marker + build_suffix).encode(), canonical_suffix.encode())
                 bundle.writestr(entry, data)
             for source_name, entry in extras:
                 path = os.path.join(shell_dir, source_name)
