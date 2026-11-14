@@ -211,7 +211,7 @@ jobs:
           gh release upload "$RELEASE_TAG" "$OUT" --clobber
           gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' |
             grep '^Fast_Godot_Source_' |
-            grep -v "$OUT" |
+            grep -vxF "$(basename "$OUT")" |
             while read -r stale; do
               echo "removing superseded $stale"
               gh release delete-asset "$RELEASE_TAG" "$stale" -y
