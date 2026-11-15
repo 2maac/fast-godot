@@ -239,6 +239,15 @@ void ProjectExportDialog::_update_presets() {
 			grit_download_button->set_visible(true);
 		}
 		empty_state->set_visible(true);
+		if (export_all_button != nullptr) {
+			export_all_button->set_disabled(true);
+		}
+		if (export_button != nullptr) {
+			export_button->set_disabled(true);
+		}
+		if (get_ok_button() != nullptr) {
+			get_ok_button()->set_disabled(true);
+		}
 		updating = false;
 		return;
 	}
@@ -288,6 +297,11 @@ void ProjectExportDialog::_update_presets() {
 
 void ProjectExportDialog::_update_export_all() {
 	bool can_export = EditorExport::get_singleton()->get_export_preset_count() > 0;
+#ifdef MODULE_GRIT_ENABLED
+	if (!GritProvisioner::toolchain_ready()) {
+		can_export = false;
+	}
+#endif
 
 	for (int i = 0; i < EditorExport::get_singleton()->get_export_preset_count(); i++) {
 		Ref<EditorExportPreset> preset = EditorExport::get_singleton()->get_export_preset(i);
@@ -2183,6 +2197,7 @@ void ProjectExportDialog::_grit_download_pressed() {
 	} else {
 		print_line("Grit: toolchain ready at " + GritProvisioner::home_toolchain_folder());
 		_update_presets();
+		_update_export_all();
 	}
 	_update_grit_banner();
 }
