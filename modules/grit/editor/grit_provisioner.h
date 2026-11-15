@@ -49,7 +49,7 @@ public:
 	// The commit this editor was built from; the engine source is fetched for it.
 	static String engine_commit();
 
-	// The interpreter that runs tools/grit_build_template.py.
+	// The interpreter that runs tools/grit_build.py.
 	static String python_for_build();
 
 	// Writes <engine>/bin/grit/build_env.json: interpreter, SCons package, PATH

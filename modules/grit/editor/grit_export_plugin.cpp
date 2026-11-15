@@ -152,7 +152,7 @@ static bool _is_inside(const String &p_path, const String &p_root) {
 }
 
 // Builds an export template that contains the project's generated code, by
-// running tools/grit_build_template.py inside the engine source tree. That tree
+// running tools/grit_build.py inside the engine source tree. That tree
 // must already contain the built engine objects (bin/obj) for the requested
 // target; the script only compiles the generated sources and relinks.
 String GritExportPlugin::_resolve_engine_root() const {
@@ -173,7 +173,7 @@ String GritExportPlugin::_resolve_engine_root() const {
 	// covers both the tree binary and a staged bundle.
 	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
 	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
-		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools/grit_build_template.py"))) {
+		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools/grit_build.py"))) {
 			resolved_engine_root = dir;
 			print_line(vformat("Grit: using the engine tree at \"%s\".", dir));
 			return resolved_engine_root;
@@ -364,9 +364,9 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Open Editor Settings > Grit > Settings and choose or download a source folder, then export again.", OS::get_singleton()->get_executable_path()));
 		return ERR_UNCONFIGURED;
 	}
-	const String script = engine_root.path_join("tools/grit_build_template.py");
+	const String script = engine_root.path_join("tools/grit_build.py");
 	if (!FileAccess::exists(script)) {
-		ERR_PRINT(vformat("Grit: the engine tree at \"%s\" has no tools/grit_build_template.py. It is older than this editor; use the current toolchain bundle or checkout.", engine_root));
+		ERR_PRINT(vformat("Grit: the engine tree at \"%s\" has no tools/grit_build.py. It is older than this editor; use the current toolchain bundle or checkout.", engine_root));
 		return ERR_FILE_NOT_FOUND;
 	}
 	if (!FileAccess::exists(script)) {
@@ -432,7 +432,7 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	args.push_back(plat_id);
 
 	// The template is always a real SCons build in an isolated copy (see
-	// grit_build_template.sh): Grit is only compiled into a template when
+	// grit_build.py): Grit is only compiled into a template when
 	// grit_generated points at this project's sources, so there is no Grit-free
 	// binary to relink against. A project without a profile gets the default
 	// module set, written out as an empty profile. Hand it over as a file:
@@ -745,7 +745,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		if (project_dir.is_valid()) {
 			for (const String &name : project_dir->get_directories()) {
 				const String candidate = String("res://") + name;
-				if (FileAccess::exists(candidate.path_join("SConstruct")) && FileAccess::exists(candidate.path_join("tools").path_join("grit_build_template.py"))) {
+				if (FileAccess::exists(candidate.path_join("SConstruct")) && (FileAccess::exists(candidate.path_join("tools").path_join("grit_build.py")) || FileAccess::exists(candidate.path_join("tools").path_join("grit_build_template.py")))) {
 					ERR_PRINT(vformat("Grit: %s is a Fast_Godot source tree inside the project. Move it out (the Source Code Root Folder Path may point elsewhere, but every script under res:// is treated as project content), then export again.", candidate));
 					return ERR_INVALID_DATA;
 				}

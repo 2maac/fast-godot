@@ -143,7 +143,7 @@ static String _engine_root_dir() {
 
 static bool _engine_present(const String &p_dir) {
 	return FileAccess::exists(p_dir.path_join("SConstruct")) &&
-			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build_template.py"));
+			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
 }
 
 // The fetched archive unpacks to <dir>/fast-godot-<commit>/, so a cached extraction
