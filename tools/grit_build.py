@@ -566,7 +566,12 @@ def build_editor(argv):
         # detect.py asks MINGW_PREFIX for the MinGW headers (D3D12); setting it here
         # keeps this build's signatures identical to the batch launcher's.
         env["MINGW_PREFIX"] = os.path.join(toolchain, "mingw64")
-        extra += ["use_mingw=yes", "use_volk=yes", "vulkan=yes", "accesskit=no", "winrt=no"]
+        winrt = os.path.join(toolchain, "winrt")
+        if os.path.isdir(winrt):
+            extra += ["winrt=yes", "winrt_path=" + winrt]
+        else:
+            extra += ["winrt=no"]
+        extra += ["use_mingw=yes", "use_volk=yes", "vulkan=yes", "accesskit=no"]
         if os.path.isdir(libffi):
             extra.append("cffi_libffi_path=" + libffi)
         else:

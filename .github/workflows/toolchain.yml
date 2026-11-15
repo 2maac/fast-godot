@@ -40,6 +40,10 @@ env:
   MESA_SHA256: "dc98a962ac90613a4fccf29082d34b12fcb97bf3819517125bc3d1c86ed31afc"
   AGILITY_URL: "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.618.5"
   AGILITY_SHA256: "0027fc24f947c48dbded13ada7d280be221eb651644e23a8a476f0f1f0a079dd"
+  # WinRT (C++/WinRT headers) so MinGW editor builds have OneCore TTS, HDR
+  # monitoring and the emoji picker.
+  WINRT_URL: "https://github.com/godotengine/winrt-mingw/releases/download/72/winrt-headers.zip"
+  WINRT_SHA256: "9310868d0a82d11b7ae1943c4f35c202c6c9a692ee2deec4bde241fbe2639961"
   # Emscripten for HTML5 Fast: the wasm template is built from the project's Grit
   # code at export time, so every platform's bundle has to carry the compiler.
   EM_VERSION: "4.0.11"
@@ -209,6 +213,13 @@ jobs:
           if ($agilityHash -ne $env:AGILITY_SHA256) { throw "Agility SDK checksum mismatch: $agilityHash" }
           New-Item -ItemType Directory -Force "$B\agility_sdk" | Out-Null
           tar.exe -xf agility.nupkg -C "$B\agility_sdk"
+          # WinRT headers ship in the bundle so winrt=yes works without a download
+          # (winrt_path points at $B\winrt).
+          curl.exe -sSL --fail -o winrt.zip "$env:WINRT_URL"
+          $winrtHash = (Get-FileHash winrt.zip -Algorithm SHA256).Hash.ToLower()
+          if ($winrtHash -ne $env:WINRT_SHA256) { throw "WinRT checksum mismatch: $winrtHash" }
+          New-Item -ItemType Directory -Force "$B\winrt" | Out-Null
+          tar.exe -xf winrt.zip -C "$B\winrt"
           # ANGLE static libraries ship in the bundle, so a local editor build does
           # not download them (angle_libs points at $B\angle).
           curl.exe -sSL --fail -o angle.zip "https://github.com/godotengine/godot-angle-static/releases/download/$env:ANGLE_VERSION/godot-angle-static-x86_64-gcc-release.zip"
@@ -231,7 +242,8 @@ jobs:
           "libffi": "libffi/3.8.0/mingw64",
           "angle": "angle",
           "mesa": "mesa-x86_64-gcc",
-          "agility_sdk": "agility_sdk"
+          "agility_sdk": "agility_sdk",
+          "winrt": "winrt"
           }
           "@
           [IO.File]::WriteAllText("$B\toolchain.json", $json.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))

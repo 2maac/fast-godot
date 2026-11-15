@@ -53,6 +53,11 @@ if not exist "%TC%\libffi\3.8.0\mingw64\include" (
   exit /b 1
 )
 
+rem WinRT (OneCore TTS, HDR monitoring, emoji picker): the toolchain ships the
+rem C++/WinRT headers in winrt\; without them the feature stays off.
+set "WINRT_ARG=winrt=no"
+if exist "%TC%\winrt\winrt" set "WINRT_ARG=winrt=yes winrt_path=%TC%\winrt"
+
 set "PATH=%TC%\mingw64\bin;%TC%\python;%PATH%"
 set "PYTHONPATH=%TC%\scons\4.11.1\scons-4.11.1"
 set "MINGW_PREFIX=%TC%\mingw64"
@@ -96,7 +101,7 @@ echo Source:    %SRC%
 echo.
 
 cd /d "%SRC%"
-"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no winrt=no cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %D3D12_ARGS% %EXTRA%
+"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no %WINRT_ARG% cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %D3D12_ARGS% %EXTRA%
 set "CODE=!ERRORLEVEL!"
 
 echo.
