@@ -7,8 +7,11 @@
 # packages at all.
 #
 # Zig is used because it is one self-contained directory: it brings its own
-# libc++ (linked statically) and targets glibc 2.17, so the produced template does
-# not get pinned to this build machine's glibc.
+# libc++ (linked statically) and targets glibc 2.17, the oldest glibc still worth
+# supporting (CentOS/RHEL 7, Debian 8, Ubuntu 14.04 and everything newer), so the
+# produced template runs on essentially any glibc distribution. The one symbol
+# glibc 2.17 lacks that Godot needs (memfd_create, 2.27) has a syscall shim in
+# platform/linuxbsd/grit_glibc_compat.c.
 #
 # usage: make_linux_compiler.sh <bundle dir>
 set -euo pipefail
@@ -16,7 +19,7 @@ set -euo pipefail
 B="${1:?usage: make_linux_compiler.sh <bundle dir>}"
 ZIG_VERSION="${ZIG_VERSION:-0.17.1}"
 ZIG_SHA256="${ZIG_SHA256:-3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a}"
-ZIG_TARGET="${ZIG_TARGET:-x86_64-linux-gnu.2.28}"
+ZIG_TARGET="${ZIG_TARGET:-x86_64-linux-gnu.2.17}"
 
 mkdir -p "$B/zig" "$B/compiler"
 archive="$(mktemp)"
