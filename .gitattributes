@@ -21,3 +21,6 @@ misc/msvs/* eol=crlf
 *.png binary
 *.ttf binary
 *.tza binary
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
