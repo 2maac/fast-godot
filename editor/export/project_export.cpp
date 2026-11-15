@@ -2048,7 +2048,7 @@ ProjectExportDialog::ProjectExportDialog() {
 	grit_banner_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	grit_banner->add_child(grit_banner_label);
 	grit_download_button = memnew(Button);
-	grit_download_button->set_text(TTR("Download Fast_Godot toolchain"));
+	grit_download_button->set_text(TTR("Download Build"));
 	grit_download_button->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_grit_download_pressed));
 	grit_banner->add_child(grit_download_button);
 	grit_banner->hide();
