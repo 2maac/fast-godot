@@ -31,6 +31,7 @@
 #pragma once
 
 #include "core/templates/rb_set.h"
+#include "modules/modules_enabled.gen.h"
 #include "editor/export/editor_export_preset.h"
 #include "scene/gui/dialogs.h"
 
@@ -43,6 +44,8 @@ class EditorInspector;
 class EditorPropertyPath;
 class ItemList;
 class LinkButton;
+class VBoxContainer;
+class Label;
 class MenuButton;
 class OptionButton;
 class PopupMenu;
@@ -157,6 +160,13 @@ class ProjectExportDialog : public ConfirmationDialog {
 
 	void _force_update_current_preset_parameters();
 	void _update_current_preset();
+#ifdef MODULE_GRIT_ENABLED
+	void _update_grit_banner();
+	void _grit_download_pressed();
+	VBoxContainer *grit_banner = nullptr;
+	Label *grit_banner_label = nullptr;
+	Button *grit_download_button = nullptr;
+#endif
 	void _update_presets();
 
 	void _export_type_changed(int p_which);

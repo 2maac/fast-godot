@@ -42,6 +42,16 @@ public:
 	// This is what the "Fetch Source" button calls.
 	static String fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error = nullptr);
 
+	// True when the configured toolchain folder has everything this platform needs.
+	static bool toolchain_ready();
+
+	// ~/fast_godot_toolchain (or %USERPROFILE%\fast_godot_toolchain).
+	static String home_toolchain_folder();
+
+	// Runs tools/toolchain/download_toolchain.{sh,cmd} from the engine source with a
+	// progress dialog, then points the toolchain setting at p_dest.
+	static bool download_toolchain(const String &p_dest, String *r_error = nullptr);
+
 	// The commit this editor was built from; the engine source is fetched for it.
 	static String engine_commit();
 

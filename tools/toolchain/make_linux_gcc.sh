@@ -29,7 +29,11 @@ while read -r url sha _name; do
         curl -sSfL --retry 3 -o "$file" "$url"
     fi
     echo "$sha  $file" | sha256sum -c - >/dev/null
-    dpkg-deb -x "$file" "$B/gcc/root"
+    if command -v dpkg-deb >/dev/null 2>&1; then
+        dpkg-deb -x "$file" "$B/gcc/root"
+    else
+        (cd "$B/gcc/root" && ar p "$file" data.tar.* | tar -x)
+    fi
 done < "$list"
 rm -rf "$B/gcc/tmp"
 

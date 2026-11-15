@@ -423,6 +423,136 @@ static String _unpack_engine(const String &p_archive, const String &p_dest, cons
 	return tree;
 }
 
+static bool _toolchain_complete(const String &p_root) {
+	if (p_root.is_empty() || !FileAccess::exists(p_root.path_join("toolchain.json"))) {
+		return false;
+	}
+	if (!DirAccess::dir_exists_absolute(p_root.path_join("python"))) {
+		return false;
+	}
+	if (!FileAccess::exists(p_root.path_join("scons").path_join("4.11.1").path_join("scons-4.11.1").path_join("SCons").path_join("__init__.py"))) {
+		return false;
+	}
+	const String os = OS::get_singleton()->get_name();
+	if (os == "Windows") {
+		return FileAccess::exists(p_root.path_join("mingw64").path_join("bin").path_join("gcc.exe")) &&
+				FileAccess::exists(p_root.path_join("libffi").path_join("3.8.0").path_join("mingw64").path_join("lib").path_join("libffi.a")) &&
+				DirAccess::dir_exists_absolute(p_root.path_join("angle")) &&
+				DirAccess::dir_exists_absolute(p_root.path_join("mesa-x86_64-gcc")) &&
+				DirAccess::dir_exists_absolute(p_root.path_join("agility_sdk")) &&
+				DirAccess::dir_exists_absolute(p_root.path_join("winrt"));
+	}
+	if (os == "macOS") {
+		return DirAccess::dir_exists_absolute(p_root.path_join("moltenvk").path_join("macOS").path_join("lib").path_join("MoltenVK.xcframework"));
+	}
+	return FileAccess::exists(p_root.path_join("gcc").path_join("bin").path_join("g++")) &&
+			FileAccess::exists(p_root.path_join("gcc").path_join("bin").path_join("wayland-scanner")) &&
+			FileAccess::exists(p_root.path_join("libffi").path_join("linux-x86_64").path_join("include").path_join("ffi.h"));
+}
+
+bool GritProvisioner::toolchain_ready() {
+	return _toolchain_complete(configured_toolchain());
+}
+
+String GritProvisioner::home_toolchain_folder() {
+	String home = OS::get_singleton()->get_environment("HOME");
+	if (home.is_empty()) {
+		home = OS::get_singleton()->get_environment("USERPROFILE");
+	}
+	if (home.is_empty()) {
+		home = OS::get_singleton()->get_data_path();
+	}
+	return home.path_join("fast_godot_toolchain");
+}
+
+bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) {
+	String local_error;
+	String &error = r_error ? *r_error : local_error;
+
+	const String engine = ensure_engine(false, &error);
+	if (engine.is_empty()) {
+		return false;
+	}
+	const bool windows = OS::get_singleton()->get_name() == "Windows";
+	const String script = engine.path_join("tools").path_join("toolchain").path_join(windows ? "download_toolchain.cmd" : "download_toolchain.sh");
+	if (!FileAccess::exists(script)) {
+		error = vformat("the toolchain downloader is missing from \"%s\".", engine);
+		return false;
+	}
+	if (DirAccess::make_dir_recursive_absolute(p_dest) != OK) {
+		error = vformat("could not create \"%s\".", p_dest);
+		return false;
+	}
+	const String progress_path = OS::get_singleton()->get_cache_path().path_join("grit_toolchain_download.txt");
+	DirAccess::remove_absolute(progress_path);
+
+	List<String> args;
+	args.push_back(p_dest);
+	args.push_back(progress_path);
+	ProcessID pid = 0;
+	const String program = windows ? "cmd.exe" : script;
+	if (windows) {
+		args.push_front("/c");
+		args.push_front(script);
+	}
+	if (OS::get_singleton()->create_process(program, args, &pid) != OK) {
+		error = "could not start the toolchain downloader.";
+		return false;
+	}
+
+	EditorProgress progress("grit_toolchain_download", TTR("Downloading the Fast_Godot toolchain"), 100, true);
+	String state = TTR("Downloading the Fast_Godot toolchain");
+	int percent = -1;
+	bool finished = false;
+	while (true) {
+		OS::get_singleton()->delay_usec(200000);
+		Ref<FileAccess> file = FileAccess::open(progress_path, FileAccess::READ);
+		if (file.is_valid()) {
+			const PackedStringArray lines = file->get_as_text().split("\n");
+			for (int i = lines.size() - 1; i >= 0; i--) {
+				const String line = lines[i].strip_edges();
+				if (line.begins_with("GRIT_DONE ")) {
+					finished = true;
+					break;
+				}
+				if (line.begins_with("GRIT_ERROR ")) {
+					error = line.substr(String("GRIT_ERROR ").length()).strip_edges();
+					break;
+				}
+				if (line.begins_with("GRIT_PROGRESS ")) {
+					const PackedStringArray parts = line.split(" ", false, 2);
+					if (parts.size() >= 3) {
+						percent = parts[1].to_int();
+						state = parts[2];
+					}
+					break;
+				}
+			}
+		}
+		if (progress.step(state, percent)) {
+			OS::get_singleton()->kill(pid);
+			error = "the download was cancelled";
+			return false;
+		}
+		if (DisplayServer::get_singleton()) {
+			DisplayServer::get_singleton()->process_events();
+		}
+		if (!OS::get_singleton()->is_process_running(pid)) {
+			break;
+		}
+	}
+	if (!error.is_empty() || !finished || !_toolchain_complete(p_dest)) {
+		if (error.is_empty()) {
+			error = "the downloader finished but the toolchain is incomplete.";
+		}
+		return false;
+	}
+	EditorSettings *settings = EditorSettings::get_singleton();
+	settings->set_setting(SETTING_TOOLCHAIN_ROOT, p_dest);
+	settings->save();
+	return true;
+}
+
 String GritProvisioner::fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;

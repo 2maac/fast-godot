@@ -30,6 +30,10 @@
 
 #include "project_export.h"
 
+#ifdef MODULE_GRIT_ENABLED
+#include "modules/grit/editor/grit_provisioner.h"
+#endif
+
 #include "core/config/project_settings.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
@@ -149,6 +153,9 @@ void ProjectExportDialog::_notification(int p_what) {
 }
 
 void ProjectExportDialog::popup_export() {
+#ifdef MODULE_GRIT_ENABLED
+	_update_grit_banner();
+#endif
 	add_preset->get_popup()->clear();
 	for (int i = 0; i < EditorExport::get_singleton()->get_export_platform_count(); i++) {
 		Ref<EditorExportPlatform> plat = EditorExport::get_singleton()->get_export_platform(i);
@@ -2022,6 +2029,19 @@ ProjectExportDialog::ProjectExportDialog() {
 	get_ok_button()->set_tooltip_text(TTRC("Export the project resources as a PCK or ZIP package. This is not a playable build, only the project data without a Godot executable."));
 	get_ok_button()->set_disabled(true);
 
+#ifdef MODULE_GRIT_ENABLED
+	grit_banner = memnew(VBoxContainer);
+	main_vb->add_child(grit_banner);
+	grit_banner_label = memnew(Label);
+	grit_banner_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	grit_banner->add_child(grit_banner_label);
+	grit_download_button = memnew(Button);
+	grit_download_button->set_text(TTR("Download Fast_Godot toolchain"));
+	grit_download_button->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_grit_download_pressed));
+	grit_banner->add_child(grit_download_button);
+	grit_banner->hide();
+#endif
+
 	export_button = add_button(TTRC("Export Project..."), !DisplayServer::get_singleton()->get_swap_cancel_ok(), "export");
 	export_button->set_tooltip_text(TTRC("Export the project as a playable build (Godot executable and project data) for the selected preset."));
 	export_button->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_export_project));
@@ -2112,3 +2132,26 @@ ProjectExportDialog::ProjectExportDialog() {
 		}
 	}
 }
+
+#ifdef MODULE_GRIT_ENABLED
+void ProjectExportDialog::_update_grit_banner() {
+	if (grit_banner == nullptr) {
+		return;
+	}
+	const bool ready = GritProvisioner::toolchain_ready();
+	grit_banner->set_visible(!ready);
+	if (!ready) {
+		grit_banner_label->set_text(TTR("Fast_Godot needs a toolchain to build Fast exports. Downloading it creates a fast_godot_toolchain folder next to your home folder."));
+	}
+}
+
+void ProjectExportDialog::_grit_download_pressed() {
+	String error;
+	if (!GritProvisioner::download_toolchain(GritProvisioner::home_toolchain_folder(), &error)) {
+		ERR_PRINT("Grit: " + error);
+	} else {
+		print_line("Grit: toolchain ready at " + GritProvisioner::home_toolchain_folder());
+	}
+	_update_grit_banner();
+}
+#endif
