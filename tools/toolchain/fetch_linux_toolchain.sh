@@ -31,6 +31,7 @@ cat > "$B/toolchain.json" <<'JSON'
   "platform": "linux",
   "arch": "x86_64",
   "python": "python",
-  "scons": "scons/4.11.1/scons-4.11.1"
+  "scons": "scons/4.11.1/scons-4.11.1",
+  "gcc": "gcc"
 }
 JSON

@@ -136,7 +136,9 @@ def check_export_dependencies(platform, env):
                  "folder, and %s has none. Point Editor Settings > Grit > ToolChain "
                  "Root Folder Path at a Fast_Godot_Toolchain_* bundle." % (toolchain or "the configured path"), 5)
     elif platform == "linuxbsd":
-        compiler = os.path.join(toolchain, "compiler", "clang")
+        compiler = os.path.join(toolchain, "gcc", "bin", "g++")
+        if not os.path.isfile(compiler):
+            compiler = os.path.join(toolchain, "compiler", "clang")
         if not os.path.isfile(compiler) and not which("g++"):
             fail("Grit: no C++ compiler. The toolchain bundle carries one in compiler/; "
                  "without it install g++, pkg-config and the static libstdc++ "
@@ -286,21 +288,33 @@ def export_main(argv):
     env = read_env(engine)
     check_export_dependencies(platform, env)
     extra = env.get("scons_args", "").split()
-    # No Fast template uses LTO. macOS defaults to none already, the bundled Linux
-    # compiler cannot do it (Zig), and the web wasm was byte-for-byte the same size
-    # with and without emscripten's thin LTO; on Windows/MinGW and system-compiler
-    # builds this turns it off. The only optimization knob is -O3: the web
-    # "Optimized" option, and the default for native release templates.
-    extra.append("lto=none")
+    toolchain_root = env.get("toolchain_root") or ""
+    bundled_gcc = platform == "linuxbsd" and os.path.isfile(
+        os.path.join(toolchain_root, "gcc", "bin", "g++")
+    )
+    # The bundled Linux compiler is GCC, which can do LTO, so Linux release
+    # templates get it. Everything else stays without: the web wasm was
+    # byte-for-byte the same with and without emscripten's thin LTO, macOS
+    # defaults to none, and the older Zig bundles could not do it at all.
+    extra.append("lto=full" if bundled_gcc else "lto=none")
     extra_paths = list(env.get("path_add") or [])
     if platform == "linuxbsd":
-        # A Linux toolchain can carry its own compiler (Zig): the bundle then needs
-        # no distribution -dev packages. Godot vendors the X11/ALSA headers and
-        # dlopens those libraries, so the compiler is all that was missing.
-        compiler_dir = os.path.join(env.get("toolchain_root") or "", "compiler")
+        # A Linux toolchain can carry its own compiler (focal GCC 9, or the older
+        # Zig): the bundle then needs no distribution -dev packages. Godot vendors
+        # the X11/ALSA headers and dlopens those libraries, so the compiler is all
+        # that was missing.
+        gcc_bin = os.path.join(toolchain_root, "gcc", "bin")
+        if bundled_gcc:
+            extra += [
+                "CC=" + os.path.join(gcc_bin, "gcc"),
+                "CXX=" + os.path.join(gcc_bin, "g++"),
+            ]
+            extra_paths.insert(0, gcc_bin)
+            announce("Grit: using the bundled GCC 9 (LTO)")
+        compiler_dir = os.path.join(toolchain_root, "compiler")
         clang = os.path.join(compiler_dir, "clang")
         clangxx = os.path.join(compiler_dir, "clang++")
-        if os.path.isfile(clang) and os.path.isfile(clangxx):
+        if not bundled_gcc and os.path.isfile(clang) and os.path.isfile(clangxx):
             # Zig links its own libc++ statically; -static-libstdc++ is not a
             # thing there, so the static-cpp flag has to go.
             # Zig links its own libc++ statically; -static-libstdc++ is not a
@@ -314,7 +328,7 @@ def export_main(argv):
             announce("Grit: the toolchain has no compiler; using the system C++ toolchain")
         # CFFI needs libffi headers and a static archive; the toolchain carries
         # them so no libffi-dev is required on the machine.
-        libffi = os.path.join(env.get("toolchain_root") or "", "libffi", "linux-x86_64")
+        libffi = os.path.join(toolchain_root, "libffi", "linux-x86_64")
         if os.path.isdir(os.path.join(libffi, "include")):
             extra.append("cffi_libffi_path=" + libffi)
         else:
@@ -593,8 +607,15 @@ def build_editor(argv):
         elif options["deps"]:
             install_d3d12(engine, python, os.path.join(toolchain, "mingw64") if toolchain else "")
     elif platform == "linuxbsd":
+        gcc_bin = os.path.join(toolchain, "gcc", "bin")
         compiler = os.path.join(toolchain, "compiler")
-        if os.path.isfile(os.path.join(compiler, "clang")):
+        if os.path.isfile(os.path.join(gcc_bin, "g++")):
+            extra += [
+                "CC=" + os.path.join(gcc_bin, "gcc"),
+                "CXX=" + os.path.join(gcc_bin, "g++"),
+            ]
+            paths.insert(0, gcc_bin)
+        elif os.path.isfile(os.path.join(compiler, "clang")):
             extra += [
                 "CC=" + os.path.join(compiler, "clang"),
                 "CXX=" + os.path.join(compiler, "clang++"),
