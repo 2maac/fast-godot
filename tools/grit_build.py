@@ -2,7 +2,7 @@
 """The one build script for Fast_Godot: editor, native export and HTML5 export.
 
     grit_build.py editor [--platform P] [--jobs N] [--toolchain DIR]
-                         [--mingw|--msvc] [--no-deps]
+                         [--engine DIR] [--no-deps]
     grit_build.py native_export <engine> <generated> <target> <out> <platform>
                                 <profile> <arch> [optimized|size]
     grit_build.py html5_export  <engine> <generated> <target> <out> <profile>
@@ -66,6 +66,23 @@ def toolchain_scons(toolchain):
         return ""
     candidate = os.path.join(toolchain, "scons", "4.11.1", "scons-4.11.1")
     return candidate if os.path.isdir(candidate) else ""
+
+
+def find_engine(start=None):
+    """Locate a Fast_Godot checkout from GRIT_ENGINE, the cwd or this script."""
+    starts = [os.environ.get("GRIT_ENGINE"), start, os.getcwd()]
+    for base in starts:
+        if not base:
+            continue
+        path = os.path.abspath(base)
+        while True:
+            if os.path.isfile(os.path.join(path, "tools", "grit_build.py")):
+                return path
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+    return ""
 
 
 def install_d3d12(engine, python, mingw_prefix=""):
@@ -464,6 +481,7 @@ def parse_editor_args(argv):
         "platform": host_platform(),
         "jobs": str(os.cpu_count() or 8),
         "toolchain": os.environ.get("GRIT_TOOLCHAIN", ""),
+        "engine": os.environ.get("GRIT_ENGINE", ""),
         "deps": True,
         "extra": [],
     }
@@ -476,6 +494,8 @@ def parse_editor_args(argv):
             options["jobs"] = rest.pop(0)
         elif arg in ("--toolchain", "-t") and rest:
             options["toolchain"] = rest.pop(0)
+        elif arg in ("--engine", "-e") and rest:
+            options["engine"] = rest.pop(0)
         elif arg == "--no-deps":
             options["deps"] = False
         elif arg in ("-h", "--help"):
@@ -491,9 +511,18 @@ def parse_editor_args(argv):
 def build_editor(argv):
     """Build the editor for this host, installing what the build needs first."""
     options = parse_editor_args(argv)
-    engine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    engine = options["engine"] or find_engine(os.path.dirname(os.path.abspath(__file__)))
+    if not engine:
+        fail("Grit: cannot find a Fast_Godot source tree. Pass --engine DIR (or set "
+             "GRIT_ENGINE); the tree must contain tools/grit_build.py.", 2)
+    engine = os.path.abspath(engine)
+    if not os.path.isfile(os.path.join(engine, "tools", "grit_build.py")):
+        fail("Grit: %s does not look like a Fast_Godot checkout (no "
+             "tools/grit_build.py)." % engine, 2)
     platform = options["platform"]
     toolchain = options["toolchain"] or (read_env(engine).get("toolchain_root") or "")
+    if toolchain:
+        toolchain = os.path.abspath(toolchain)
     if toolchain and not os.path.isdir(toolchain):
         fail("Grit: toolchain folder not found: %s" % toolchain, 2)
     env = dict(os.environ)

@@ -55,6 +55,7 @@ jobs:
           .github/scripts/fetch_linux_toolchain.sh "$B"
           cp -R "$EMSDK" "$B/emsdk"
           .github/scripts/make_linux_compiler.sh "$B"
+          install -m 0755 tools/build-editor.sh "$B/build-editor.sh"
           python .github/scripts/make_bundle_zip.py "$B" "Fast_Godot_Toolchain_linux_x86_64.zip"
       - name: Publish
         env:
@@ -115,6 +116,7 @@ jobs:
           }
           JSON
           cp -R "$EMSDK" "$B/emsdk"
+          install -m 0755 tools/build-editor.sh "$B/build-editor.sh"
           python3 .github/scripts/make_bundle_zip.py "$B" Fast_Godot_Toolchain_macos_arm64.zip
       - name: Publish
         env:
@@ -201,6 +203,8 @@ jobs:
           "@
           [IO.File]::WriteAllText("$B\toolchain.json", $json.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))
           Copy-Item $env:EMSDK "$B\emsdk" -Recurse
+          Copy-Item tools\build-editor.cmd $B\build-editor.cmd
+          Copy-Item tools\build-editor.ps1 $B\build-editor.ps1
           python .github/scripts/make_bundle_zip.py $B Fast_Godot_Toolchain_win64.zip
       - name: Publish
         shell: pwsh
