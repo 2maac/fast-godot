@@ -37,10 +37,6 @@ public:
 	// The toolchain folder chosen in the editor settings, or empty when unusable.
 	static String configured_toolchain();
 
-	// Downloads this platform's toolchain bundle into p_folder, unpacks it and
-	// returns the folder that holds toolchain.json, or empty with r_error set.
-	static String fetch_toolchain_to(const String &p_folder, bool p_show_progress, String *r_error = nullptr);
-
 	// Downloads this editor's engine source into p_folder (or reuses a tree that is
 	// already there) and returns the tree path, or an empty string with r_error set.
 	// This is what the "Fetch Source" button calls.

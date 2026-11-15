@@ -33,21 +33,25 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 	browse_button->connect("pressed", callable_mp(this, &GritPathEditor::_browse_pressed));
 	row->add_child(browse_button);
 
-	download_button = memnew(Button);
-	download_button->set_text(TTR("Download"));
-	download_button->set_tooltip_text(toolchain ? TTR("Download this platform's toolchain into a folder.") : TTR("Download this editor's Fast_Godot source into a folder."));
-	download_button->connect("pressed", callable_mp(this, &GritPathEditor::_download_pressed));
-	row->add_child(download_button);
+	// The source can still be fetched from the GitHub archive of this commit; the
+	// toolchain is built locally and picked with the folder button.
+	if (!toolchain) {
+		download_button = memnew(Button);
+		download_button->set_text(TTR("Download"));
+		download_button->set_tooltip_text(TTR("Download this editor's Fast_Godot source into a folder."));
+		download_button->connect("pressed", callable_mp(this, &GritPathEditor::_download_pressed));
+		row->add_child(download_button);
 
-	dest_dialog = memnew(EditorFileDialog);
-	dest_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
-	dest_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
-	dest_dialog->set_title(toolchain ? TTR("Choose a folder for the toolchain") : TTR("Choose a folder for the Fast_Godot source"));
-	// Never start inside the project: whatever is downloaded here is engine source
-	// or a toolchain, and inside res:// it would be scanned, imported and exported.
-	dest_dialog->set_current_dir(OS::get_singleton()->get_system_dir(OS::SYSTEM_DIR_DOCUMENTS));
-	dest_dialog->connect("dir_selected", callable_mp(this, &GritPathEditor::_dest_chosen));
-	add_child(dest_dialog);
+		dest_dialog = memnew(EditorFileDialog);
+		dest_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
+		dest_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
+		dest_dialog->set_title(TTR("Choose a folder for the Fast_Godot source"));
+		// Never start inside the project: the source inside res:// would be scanned,
+		// imported and exported as game content.
+		dest_dialog->set_current_dir(OS::get_singleton()->get_system_dir(OS::SYSTEM_DIR_DOCUMENTS));
+		dest_dialog->connect("dir_selected", callable_mp(this, &GritPathEditor::_dest_chosen));
+		add_child(dest_dialog);
+	}
 
 	browse_dialog = memnew(EditorFileDialog);
 	browse_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
@@ -105,9 +109,7 @@ void GritPathEditor::_dest_chosen(const String &p_dir) {
 	}
 	String error;
 	// The archive is unpacked into the chosen folder and discarded.
-	const String root = toolchain
-			? GritProvisioner::fetch_toolchain_to(p_dir, true, &error)
-			: GritProvisioner::fetch_source_to(p_dir, true, &error);
+	const String root = GritProvisioner::fetch_source_to(p_dir, true, &error);
 	if (root.is_empty()) {
 		ERR_PRINT("Grit: " + error);
 		return;
