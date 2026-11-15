@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Bundles a C++ compiler into a Linux toolchain so that a Fast Linux template can
-# be built on a machine with no distribution -dev packages at all. Godot vendors
-# the X11/Wayland/ALSA headers and dlopens those libraries at run time (use_sowrap
-# defaults to yes), so a compiler is the only thing a template build needs.
+# Bundles the pieces a Fast Linux template needs beyond Python and SCons: a C++
+# compiler and libffi. Godot vendors the X11/Wayland/ALSA headers and dlopens those
+# libraries at run time (use_sowrap defaults to yes), and the CFFI module needs
+# libffi headers plus a static archive, which Linux distros only ship in
+# libffi-dev. With this script a template builds on a machine with no -dev
+# packages at all.
 #
 # Zig is used because it is one self-contained directory: it brings its own
 # libc++ (linked statically) and targets glibc 2.17, so the produced template does
@@ -14,7 +16,7 @@ set -euo pipefail
 B="${1:?usage: make_linux_compiler.sh <bundle dir>}"
 ZIG_VERSION="${ZIG_VERSION:-0.17.1}"
 ZIG_SHA256="${ZIG_SHA256:-3581863e3cbcfd0fce0efc682ce7e9e93da96668a977791d356a26d2a7e9b17a}"
-ZIG_TARGET="${ZIG_TARGET:-x86_64-linux-gnu.2.17}"
+ZIG_TARGET="${ZIG_TARGET:-x86_64-linux-gnu.2.28}"
 
 mkdir -p "$B/zig" "$B/compiler"
 archive="$(mktemp)"
@@ -80,3 +82,24 @@ CPP
 rm -f "$probe" "$probe.bin"
 
 echo "linux compiler: zig ${ZIG_VERSION} -> ${ZIG_TARGET}, $(du -sh "$B/zig" | cut -f1)"
+
+# libffi, for the CFFI module. The package only ships the headers and the static
+# archive in libffi-dev; extract them so a template build does not need it installed.
+apt-get update -qq
+ffi_tmp="$(mktemp -d)"
+(
+	cd "$ffi_tmp"
+	apt-get download libffi-dev >/dev/null
+	dpkg-deb -x libffi-dev_*.deb root
+)
+ffi_h="$(find "$ffi_tmp/root/usr/include" -name ffi.h | head -1)"
+ffi_lib="$(find "$ffi_tmp/root/usr/lib" -name libffi.a | head -1)"
+if [ -z "$ffi_h" ] || [ -z "$ffi_lib" ]; then
+	echo "libffi-dev layout not recognised" >&2
+	exit 1
+fi
+mkdir -p "$B/libffi/linux-x86_64/include" "$B/libffi/linux-x86_64/lib"
+cp "$ffi_h" "$(dirname "$ffi_h")/ffitarget.h" "$B/libffi/linux-x86_64/include/"
+cp "$ffi_lib" "$B/libffi/linux-x86_64/lib/"
+rm -rf "$ffi_tmp"
+echo "linux libffi: $(du -sh "$B/libffi/linux-x86_64" | cut -f1)"

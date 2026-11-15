@@ -146,6 +146,29 @@ static bool _engine_present(const String &p_dir) {
 			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build_template.py"));
 }
 
+// The fetched archive unpacks to <dir>/fast-godot-<commit>/, so a cached extraction
+// sits one level below <toolchain>/engine/<commit>. Looking only at the top level
+// made every export download and unpack the source again.
+static String _engine_tree_at(const String &p_dir) {
+	if (_engine_present(p_dir)) {
+		return p_dir;
+	}
+	Ref<DirAccess> dir = DirAccess::open(p_dir);
+	if (dir.is_null()) {
+		return String();
+	}
+	String found;
+	dir->list_dir_begin();
+	for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
+		if (dir->current_is_dir() && _engine_present(p_dir.path_join(name))) {
+			found = p_dir.path_join(name);
+			break;
+		}
+	}
+	dir->list_dir_end();
+	return found;
+}
+
 static bool _download(const String &p_url, const String &p_dest, String &r_error) {
 	List<String> args;
 	args.push_back("-L");
@@ -533,8 +556,8 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	if (!configured.is_empty()) {
 		return configured;
 	}
-	const String existing = _engine_root_dir();
-	if (_engine_present(existing)) {
+	const String existing = _engine_tree_at(_engine_root_dir());
+	if (!existing.is_empty()) {
 		return existing;
 	}
 

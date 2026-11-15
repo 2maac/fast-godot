@@ -175,11 +175,22 @@ def main(argv):
         if os.path.isfile(clang) and os.path.isfile(clangxx):
             # Zig links its own libc++ statically; -static-libstdc++ is not a
             # thing there, so the static-cpp flag has to go.
-            extra += ["CC=" + clang, "CXX=" + clangxx, "use_static_cpp=no"]
+            # Zig links its own libc++ statically; -static-libstdc++ is not a
+            # thing there, so the static-cpp flag has to go. LTO flags are also
+            # pointless (Zig does not do LTO) and only cost memory, which matters
+            # for glslang's generated tables.
+            extra += ["CC=" + clang, "CXX=" + clangxx, "use_static_cpp=no", "lto=none"]
             extra_paths.insert(0, compiler_dir)  # ar, ranlib, pkg-config stub
             announce("Grit: using the bundled Linux compiler %s" % clang)
         else:
             announce("Grit: the toolchain has no compiler; using the system C++ toolchain")
+        # CFFI needs libffi headers and a static archive; the toolchain carries
+        # them so no libffi-dev is required on the machine.
+        libffi = os.path.join(env.get("toolchain_root") or "", "libffi", "linux-x86_64")
+        if os.path.isdir(os.path.join(libffi, "include")):
+            extra.append("cffi_libffi_path=" + libffi)
+        else:
+            announce("Grit: no bundled libffi; CFFI needs the system libffi headers")
     if platform == "web":
         # Web inherits nothing from the host build: vulkan, mingw, d3d12 and the
         # libffi path are all meaningless for wasm, and passing them in makes the
@@ -340,6 +351,9 @@ def main(argv):
         binary = os.path.join(source, "bin", "godot.windows.template_%s.%s.exe" % (target, arch))
     else:
         binary = os.path.join(source, "bin", "godot.linuxbsd.template_%s.%s" % (target, arch))
+        # A clang/LLVM build appends ".llvm" to every target name.
+        if not os.path.isfile(binary) and os.path.isfile(binary + ".llvm"):
+            binary += ".llvm"
     if not os.path.isfile(binary):
         fail("Grit: build finished but %s is missing" % binary, 6)
 

@@ -51,5 +51,18 @@ if env["platform"] == "windows":
     # The dlmalloc clash with SDL is resolved in CI by renaming libffi's symbols
     # inside the archive, so no linker override is needed here.
 else:
-    # System libffi: shipped with the macOS SDK and by mainstream Linux distros.
-    env.Append(LIBS=["ffi"])
+    prefix = env.get("cffi_libffi_path", "")
+    if prefix:
+        # A prefix is supplied when the toolchain carries libffi (Linux Fast
+        # templates), so the build needs no libffi-dev on the machine. The archive
+        # is linked whole: GNU ld only pulls a member that satisfies a reference it
+        # has already seen, which a plain path would not.
+        env_cffi.Prepend(CPPPATH=[os.path.join(prefix, "include")])
+        archive = os.path.join(prefix, "lib", "libffi.a")
+        if not os.path.isfile(archive):
+            print_error("cffi: " + archive + " is missing")
+            env.Exit(255)
+        env.Append(LINKFLAGS=["-Wl,--whole-archive", archive, "-Wl,--no-whole-archive"])
+    else:
+        # System libffi: shipped with the macOS SDK and by mainstream Linux distros.
+        env.Append(LIBS=["ffi"])
