@@ -140,9 +140,8 @@ def check_export_dependencies(platform, env):
         if not os.path.isfile(compiler):
             compiler = os.path.join(toolchain, "compiler", "clang")
         if not os.path.isfile(compiler) and not which("g++"):
-            fail("Grit: no C++ compiler. The toolchain bundle carries one in compiler/; "
-                 "without it install g++, pkg-config and the static libstdc++ "
-                 "(tools/install_linux_deps.sh can do that).", 5)
+            fail("Grit: no C++ compiler. Use a toolchain bundle that carries gcc/ "
+                 "(tools/toolchain/make_linux_gcc.sh builds one).", 5)
         libffi = os.path.join(toolchain, "libffi", "linux-x86_64", "include")
         if not os.path.isdir(libffi) and not os.path.isdir("/usr/include/libffi"):
             pass  # CFFI's SCsub falls back to the system libffi; the link will say so.
@@ -623,8 +622,8 @@ def build_editor(argv):
             ]
             paths.insert(0, compiler)
         elif not which("g++", env):
-            fail("Grit: no C++ compiler; use a toolchain with compiler/ or install "
-                 "g++ and pkg-config (tools/install_linux_deps.sh).", 5)
+            fail("Grit: no C++ compiler; use a toolchain built with "
+                 "tools/toolchain/make_linux_gcc.sh.", 5)
         libffi = os.path.join(toolchain, "libffi", "linux-x86_64")
         if os.path.isdir(os.path.join(libffi, "include")):
             extra.append("cffi_libffi_path=" + libffi)

@@ -337,27 +337,6 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 
 
 
-// A Linux template is compiled with the distribution's C++ toolchain: no bundle can
-// carry it. The X11/Wayland/ALSA libraries are not needed at build time — Godot
-// vendors their headers and dlopens them at runtime (use_sowrap defaults to yes) —
-// so this is just the compiler, the static libstdc++ and pkg-config.
-static String _linux_build_dependency_hint() {
-	const String distro = OS::get_singleton()->get_distribution_name().to_lower();
-	if (distro.contains("debian") || distro.contains("ubuntu") || distro.contains("mint") || distro.contains("pop")) {
-		return "sudo apt install build-essential pkg-config";
-	}
-	if (distro.contains("fedora") || distro.contains("red hat") || distro.contains("centos") || distro.contains("rhel") || distro.contains("rocky") || distro.contains("alma")) {
-		return "sudo dnf install gcc-c++ libstdc++-static pkgconf";
-	}
-	if (distro.contains("arch") || distro.contains("manjaro") || distro.contains("endeavour")) {
-		return "sudo pacman -S --needed base-devel pkgconf";
-	}
-	if (distro.contains("suse") || distro.contains("opensuse")) {
-		return "sudo zypper install gcc-c++ libstdc++-devel pkg-config";
-	}
-	return "install a C++ toolchain with the static libstdc++ (g++ / build-essential) and pkg-config";
-}
-
 Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path) {
 	const String engine_root = _resolve_engine_root();
 	if (engine_root.is_empty()) {
@@ -567,14 +546,6 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		if (log_file.is_valid()) {
 			const String tail = log_file->get_as_text().right(4000);
 			ERR_PRINT(tail.right(2000));
-			if (plat_id == "linuxbsd" && (tail.contains("cannot find -lstdc++") || tail.contains("static-libstdc++") || tail.contains("X11/") || tail.contains("alsa/") || tail.contains("wayland-client") || tail.contains("Package x11") || tail.contains("Package alsa"))) {
-				String hint = "Grit: a Linux template is compiled with this distribution's C++ toolchain (the bundle cannot carry it; X11/ALSA headers ship in the source tree and are loaded at runtime). Install and export again:\n  " + _linux_build_dependency_hint();
-				const String installer = engine_root.path_join("tools").path_join("install_linux_deps.sh");
-				if (FileAccess::exists(installer)) {
-					hint += "\n  (or run \"" + installer + "\" --yes, which detects the distribution)";
-				}
-				ERR_PRINT(hint);
-			}
 		}
 		return ERR_CANT_CREATE;
 	}
@@ -745,7 +716,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		if (project_dir.is_valid()) {
 			for (const String &name : project_dir->get_directories()) {
 				const String candidate = String("res://") + name;
-				if (FileAccess::exists(candidate.path_join("SConstruct")) && (FileAccess::exists(candidate.path_join("tools").path_join("grit_build.py")) || FileAccess::exists(candidate.path_join("tools").path_join("grit_build_template.py")))) {
+				if (FileAccess::exists(candidate.path_join("SConstruct")) && FileAccess::exists(candidate.path_join("tools").path_join("grit_build.py"))) {
 					ERR_PRINT(vformat("Grit: %s is a Fast_Godot source tree inside the project. Move it out (the Source Code Root Folder Path may point elsewhere, but every script under res:// is treated as project content), then export again.", candidate));
 					return ERR_INVALID_DATA;
 				}

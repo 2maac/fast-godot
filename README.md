@@ -7,26 +7,26 @@ Fast_Godot is a custom build of Godot **4.7.2** with two additions:
   bytecode.
 - **CFFI** — lets GDScript call into C libraries directly.
 
-Both are documented in [`docs/`](docs/) and at
-[2maac.github.io/fast-godot](https://2maac.github.io/fast-godot/). Editors for
-every supported platform are on the [releases page](https://github.com/2maac/fast-godot/releases).
+The CFFI reference is at [2maac.github.io/fast-godot](https://2maac.github.io/fast-godot/)
+and in [`docs/`](docs/). Editors and toolchains are **built locally**: this fork
+has no CI and publishes no releases.
 
 ## How fast is it?
 
-Grit compiles at function granularity, so the gain depends on what the code
-does. Measured on this fork (macOS arm64, GDScript, VM versus compiled):
+Grit compiles at function granularity, so the gain depends on what the code does.
+Measured on this fork (macOS arm64, GDScript VM versus compiled):
 
 | workload | VM | native | speedup |
 |---|---|---|---|
-| 3M iterations of integer arithmetic | 39.9 ms | 0.5 ms | ~80× |
-| 1M calls to a small function | 64.0 ms | 5.8 ms | ~11× |
+| 3M iterations of integer arithmetic | 39.9 ms | 0.5 ms | ~80x |
+| 1M calls to a small function | 64.0 ms | 5.8 ms | ~11x |
 
 Straight-line code gains most; call-heavy code is bounded by the call boundary.
 GPU-bound 3D scenes will not show a difference — there the renderer, not script,
 sets the frame time.
 
 Functions Grit cannot compile stay on the GDScript VM, and the export log names
-each one with the reason. In practice this is a handful of edge cases.
+each one with the reason.
 
 ## Export model: only Fast presets
 
@@ -37,52 +37,52 @@ There are no VM/stock exports. Every project builds its own template:
 | macOS arm64 | `macOS Fast` | `<project>/exports/macos_fast.zip` |
 | Linux x86_64 | `Linux Fast` | `<project>/exports/linux_fast_<target>.<arch>` |
 | Windows x86_64 | `Windows Fast` | `<project>/exports/windows_fast_<target>_<arch>.exe` |
+| Web | `HTML5 Fast` | `<project>/exports/web_fast.zip` |
 
 A platform is only registered on its own host, so a macOS editor offers
-`macOS Fast` and ignores presets for other platforms. Nothing is
-cross-compiled.
+`macOS Fast` and ignores presets for other platforms. Nothing is cross-compiled;
+the HTML5 template is built by the toolchain's Emscripten.
 
 The first export of a project compiles the engine for that project's template
 (10–20 minutes on a warm machine); later exports only rebuild what changed.
 
-## Requirements
+## Building the editor
 
-Building a template needs the **engine source tree**, which you point at with the
-`grit/export/engine_root` project setting. The editor provisions what it can when
-the export window opens:
+`tools/build-editor.sh` (Linux, macOS) and `build-editor.cmd` in the Windows
+toolchain folder are the portable entry points: they find the source tree and the
+toolchain, check/install what the build needs, and run SCons with
+`production=yes`. The same script is what the editor calls to build an export
+template.
 
-| dependency | macOS | Linux | Windows |
-|---|---|---|---|
-| SCons | provisioned from PyPI | provisioned | provisioned (needs Python) |
-| MoltenVK | provisioned from Khronos | — | — |
-| compiler | Xcode Command Line Tools (manual) | distro gcc/clang (manual) | MinGW (manual) |
-| engine tree | clone this repo | clone this repo | clone this repo |
-
-Provisioned tools live under the editor's data directory (`…/tools`), and
-everything is overridable in Editor Settings under `grit/provision/`.
-
-## Building from source
-
-```sh
-git clone https://github.com/2maac/fast-godot
-cd fast-godot
-scons platform=<macos|linuxbsd|windows> target=editor -j"$(nproc)"
+```
+tools/grit_build.py editor --toolchain <toolchain-folder> [--engine <checkout>]
 ```
 
-`accesskit` is disabled by default; `vulkan=yes` is what the shipped builds use.
+macOS still uses the Xcode Command Line Tools as its compiler; the toolchain
+supplies SCons, Python and MoltenVK.
+
+## Toolchains
+
+A toolchain is a directory built with the scripts in `tools/toolchain/` and
+chosen in Editor Settings (`grit/settings/toolchain_root_folder_path`), together
+with the engine source tree (`source_code_root_folder_path`). Nothing is
+downloaded during an export.
+
+| host | the toolchain carries |
+|---|---|
+| Linux | Python, SCons, focal GCC 9 + glibc 2.31 sysroot, libffi, wayland-scanner, Emscripten |
+| Windows | Python, SCons, MinGW-w64, libffi, ANGLE, Mesa NIR + Agility SDK, WinRT headers, Emscripten |
+| macOS | Python, SCons, MoltenVK, Emscripten |
 
 ## Engine fixes
 
-The fork carries one fix on top of Godot 4.7.2: a null-token crash in
+The fork carries a fix for a null-token crash in
 `ResourceLoader::_run_load_task()` that kills a worker thread when a scene loads
-with `load_threaded_request(..., use_sub_threads = true)`. It reproduces on
-official 4.7.2 (7 of 8 runs) and never after the fix (32 runs). See
-[docs/threaded-loading-fix.md](docs/threaded-loading-fix.md).
+with `load_threaded_request(..., use_sub_threads = true)`.
 
 ## Status
 
-- macOS and Linux editors build and export.
-- The Windows editor **builds** (MinGW, D3D12 + Vulkan) but its exported games
-  have not been run on Windows yet.
-- Per-platform template compilation is native only; there is no cross-compilation
-  and no VM fallback.
+- macOS, Linux and Windows editors build locally.
+- Linux, Windows, macOS and HTML5 Fast templates build; the Linux and HTML5
+  exports have been run and benchmarked, the Windows export has not been run on
+  Windows yet.
