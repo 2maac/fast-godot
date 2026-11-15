@@ -32,6 +32,9 @@ env:
   LIBFFI_SHA256: "6dad7f3c6c900d3c64a4fe0c2764b405e678b22df3521d2284ffaeff0198b84b"
   MOLTENVK_URL: "https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar"
   MOLTENVK_SHA256: "f95765a6229cb7b915990a2890ce12ebe36a730b021545d3d52ae69ce4c4024e"
+  # ANGLE (OpenGL ES over D3D11) static libraries for the Windows editor.
+  ANGLE_VERSION: "chromium/7219"
+  ANGLE_SHA256: "ebf94e32334b04fa76b3907727c7a69c35adb713cf0a5d194c83c7ad955217bd"
   # Emscripten for HTML5 Fast: the wasm template is built from the project's Grit
   # code at export time, so every platform's bundle has to carry the compiler.
   EM_VERSION: "4.0.11"
@@ -188,6 +191,13 @@ jobs:
               Pop-Location
             }
           }
+          # ANGLE static libraries ship in the bundle, so a local editor build does
+          # not download them (angle_libs points at $B\angle).
+          curl.exe -sSL --fail -o angle.zip "https://github.com/godotengine/godot-angle-static/releases/download/$env:ANGLE_VERSION/godot-angle-static-x86_64-gcc-release.zip"
+          $angleHash = (Get-FileHash angle.zip -Algorithm SHA256).Hash.ToLower()
+          if ($angleHash -ne $env:ANGLE_SHA256) { throw "ANGLE checksum mismatch: $angleHash" }
+          New-Item -ItemType Directory -Force "$B\angle" | Out-Null
+          tar.exe -xf angle.zip -C "$B\angle"
           # A fixed string, not ConvertTo-Json: hashtable key order is not guaranteed,
           # which made the manifest differ between identical builds.
           $json = @"
@@ -200,7 +210,8 @@ jobs:
           "python": "python",
           "scons": "scons/$env:SCONS_VERSION/scons-$env:SCONS_VERSION",
           "mingw": "mingw64",
-          "libffi": "libffi/3.8.0/mingw64"
+          "libffi": "libffi/3.8.0/mingw64",
+          "angle": "angle"
           }
           "@
           [IO.File]::WriteAllText("$B\toolchain.json", $json.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))

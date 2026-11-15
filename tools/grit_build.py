@@ -572,9 +572,14 @@ def build_editor(argv):
         else:
             fail("Grit: the toolchain has no libffi/3.8.0/mingw64 prefix, which CFFI "
                  "needs on Windows.", 5)
+        angle = os.path.join(toolchain, "angle")
+        if os.path.isdir(angle):
+            # The toolchain ships the static ANGLE libraries; no download needed.
+            extra.append("angle_libs=" + angle)
+        elif options["deps"]:
+            install_angle(engine, python)
         if options["deps"]:
             install_d3d12(engine, python, os.path.join(toolchain, "mingw64") if toolchain else "")
-            install_angle(engine, python)
     elif platform == "linuxbsd":
         compiler = os.path.join(toolchain, "compiler")
         if os.path.isfile(os.path.join(compiler, "clang")):

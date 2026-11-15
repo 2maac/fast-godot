@@ -71,8 +71,11 @@ if not exist "%LOCALAPPDATA%\Godot\build_deps\agility_sdk" (
   )
 )
 
-rem The editor's ANGLE (GLES3) driver needs the static ANGLE drops; install once.
-if not exist "%LOCALAPPDATA%\Godot\build_deps\angle-x86_64-gcc" if not exist "%LOCALAPPDATA%\Godot\build_deps\angle" (
+rem The editor's ANGLE (GLES3) driver: the toolchain ships the static libs in
+rem angle\; only download them when this bundle predates that.
+set "ANGLE_ARG="
+if exist "%TC%\angle" set "ANGLE_ARG=angle_libs=%TC%\angle"
+if not defined ANGLE_ARG if not exist "%LOCALAPPDATA%\Godot\build_deps\angle-x86_64-gcc" if not exist "%LOCALAPPDATA%\Godot\build_deps\angle" (
   echo Grit: installing the ANGLE rendering driver dependencies ^(one time^)...
   pushd "%SRC%"
   "%TC%\python\python.exe" misc\scripts\install_angle.py
@@ -90,7 +93,7 @@ echo Source:    %SRC%
 echo.
 
 cd /d "%SRC%"
-"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no winrt=no cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %EXTRA%
+"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no winrt=no cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %EXTRA%
 set "CODE=!ERRORLEVEL!"
 
 echo.
