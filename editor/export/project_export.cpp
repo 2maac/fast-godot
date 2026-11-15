@@ -233,8 +233,7 @@ void ProjectExportDialog::_update_presets() {
 		updating = true;
 		presets->clear();
 		settings_vb->set_visible(false);
-		empty_label->set_text(TTR("Build tools not found."));
-		empty_label->set_visible(true);
+		empty_label->set_visible(false);
 		if (grit_download_button != nullptr) {
 			grit_download_button->set_visible(true);
 		}
@@ -243,6 +242,7 @@ void ProjectExportDialog::_update_presets() {
 		return;
 	}
 	empty_label->set_text(TTRC("No presets found.\nCreate one so that its parameters can be edited here."));
+	empty_label->set_visible(true);
 	if (grit_download_button != nullptr) {
 		grit_download_button->set_visible(false);
 	}
@@ -2057,7 +2057,7 @@ ProjectExportDialog::ProjectExportDialog() {
 
 #ifdef MODULE_GRIT_ENABLED
 	grit_download_button = memnew(Button);
-	grit_download_button->set_text(TTR("Download"));
+	grit_download_button->set_text(TTR("Download Build Tools"));
 	grit_download_button->set_h_size_flags(Control::SIZE_SHRINK_CENTER);
 	grit_download_button->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_grit_download_pressed));
 	grit_download_button->hide();
@@ -2164,8 +2164,7 @@ void ProjectExportDialog::_update_grit_banner() {
 	if (!ready) {
 		presets->clear();
 		settings_vb->set_visible(false);
-		empty_label->set_text(TTR("Build tools not found."));
-		empty_label->set_visible(true);
+		empty_label->set_visible(false);
 		if (grit_download_button != nullptr) {
 			grit_download_button->set_visible(true);
 		}
