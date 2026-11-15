@@ -553,7 +553,9 @@ def build_editor(argv):
     scons = toolchain_scons(toolchain)
     if scons:
         env["PYTHONPATH"] = scons
-    extra = ["lto=none"]
+    # Production defaults (no debug symbols, static C++ runtime, LTO "auto" would
+    # be overridden by the explicit lto=none below) for editor builds too.
+    extra = ["production=yes", "lto=none"]
 
     if platform == "windows":
         mingw = os.path.join(toolchain, "mingw64", "bin")

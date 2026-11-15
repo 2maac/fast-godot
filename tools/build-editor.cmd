@@ -101,7 +101,7 @@ echo Source:    %SRC%
 echo.
 
 cd /d "%SRC%"
-"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no %WINRT_ARG% cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %D3D12_ARGS% %EXTRA%
+"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% production=yes lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no %WINRT_ARG% cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %D3D12_ARGS% %EXTRA%
 set "CODE=!ERRORLEVEL!"
 
 echo.
