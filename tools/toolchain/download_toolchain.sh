@@ -91,7 +91,7 @@ if [ "$os" = "Linux" ]; then
 	cp "$tmp/ffi/usr/lib/x86_64-linux-gnu/libffi.a" "$dest/libffi/linux-x86_64/lib/"
 
 	progress 35 "GCC 9, glibc 2.31 sysroot and wayland-scanner"
-	"$here/make_linux_gcc.sh" "$dest"
+	sh "$here/make_linux_gcc.sh" "$dest"
 else
 	progress 35 "MoltenVK"
 	MOLTENVK_URL="https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar"

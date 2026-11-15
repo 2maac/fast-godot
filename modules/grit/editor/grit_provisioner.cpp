@@ -487,14 +487,20 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	DirAccess::remove_absolute(progress_path);
 
 	List<String> args;
+	ProcessID pid = 0;
+	String program;
+	if (windows) {
+		program = "cmd.exe";
+		args.push_back("/c");
+		args.push_back(script);
+	} else {
+		// The engine source can come from a GitHub archive, which does not keep the
+		// executable bit; run the script through the shell instead of exec'ing it.
+		program = "/bin/sh";
+		args.push_back(script);
+	}
 	args.push_back(p_dest);
 	args.push_back(progress_path);
-	ProcessID pid = 0;
-	const String program = windows ? "cmd.exe" : script;
-	if (windows) {
-		args.push_front("/c");
-		args.push_front(script);
-	}
 	if (OS::get_singleton()->create_process(program, args, &pid) != OK) {
 		error = "could not start the toolchain downloader.";
 		return false;

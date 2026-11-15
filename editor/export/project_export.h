@@ -161,6 +161,7 @@ class ProjectExportDialog : public ConfirmationDialog {
 	void _force_update_current_preset_parameters();
 	void _update_current_preset();
 	VBoxContainer *empty_state = nullptr;
+	VBoxContainer *preset_panel = nullptr;
 #ifdef MODULE_GRIT_ENABLED
 	void _update_grit_banner();
 	void _grit_download_pressed();

@@ -232,6 +232,7 @@ void ProjectExportDialog::_update_presets() {
 	if (!GritProvisioner::toolchain_ready()) {
 		updating = true;
 		presets->clear();
+		preset_panel->set_visible(false);
 		settings_vb->set_visible(false);
 		empty_label->set_visible(false);
 		if (grit_download_button != nullptr) {
@@ -241,6 +242,7 @@ void ProjectExportDialog::_update_presets() {
 		updating = false;
 		return;
 	}
+	preset_panel->set_visible(true);
 	empty_label->set_text(TTRC("No presets found.\nCreate one so that its parameters can be edited here."));
 	empty_label->set_visible(true);
 	if (grit_download_button != nullptr) {
@@ -1640,6 +1642,7 @@ ProjectExportDialog::ProjectExportDialog() {
 	preset_vb->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	preset_vb->set_stretch_ratio(0.35);
 	main_split->add_child(preset_vb);
+	preset_panel = preset_vb;
 
 	Label *l = memnew(Label(TTRC("Presets")));
 	l->set_theme_type_variation("HeaderSmall");
@@ -2163,6 +2166,7 @@ void ProjectExportDialog::_update_grit_banner() {
 	const bool ready = GritProvisioner::toolchain_ready();
 	if (!ready) {
 		presets->clear();
+		preset_panel->set_visible(false);
 		settings_vb->set_visible(false);
 		empty_label->set_visible(false);
 		if (grit_download_button != nullptr) {
