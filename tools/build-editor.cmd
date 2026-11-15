@@ -57,9 +57,12 @@ set "PATH=%TC%\mingw64\bin;%TC%\python;%PATH%"
 set "PYTHONPATH=%TC%\scons\4.11.1\scons-4.11.1"
 set "MINGW_PREFIX=%TC%\mingw64"
 
-rem The editor's Direct3D 12 driver needs the Agility SDK; install it once.
-if not exist "%LOCALAPPDATA%\Godot\build_deps\agility_sdk" (
-  echo Grit: installing the Direct3D 12 Agility SDK ^(one time^)...
+rem Direct3D 12: the toolchain ships Mesa NIR + the Agility SDK; only download
+rem them when this bundle predates that.
+set "D3D12_ARGS="
+if exist "%TC%\mesa-x86_64-gcc" if exist "%TC%\agility_sdk" set "D3D12_ARGS=mesa_libs=%TC%\mesa agility_sdk_path=%TC%\agility_sdk"
+if not defined D3D12_ARGS if not exist "%LOCALAPPDATA%\Godot\build_deps\agility_sdk" (
+  echo Grit: installing the Direct3D 12 dependencies ^(one time^)...
   pushd "%SRC%"
   "%TC%\python\python.exe" misc\scripts\install_d3d12_sdk_windows.py
   set "DEPS=!ERRORLEVEL!"
@@ -93,7 +96,7 @@ echo Source:    %SRC%
 echo.
 
 cd /d "%SRC%"
-"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no winrt=no cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %EXTRA%
+"%TC%\python\python.exe" -m SCons platform=windows target=editor -j%GRIT_JOBS% lto=none use_mingw=yes use_volk=yes vulkan=yes accesskit=no winrt=no cffi_libffi_path="%TC%\libffi\3.8.0\mingw64" %ANGLE_ARG% %D3D12_ARGS% %EXTRA%
 set "CODE=!ERRORLEVEL!"
 
 echo.

@@ -35,6 +35,11 @@ env:
   # ANGLE (OpenGL ES over D3D11) static libraries for the Windows editor.
   ANGLE_VERSION: "chromium/7219"
   ANGLE_SHA256: "ebf94e32334b04fa76b3907727c7a69c35adb713cf0a5d194c83c7ad955217bd"
+  # Direct3D 12: Mesa NIR (static) and the Agility SDK (runtime DLLs).
+  MESA_URL: "https://github.com/godotengine/godot-nir-static/releases/download/25.3.1-3/godot-nir-static-x86_64-gcc-release.zip"
+  MESA_SHA256: "dc98a962ac90613a4fccf29082d34b12fcb97bf3819517125bc3d1c86ed31afc"
+  AGILITY_URL: "https://www.nuget.org/api/v2/package/Microsoft.Direct3D.D3D12/1.618.5"
+  AGILITY_SHA256: "0027fc24f947c48dbded13ada7d280be221eb651644e23a8a476f0f1f0a079dd"
   # Emscripten for HTML5 Fast: the wasm template is built from the project's Grit
   # code at export time, so every platform's bundle has to carry the compiler.
   EM_VERSION: "4.0.11"
@@ -191,6 +196,19 @@ jobs:
               Pop-Location
             }
           }
+          # Direct3D 12 drops ship in the bundle: Mesa NIR for the linker and the
+          # Agility SDK for the runtime DLLs (mesa_libs/agility_sdk_path point at
+          # them), so a local editor build downloads nothing.
+          curl.exe -sSL --fail -o mesa.zip "$env:MESA_URL"
+          $mesaHash = (Get-FileHash mesa.zip -Algorithm SHA256).Hash.ToLower()
+          if ($mesaHash -ne $env:MESA_SHA256) { throw "Mesa checksum mismatch: $mesaHash" }
+          New-Item -ItemType Directory -Force "$B\mesa-x86_64-gcc" | Out-Null
+          tar.exe -xf mesa.zip -C "$B\mesa-x86_64-gcc"
+          curl.exe -sSL --fail -o agility.nupkg "$env:AGILITY_URL"
+          $agilityHash = (Get-FileHash agility.nupkg -Algorithm SHA256).Hash.ToLower()
+          if ($agilityHash -ne $env:AGILITY_SHA256) { throw "Agility SDK checksum mismatch: $agilityHash" }
+          New-Item -ItemType Directory -Force "$B\agility_sdk" | Out-Null
+          tar.exe -xf agility.nupkg -C "$B\agility_sdk"
           # ANGLE static libraries ship in the bundle, so a local editor build does
           # not download them (angle_libs points at $B\angle).
           curl.exe -sSL --fail -o angle.zip "https://github.com/godotengine/godot-angle-static/releases/download/$env:ANGLE_VERSION/godot-angle-static-x86_64-gcc-release.zip"
@@ -211,7 +229,9 @@ jobs:
           "scons": "scons/$env:SCONS_VERSION/scons-$env:SCONS_VERSION",
           "mingw": "mingw64",
           "libffi": "libffi/3.8.0/mingw64",
-          "angle": "angle"
+          "angle": "angle",
+          "mesa": "mesa-x86_64-gcc",
+          "agility_sdk": "agility_sdk"
           }
           "@
           [IO.File]::WriteAllText("$B\toolchain.json", $json.Replace("`r`n", "`n"), (New-Object System.Text.UTF8Encoding($false)))

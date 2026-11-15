@@ -578,7 +578,12 @@ def build_editor(argv):
             extra.append("angle_libs=" + angle)
         elif options["deps"]:
             install_angle(engine, python)
-        if options["deps"]:
+        mesa = os.path.join(toolchain, "mesa-x86_64-gcc")
+        agility = os.path.join(toolchain, "agility_sdk")
+        if os.path.isdir(mesa) and os.path.isdir(agility):
+            # Bundled D3D12 drops: no download and no LOCALAPPDATA dependency.
+            extra += ["mesa_libs=" + os.path.join(toolchain, "mesa"), "agility_sdk_path=" + agility]
+        elif options["deps"]:
             install_d3d12(engine, python, os.path.join(toolchain, "mingw64") if toolchain else "")
     elif platform == "linuxbsd":
         compiler = os.path.join(toolchain, "compiler")
