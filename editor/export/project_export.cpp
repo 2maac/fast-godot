@@ -226,6 +226,18 @@ void ProjectExportDialog::_update_current_preset() {
 }
 
 void ProjectExportDialog::_update_presets() {
+#ifdef MODULE_GRIT_ENABLED
+	// Without a toolchain a Fast preset cannot build anything, so the dialog shows
+	// no presets at all until the toolchain has been downloaded.
+	if (!GritProvisioner::toolchain_ready()) {
+		updating = true;
+		presets->clear();
+		settings_vb->set_visible(false);
+		empty_label->set_visible(true);
+		updating = false;
+		return;
+	}
+#endif
 	updating = true;
 
 	Ref<EditorExportPreset> current;
@@ -2151,6 +2163,7 @@ void ProjectExportDialog::_grit_download_pressed() {
 		ERR_PRINT("Grit: " + error);
 	} else {
 		print_line("Grit: toolchain ready at " + GritProvisioner::home_toolchain_folder());
+		_update_presets();
 	}
 	_update_grit_banner();
 }
