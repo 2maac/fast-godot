@@ -205,6 +205,10 @@ def main(argv):
         extra.append("threads=no")
         if optimized:
             extra.append("optimize=speed")
+        # LTO is not worth it for this template: the Optimized (-O3) wasm was
+        # byte-for-byte the same size with emscripten's thin LTO (45,936,200 bytes),
+        # so the pass only costs build time.
+        extra.append("lto=none")
 
     with open(profile, "rb") as handle:
         key = hashlib.sha256(handle.read())
