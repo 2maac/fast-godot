@@ -350,6 +350,9 @@ def export_main(argv):
         child_env["PATH"] = os.pathsep.join(extra_paths + [child_env.get("PATH", "")])
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
+    mingw_prefix = os.path.join(env.get("toolchain_root") or "", "mingw64")
+    if platform == "windows" and os.path.isdir(mingw_prefix):
+        child_env["MINGW_PREFIX"] = mingw_prefix
     if platform == "web":
         # emcc, and the node it drives, come from the toolchain folder.
         emsdk = os.path.join(env.get("toolchain_root", ""), "emsdk")
@@ -541,6 +544,9 @@ def build_editor(argv):
             fail("Grit: no MinGW compiler; point --toolchain at a "
                  "Fast_Godot_Toolchain_win64 bundle.", 5)
         libffi = os.path.join(toolchain, "libffi", "3.8.0", "mingw64")
+        # detect.py asks MINGW_PREFIX for the MinGW headers (D3D12); setting it here
+        # keeps this build's signatures identical to the batch launcher's.
+        env["MINGW_PREFIX"] = os.path.join(toolchain, "mingw64")
         extra += ["use_mingw=yes", "use_volk=yes", "vulkan=yes", "accesskit=no", "winrt=no"]
         if os.path.isdir(libffi):
             extra.append("cffi_libffi_path=" + libffi)
