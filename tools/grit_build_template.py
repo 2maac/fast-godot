@@ -164,6 +164,12 @@ def main(argv):
 
     env = read_env(engine)
     extra = env.get("scons_args", "").split()
+    # No Fast template uses LTO. macOS defaults to none already, the bundled Linux
+    # compiler cannot do it (Zig), and the web wasm was byte-for-byte the same size
+    # with and without emscripten's thin LTO; on Windows/MinGW and system-compiler
+    # builds this turns it off. The only optimization knob is -O3: the web
+    # "Optimized" option, and the default for native release templates.
+    extra.append("lto=none")
     extra_paths = list(env.get("path_add") or [])
     if platform == "linuxbsd":
         # A Linux toolchain can carry its own compiler (Zig): the bundle then needs
@@ -179,7 +185,7 @@ def main(argv):
             # thing there, so the static-cpp flag has to go. LTO flags are also
             # pointless (Zig does not do LTO) and only cost memory, which matters
             # for glslang's generated tables.
-            extra += ["CC=" + clang, "CXX=" + clangxx, "use_static_cpp=no", "lto=none"]
+            extra += ["CC=" + clang, "CXX=" + clangxx, "use_static_cpp=no"]
             extra_paths.insert(0, compiler_dir)  # ar, ranlib, pkg-config stub
             announce("Grit: using the bundled Linux compiler %s" % clang)
         else:
@@ -205,10 +211,6 @@ def main(argv):
         extra.append("threads=no")
         if optimized:
             extra.append("optimize=speed")
-        # LTO is not worth it for this template: the Optimized (-O3) wasm was
-        # byte-for-byte the same size with emscripten's thin LTO (45,936,200 bytes),
-        # so the pass only costs build time.
-        extra.append("lto=none")
 
     with open(profile, "rb") as handle:
         key = hashlib.sha256(handle.read())
