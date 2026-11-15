@@ -67,7 +67,7 @@ sub-threads enabled) was run against several engines:
 | this fork, after the fix | 0 / 32 runs |
 
 Because the same crash reproduces on official 4.7.2, it is an upstream defect
-rather than something introduced by Grit.
+rather than something introduced by Fast_Godot.
 
 ## What is still open
 

@@ -28,7 +28,6 @@ print(strlen.invokev([text]))   # 5
 
 | page | covers |
 |---|---|
-| [Grit](grit.md) | the export-and-rebuild workflow: generated C++, `grit_generated`, fallback |
 | [CFFI](cffi.md) | opening libraries, finding types, structs, callbacks, memory helpers |
 | [Type strings](type-strings.md) | how types are written: `"int"`, `"char*"`, `"float[3]"`, `"const char**"` |
 | [CFFILibraryHandle](library-handle.md) | `get_function`, `get_global` |
