@@ -4,8 +4,8 @@ title: Examples
 
 # Examples
 
-Every example below was run against a released Fast_Godot build on macOS; the values shown are the
-ones it printed.
+Every example below was run against a Fast_Godot build on macOS; the values shown are the ones it
+printed.
 
 ## Strings with libc
 
