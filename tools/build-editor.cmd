@@ -71,6 +71,20 @@ if not exist "%LOCALAPPDATA%\Godot\build_deps\agility_sdk" (
   )
 )
 
+rem The editor's ANGLE (GLES3) driver needs the static ANGLE drops; install once.
+if not exist "%LOCALAPPDATA%\Godot\build_deps\angle-x86_64-gcc" if not exist "%LOCALAPPDATA%\Godot\build_deps\angle" (
+  echo Grit: installing the ANGLE rendering driver dependencies ^(one time^)...
+  pushd "%SRC%"
+  "%TC%\python\python.exe" misc\scripts\install_angle.py
+  set "ANGLE_DEPS=!ERRORLEVEL!"
+  popd
+  if not "!ANGLE_DEPS!"=="0" (
+    echo [error] The ANGLE dependency installer failed.
+    pause
+    exit /b 1
+  )
+)
+
 echo Toolchain: %TC%
 echo Source:    %SRC%
 echo.

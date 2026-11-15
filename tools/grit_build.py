@@ -107,6 +107,25 @@ def install_d3d12(engine, python, mingw_prefix=""):
              "still missing." % os.path.join(deps, "agility_sdk"), 5)
 
 
+def install_angle(engine, python):
+    """The editor's ANGLE (GLES3) driver needs the static ANGLE drops."""
+    if os.name != "nt":
+        return
+    deps = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Godot", "build_deps")
+    if os.path.isdir(os.path.join(deps, "angle-x86_64-gcc")) or os.path.isdir(os.path.join(deps, "angle")):
+        return
+    script = os.path.join(engine, "misc", "scripts", "install_angle.py")
+    if not os.path.isfile(script):
+        fail("Grit: %s is missing, so ANGLE cannot be installed." % script, 2)
+    announce("Grit: installing the ANGLE rendering driver dependencies (one time)")
+    code = subprocess.call([python, script], cwd=engine)
+    if code != 0:
+        fail("Grit: the ANGLE dependency installer failed (exit %d)" % code, 5)
+    if not (os.path.isdir(os.path.join(deps, "angle-x86_64-gcc")) or os.path.isdir(os.path.join(deps, "angle"))):
+        fail("Grit: the ANGLE installer reported success but %s is still missing."
+             % os.path.join(deps, "angle-x86_64-gcc"), 5)
+
+
 def check_export_dependencies(platform, env):
     """Fail early, with an actionable message, when a build input is missing."""
     toolchain = env.get("toolchain_root") or ""
@@ -555,6 +574,7 @@ def build_editor(argv):
                  "needs on Windows.", 5)
         if options["deps"]:
             install_d3d12(engine, python, os.path.join(toolchain, "mingw64") if toolchain else "")
+            install_angle(engine, python)
     elif platform == "linuxbsd":
         compiler = os.path.join(toolchain, "compiler")
         if os.path.isfile(os.path.join(compiler, "clang")):

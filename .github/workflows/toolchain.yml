@@ -13,6 +13,8 @@ on:
       - ".github/scripts/fetch_linux_toolchain.sh"
       - ".github/scripts/make_linux_compiler.sh"
       - ".github/scripts/make_bundle_zip.py"
+      - "tools/build-editor.cmd"
+      - "tools/build-editor.sh"
 
 permissions:
   contents: write
