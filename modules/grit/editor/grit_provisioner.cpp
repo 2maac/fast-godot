@@ -625,6 +625,18 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	}
 
 	const String commit = engine_commit();
+	// The source is fetched before a toolchain exists (the downloader script lives in
+	// it), and at that point it lands in the global grit-tools cache. Once a toolchain
+	// is chosen the preferred location moves inside it, so without this check the next
+	// export downloaded the very same source again.
+	if (!commit.is_empty()) {
+		const String fetched_root = OS::get_singleton()->get_data_path().path_join("grit-tools").path_join("engine").path_join(commit);
+		const String fetched = _engine_tree_at(fetched_root);
+		if (!fetched.is_empty()) {
+			print_line("Grit: reusing the engine source already fetched at " + fetched);
+			return fetched;
+		}
+	}
 	if (commit.is_empty()) {
 		error = "this editor does not report its revision, so the engine source cannot be matched to it. Choose a source folder in Editor Settings > Grit > Settings.";
 		return String();
