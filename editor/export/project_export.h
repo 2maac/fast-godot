@@ -160,11 +160,10 @@ class ProjectExportDialog : public ConfirmationDialog {
 
 	void _force_update_current_preset_parameters();
 	void _update_current_preset();
+	VBoxContainer *empty_state = nullptr;
 #ifdef MODULE_GRIT_ENABLED
 	void _update_grit_banner();
 	void _grit_download_pressed();
-	VBoxContainer *grit_banner = nullptr;
-	Label *grit_banner_label = nullptr;
 	Button *grit_download_button = nullptr;
 #endif
 	void _update_presets();

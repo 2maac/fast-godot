@@ -233,9 +233,18 @@ void ProjectExportDialog::_update_presets() {
 		updating = true;
 		presets->clear();
 		settings_vb->set_visible(false);
+		empty_label->set_text(TTR("Build tools not found."));
 		empty_label->set_visible(true);
+		if (grit_download_button != nullptr) {
+			grit_download_button->set_visible(true);
+		}
+		empty_state->set_visible(true);
 		updating = false;
 		return;
+	}
+	empty_label->set_text(TTRC("No presets found.\nCreate one so that its parameters can be edited here."));
+	if (grit_download_button != nullptr) {
+		grit_download_button->set_visible(false);
 	}
 #endif
 	updating = true;
@@ -266,7 +275,7 @@ void ProjectExportDialog::_update_presets() {
 	}
 
 	settings_vb->set_visible(current_idx != -1);
-	empty_label->set_visible(current_idx == -1);
+	empty_state->set_visible(current_idx == -1);
 
 	if (current_idx != -1) {
 		presets->select(current_idx);
@@ -2025,7 +2034,12 @@ ProjectExportDialog::ProjectExportDialog() {
 	empty_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	empty_label->set_v_size_flags(Control::SIZE_EXPAND_FILL);
 	empty_label->hide();
-	main_split->add_child(empty_label);
+	empty_state = memnew(VBoxContainer);
+	empty_state->set_alignment(BoxContainer::ALIGNMENT_CENTER);
+	empty_state->set_v_size_flags(Control::SIZE_EXPAND_FILL);
+	empty_state->hide();
+	main_split->add_child(empty_state);
+	empty_state->add_child(empty_label);
 
 	// Deletion dialog.
 
@@ -2042,16 +2056,12 @@ ProjectExportDialog::ProjectExportDialog() {
 	get_ok_button()->set_disabled(true);
 
 #ifdef MODULE_GRIT_ENABLED
-	grit_banner = memnew(VBoxContainer);
-	main_vb->add_child(grit_banner);
-	grit_banner_label = memnew(Label);
-	grit_banner_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	grit_banner->add_child(grit_banner_label);
 	grit_download_button = memnew(Button);
-	grit_download_button->set_text(TTR("Download Build"));
+	grit_download_button->set_text(TTR("Download"));
+	grit_download_button->set_h_size_flags(Control::SIZE_SHRINK_CENTER);
 	grit_download_button->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_grit_download_pressed));
-	grit_banner->add_child(grit_download_button);
-	grit_banner->hide();
+	grit_download_button->hide();
+	empty_state->add_child(grit_download_button);
 #endif
 
 	export_button = add_button(TTRC("Export Project..."), !DisplayServer::get_singleton()->get_swap_cancel_ok(), "export");
@@ -2147,13 +2157,19 @@ ProjectExportDialog::ProjectExportDialog() {
 
 #ifdef MODULE_GRIT_ENABLED
 void ProjectExportDialog::_update_grit_banner() {
-	if (grit_banner == nullptr) {
+	if (empty_state == nullptr) {
 		return;
 	}
 	const bool ready = GritProvisioner::toolchain_ready();
-	grit_banner->set_visible(!ready);
 	if (!ready) {
-		grit_banner_label->set_text(TTR("Fast_Godot needs a toolchain to build Fast exports. Downloading it creates a fast_godot_toolchain folder next to your home folder."));
+		presets->clear();
+		settings_vb->set_visible(false);
+		empty_label->set_text(TTR("Build tools not found."));
+		empty_label->set_visible(true);
+		if (grit_download_button != nullptr) {
+			grit_download_button->set_visible(true);
+		}
+		empty_state->set_visible(true);
 	}
 }
 
