@@ -85,7 +85,8 @@ echo "linux compiler: zig ${ZIG_VERSION} -> ${ZIG_TARGET}, $(du -sh "$B/zig" | c
 
 # libffi, for the CFFI module. The package only ships the headers and the static
 # archive in libffi-dev; extract them so a template build does not need it installed.
-apt-get update -qq
+# The CI runner is unprivileged; apt-get download writes to the cwd.
+sudo apt-get update -qq
 ffi_tmp="$(mktemp -d)"
 (
 	cd "$ffi_tmp"
