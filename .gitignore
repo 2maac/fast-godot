@@ -407,3 +407,7 @@ Fast_Godot.app/
 Godot.app/
 packages/
 out/
+
+# Internal handoff notes are never committed.
+HANDOFF.md
+HANDOVER.md
