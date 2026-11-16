@@ -73,7 +73,11 @@ void GritGdxJob::run() {
 			status = "The build failed";
 		}
 	} else {
-		const Error revert_status = GritGdxApply::revert(revert_class, result.extension_directory, result.scene_path, result.node_path, true, progress_callback, result, action_report);
+		// `revert` resets `result` immediately, so the arguments must not alias it.
+		const String extension_directory = result.extension_directory;
+		const String scene_path = result.scene_path;
+		const String node_path = result.node_path;
+		const Error revert_status = GritGdxApply::revert(revert_class, extension_directory, scene_path, node_path, true, progress_callback, result, action_report);
 		build_error = revert_status;
 		MutexLock lock(mutex);
 		report = action_report;

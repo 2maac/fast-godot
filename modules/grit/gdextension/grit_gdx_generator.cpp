@@ -1,5 +1,7 @@
 #include "grit_gdx_generator.h"
 
+#include "grit_gdx_job.h"
+
 #include "grit_gdx_apply.h"
 #include "grit_gdx_job.h"
 #include "grit_gdx_apply.h"
@@ -591,6 +593,15 @@ void GritGdxGenerator::run_from_command_line() {
 		if (revert_class.is_empty()) {
 			report = "Grit: revert needs --grit-gdx-class (the extension is found automatically).";
 			error = ERR_INVALID_PARAMETER;
+		} else if (OS::get_singleton()->get_environment("GRIT_GDX_REVERT_VIA_JOB") == "1") {
+			// Exercises the editor's worker-thread revert headlessly.
+			Ref<GritGdxJob> job;
+			job.instantiate();
+			job->start_revert(revert_class, extension, scene, node_path);
+			while (!job->is_finished()) {
+				OS::get_singleton()->delay_usec(10000);
+			}
+			error = job->complete(report);
 		} else {
 			GritGdxApply::Result result;
 			error = GritGdxApply::revert(revert_class, extension, scene, node_path, build, GritGdxApply::Progress(), result, report);

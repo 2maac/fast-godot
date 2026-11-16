@@ -626,6 +626,12 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 		}
 	}
 
+	// If the script was re-created next to its archive (the editor can do that),
+	// the archive is a leftover copy of the converted state.
+	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && FileAccess::exists(target.script_path)) {
+		DirAccess::remove_absolute(target.archived_script);
+	}
+
 	// Put the node back on the script.
 	if (!p_scene_path.is_empty() && !p_node_path.is_empty()) {
 		String restore_error;
