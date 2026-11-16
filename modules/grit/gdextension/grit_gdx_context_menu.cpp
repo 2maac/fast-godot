@@ -238,7 +238,6 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 	}
 
 	_close_dialog();
-	active_scene = p_scene_path;
 	job.instantiate();
 	const Error error = job->start(p_script_path, extension, p_scene_path, p_node_path);
 	_start_job();
@@ -249,7 +248,6 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 
 void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path) {
 	_close_dialog();
-	active_scene = p_scene_path;
 	job.instantiate();
 	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path);
 	_start_job();
@@ -306,33 +304,7 @@ void GritGdxContextMenuPlugin::_poll() {
 	String report;
 	const Error error = job->complete(report);
 	print_line(report);
-	if (error == OK && !active_scene.is_empty()) {
-		EditorNode *editor = EditorNode::get_singleton();
-		EditorData &data = EditorNode::get_editor_data();
-		for (int i = 0; editor && i < data.get_edited_scene_count(); i++) {
-			if (data.get_scene_path(i) != active_scene) {
-				continue;
-			}
-			if (editor->is_scene_unsaved(i)) {
-				print_line(vformat("Grit: \"%s\" has unsaved changes; reopen it to see the result.", active_scene));
-			} else {
-				// The file was rewritten underneath the editor: reload it so the
-				// scene tree shows the node's new type immediately.
-				callable_mp(editor, &EditorNode::reload_scene).bind(active_scene).call_deferred();
-			}
-			break;
-		}
-	}
-	if (error == OK) {
-		const String directory = job->get_extension_directory();
-		const String name = GritGdxManifest::extension_name(directory);
-		const String descriptor = directory.path_join(name + ".gdextension");
-		GDExtensionManager *manager = GDExtensionManager::get_singleton();
-		if (manager && !directory.is_empty() && FileAccess::exists(descriptor) && !manager->is_extension_loaded(descriptor)) {
-			const GDExtensionManager::LoadStatus status = manager->load_extension(descriptor);
-			print_line(status == GDExtensionManager::LOAD_STATUS_OK ? vformat("Grit: loaded \"%s\".", descriptor) : vformat("Grit: \"%s\" is not active yet; restart the editor.", descriptor));
-		}
-	}
+
 	if (status_label) {
 		status_label->set_text(error == OK ? report : report + "\nGrit: the action failed; see the report above.");
 	}
