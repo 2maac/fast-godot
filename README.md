@@ -1,5 +1,7 @@
 # Fast_Godot
 
+[![build](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/2maac/fast-godot)
+
 Fast_Godot is a custom build of Godot **4.7.2** with two additions:
 
 - **Grit** — compiles a project's GDScript into C++ and links it into a
