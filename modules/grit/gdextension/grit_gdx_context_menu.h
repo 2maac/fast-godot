@@ -46,4 +46,5 @@ private:
 	Timer *timer = nullptr;
 	PopupMenu *submenu = nullptr;
 	Vector<String> submenu_extensions;
+	String active_scene;
 };
