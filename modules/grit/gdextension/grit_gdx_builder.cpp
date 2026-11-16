@@ -12,7 +12,10 @@
 #include "core/string/string_builder.h"
 
 static const char *GODOT_CPP_URL = "https://github.com/godotengine/godot-cpp";
-static const char *GODOT_CPP_BRANCH = "4.5";
+// 10.0.0-stable is the release that targets the 4.7 GDExtension API. An older
+// branch (4.5) runs fine but crashes the editor when it unloads the library on
+// quit, because its teardown frees method binds the engine already freed.
+static const char *GODOT_CPP_BRANCH = "10.0.0-stable";
 
 String GritGdxBuilder::cached_root;
 String GritGdxBuilder::cached_api;
