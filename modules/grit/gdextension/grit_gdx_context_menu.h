@@ -27,6 +27,7 @@ private:
 	void _make_gdextension(const Array &p_selection);
 	void _add_to_extension(const Array &p_selection);
 	void _convert_back(const Array &p_selection);
+	static void _show_message(const String &p_text);
 	void _submenu_selected(int p_index);
 
 	void _prompt_extension_name(const String &p_script_path, const String &p_scene_path, const String &p_node_path, const String &p_default_name);

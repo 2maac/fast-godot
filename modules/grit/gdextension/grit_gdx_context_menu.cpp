@@ -44,7 +44,11 @@ static String extension_of_class(const String &p_class) {
 // Scene the node is saved in plus its path relative to the edited scene root.
 static bool node_location(Node *p_node, String &r_scene, String &r_path) {
 	Node *root = EditorNode::get_singleton() ? EditorNode::get_singleton()->get_edited_scene() : nullptr;
-	if (!root || !p_node || p_node->get_owner() != root) {
+	if (!root || !p_node) {
+		return false;
+	}
+	// The scene root has no owner; anything else must belong to the edited scene.
+	if (p_node != root && p_node->get_owner() != root) {
 		return false;
 	}
 	r_scene = root->get_scene_file_path();
@@ -53,6 +57,17 @@ static bool node_location(Node *p_node, String &r_scene, String &r_path) {
 	}
 	r_path = String(root->get_path_to(p_node));
 	return !r_path.is_empty();
+}
+
+void GritGdxContextMenuPlugin::_show_message(const String &p_text) {
+	AcceptDialog *dialog = memnew(AcceptDialog);
+	dialog->set_title("Make GDExtension");
+	dialog->set_min_size(Vector2i(480, 0));
+	dialog->set_ok_button_text("Close");
+	dialog->set_text(p_text);
+	EditorNode::get_singleton()->get_gui_base()->add_child(dialog);
+	dialog->popup_centered();
+	dialog->connect(SceneStringName(confirmed), Callable(dialog, SNAME("queue_free")));
 }
 
 bool GritGdxContextMenuPlugin::can_make_gdextension(Node *p_node) {
@@ -84,11 +99,8 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 		const List<Node *> selected = editor->get_editor_selection()->get_top_selected_node_list();
 		if (selected.size() == 1) {
 			Node *node = selected.front()->get();
-			String scene;
-			String path;
-			const bool located = node_location(node, scene, path);
-			makeable = located && can_make_gdextension(node);
-			if (located && is_generated_class(node->get_class_name())) {
+			makeable = can_make_gdextension(node);
+			if (is_generated_class(node->get_class_name())) {
 				revert_class = String(node->get_class_name());
 				revert_extension = extension_of_class(revert_class);
 				// Offered for any generated node; the class itself is only dropped
@@ -98,6 +110,9 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 			single = true;
 		}
 	}
+	// Enabled states deliberately do not depend on the node being locatable: a
+	// root node or an unsaved scene still runs the action and explains itself
+	// through a dialog instead of silently greying the item out.
 
 	add_context_menu_item("Make GDExtension...", makeable ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_make_gdextension)) : Callable(), Ref<Texture2D>());
 
@@ -136,9 +151,16 @@ void GritGdxContextMenuPlugin::_submenu_selected(int p_index) {
 		return;
 	}
 	Node *node = Object::cast_to<Node>(selection[0]);
+	if (!node) {
+		return;
+	}
 	String scene;
 	String path;
-	if (!node_location(node, scene, path) || !can_make_gdextension(node)) {
+	if (!node_location(node, scene, path)) {
+		_show_message("Save the scene first: the node must belong to the edited scene.");
+		return;
+	}
+	if (!can_make_gdextension(node)) {
 		return;
 	}
 	const Ref<GDScript> script = node->get_script();
@@ -152,7 +174,11 @@ void GritGdxContextMenuPlugin::_make_gdextension(const Array &p_selection) {
 	Node *node = Object::cast_to<Node>(p_selection[0]);
 	String scene;
 	String path;
-	if (!node || !node_location(node, scene, path) || !can_make_gdextension(node)) {
+	if (node && !node_location(node, scene, path)) {
+		_show_message(vformat("\"%s\" is not part of the edited scene.\n\nSave the scene and select a node in it, then try again.", node->get_name()));
+		return;
+	}
+	if (!node || !can_make_gdextension(node)) {
 		return;
 	}
 	const Ref<GDScript> script = node->get_script();
@@ -296,9 +322,16 @@ void GritGdxContextMenuPlugin::_convert_back(const Array &p_selection) {
 		return;
 	}
 	Node *node = Object::cast_to<Node>(p_selection[0]);
+	if (!node) {
+		return;
+	}
 	String scene;
 	String path;
-	if (!node || !node_location(node, scene, path) || !is_generated_class(node->get_class_name())) {
+	if (!node_location(node, scene, path)) {
+		_show_message("Save the scene first: the node must belong to the edited scene.");
+		return;
+	}
+	if (!is_generated_class(node->get_class_name())) {
 		return;
 	}
 	const String class_name = String(node->get_class_name());
@@ -333,7 +366,7 @@ void GritGdxContextMenuPlugin::run_menu_check(const String &p_scene_path) {
 	PopupMenu *popup = memnew(PopupMenu);
 	EditorContextMenuPluginManager::get_singleton()->add_options_from_plugins(popup, EditorContextMenuPlugin::CONTEXT_SLOT_SCENE_TREE, Vector<String>());
 	for (int i = 0; i < popup->get_item_count(); i++) {
-		print_line(vformat("Grit: menu item \"%s\" disabled=%s", popup->get_item_text(i), popup->is_item_disabled(i) ? "yes" : "no"));
+		print_line(vformat("Grit: menu item \"%s\" disabled=%s (no editor selection in this check)", popup->get_item_text(i), popup->is_item_disabled(i) ? "yes" : "no"));
 	}
 	memdelete(popup);
 
