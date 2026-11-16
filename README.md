@@ -1,6 +1,8 @@
-# Fast Godot
+<h1 align="center">Fast Godot</h1>
 
-<img src="docs/assets/fast-godot-logo.png" alt="Fast Godot" width="520">
+<p align="center">
+  <img src="docs/assets/fast-godot-logo.png" alt="Fast Godot" width="520">
+</p>
 
 Fast Godot is a custom build of Godot **4.7.2** with two additions:
 
