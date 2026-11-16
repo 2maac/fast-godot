@@ -166,6 +166,9 @@ struct GritFunction {
 	LocalVector<GritType> types;
 	LocalVector<GritVariable> variables;
 	LocalVector<Variant> constants;
+	// Original values of every constant (the native backend only keeps
+	// primitives in `constants` and encodes the rest as initializer code).
+	LocalVector<Variant> constant_values;
 	LocalVector<Variant::Type> constant_types;
 	LocalVector<String> constant_initializers;
 	LocalVector<GritBlock> blocks;

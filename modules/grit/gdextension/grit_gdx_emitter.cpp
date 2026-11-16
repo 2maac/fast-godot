@@ -1,0 +1,1629 @@
+#include "grit_gdx_emitter.h"
+
+#include "core/math/math_funcs.h"
+#include "core/config/engine.h"
+#include "core/object/class_db.h"
+#include "core/string/string_builder.h"
+
+namespace {
+
+struct VirtualParam {
+	const char *type;
+	const char *name;
+};
+
+struct VirtualInfo {
+	const char *name;
+	const char *return_type;
+	const VirtualParam *params;
+	int param_count;
+};
+
+const VirtualParam NO_PARAMS[] = { { nullptr, nullptr } };
+const VirtualParam DELTA_PARAMS[] = { { "double", "p_delta" } };
+const VirtualParam EVENT_PARAMS[] = { { "const Ref<InputEvent> &", "p_event" } };
+const VirtualParam NOTIFICATION_PARAMS[] = { { "int32_t", "p_what" } };
+
+const VirtualInfo VIRTUALS[] = {
+	{ "_ready", "void", NO_PARAMS, 0 },
+	{ "_process", "void", DELTA_PARAMS, 1 },
+	{ "_physics_process", "void", DELTA_PARAMS, 1 },
+	{ "_enter_tree", "void", NO_PARAMS, 0 },
+	{ "_exit_tree", "void", NO_PARAMS, 0 },
+	{ "_input", "void", EVENT_PARAMS, 1 },
+	{ "_shortcut_input", "void", EVENT_PARAMS, 1 },
+	{ "_unhandled_input", "void", EVENT_PARAMS, 1 },
+	{ "_unhandled_key_input", "void", EVENT_PARAMS, 1 },
+	{ "_gui_input", "void", EVENT_PARAMS, 1 },
+	{ "_draw", "void", NO_PARAMS, 0 },
+	{ "_notification", "void", NOTIFICATION_PARAMS, 1 },
+};
+
+const VirtualInfo *find_virtual(const String &p_name) {
+	for (const VirtualInfo &info : VIRTUALS) {
+		if (p_name == String(info.name)) {
+			return &info;
+		}
+	}
+	return nullptr;
+}
+
+const char *operator_code(Variant::Operator p_operator) {
+	switch (p_operator) {
+		case Variant::OP_ADD:
+			return "Variant::OP_ADD";
+		case Variant::OP_SUBTRACT:
+			return "Variant::OP_SUBTRACT";
+		case Variant::OP_MULTIPLY:
+			return "Variant::OP_MULTIPLY";
+		case Variant::OP_DIVIDE:
+			return "Variant::OP_DIVIDE";
+		case Variant::OP_MODULE:
+			return "Variant::OP_MODULE";
+		case Variant::OP_EQUAL:
+			return "Variant::OP_EQUAL";
+		case Variant::OP_NOT_EQUAL:
+			return "Variant::OP_NOT_EQUAL";
+		case Variant::OP_LESS:
+			return "Variant::OP_LESS";
+		case Variant::OP_LESS_EQUAL:
+			return "Variant::OP_LESS_EQUAL";
+		case Variant::OP_GREATER:
+			return "Variant::OP_GREATER";
+		case Variant::OP_GREATER_EQUAL:
+			return "Variant::OP_GREATER_EQUAL";
+		default:
+			return nullptr;
+	}
+}
+
+String variant_enum(const Variant::Type p_type) {
+	switch (p_type) {
+		case Variant::NIL:
+			return "NIL";
+		case Variant::BOOL:
+			return "BOOL";
+		case Variant::INT:
+			return "INT";
+		case Variant::FLOAT:
+			return "FLOAT";
+		case Variant::STRING:
+			return "STRING";
+		case Variant::STRING_NAME:
+			return "STRING_NAME";
+		case Variant::NODE_PATH:
+			return "NODE_PATH";
+		case Variant::RID:
+			return "RID";
+		case Variant::VECTOR2:
+			return "VECTOR2";
+		case Variant::VECTOR2I:
+			return "VECTOR2I";
+		case Variant::RECT2:
+			return "RECT2";
+		case Variant::RECT2I:
+			return "RECT2I";
+		case Variant::VECTOR3:
+			return "VECTOR3";
+		case Variant::VECTOR3I:
+			return "VECTOR3I";
+		case Variant::TRANSFORM2D:
+			return "TRANSFORM2D";
+		case Variant::VECTOR4:
+			return "VECTOR4";
+		case Variant::VECTOR4I:
+			return "VECTOR4I";
+		case Variant::PLANE:
+			return "PLANE";
+		case Variant::QUATERNION:
+			return "QUATERNION";
+		case Variant::AABB:
+			return "AABB";
+		case Variant::BASIS:
+			return "BASIS";
+		case Variant::TRANSFORM3D:
+			return "TRANSFORM3D";
+		case Variant::PROJECTION:
+			return "PROJECTION";
+		case Variant::COLOR:
+			return "COLOR";
+		case Variant::ARRAY:
+			return "ARRAY";
+		case Variant::DICTIONARY:
+			return "DICTIONARY";
+		case Variant::OBJECT:
+			return "OBJECT";
+		case Variant::CALLABLE:
+			return "CALLABLE";
+		case Variant::SIGNAL:
+			return "SIGNAL";
+		default:
+			return "NIL";
+	}
+}
+
+bool is_gdscript_utility(const String &p_name, const String &p_arguments, String &r_expression) {
+	if (p_name == "int") {
+		r_expression = "static_cast<int64_t>(" + p_arguments + ")";
+		return true;
+	}
+	if (p_name == "float") {
+		r_expression = "static_cast<double>(" + p_arguments + ")";
+		return true;
+	}
+	if (p_name == "str" || p_name == "bool") {
+		r_expression = "UtilityFunctions::" + p_name + "(" + p_arguments + ")";
+		return true;
+	}
+	return false;
+}
+
+} // namespace
+
+GritGdxEmitter::GritGdxEmitter(const GritGdxClass &p_class) :
+		klass(p_class) {
+	for (const GritFunction &function_entry : klass.functions) {
+		methods.insert(function_entry.name, &function_entry);
+	}
+	for (const GritGdxProperty &property : klass.properties) {
+		properties_by_name.insert(property.name, &property);
+	}
+}
+
+void GritGdxEmitter::line(const String &p_text) {
+	for (int i = 0; i < indentation; i++) {
+		body.append("\t");
+	}
+	body.append(p_text);
+	body.append("\n");
+}
+
+void GritGdxEmitter::reject(const String &p_reason) {
+	if (reject_reason.is_empty()) {
+		reject_reason = p_reason;
+	}
+}
+
+bool GritGdxEmitter::is_supported(const String &p_name) const {
+	const bool *supported = supported_methods.getptr(p_name);
+	return supported && *supported;
+}
+
+void GritGdxEmitter::prepare() {
+	supported_methods.clear();
+	for (const GritFunction &function_entry : klass.functions) {
+		StringBuilder probe;
+		const bool is_virtual = is_virtual_name(String(function_entry.name));
+		supported_methods.insert(function_entry.name, emit_function(function_entry, is_virtual, probe));
+	}
+	reject_reason = String();
+}
+
+String GritGdxEmitter::snake_case(const String &p_name) {
+	// Mirrors godot-cpp's camel_to_snake(), which decides the generated header
+	// names (node2d.hpp, a_star2d.hpp, http_request.hpp).
+	String step1;
+	for (int i = 0; i < p_name.length(); i++) {
+		const char32_t c = p_name[i];
+		if (i > 0 && c >= 'A' && c <= 'Z' && i + 1 < p_name.length() && p_name[i + 1] >= 'a' && p_name[i + 1] <= 'z') {
+			step1 += "_";
+		}
+		step1 += String::chr(c);
+	}
+	String step2;
+	for (int i = 0; i < step1.length(); i++) {
+		const char32_t c = step1[i];
+		if (i > 0 && c >= 'A' && c <= 'Z') {
+			const char32_t previous = step1[i - 1];
+			if ((previous >= 'a' && previous <= 'z') || (previous >= '0' && previous <= '9')) {
+				step2 += "_";
+			}
+		}
+		step2 += String::chr(c);
+	}
+	step2 = step2.replace("2_D", "2D").replace("3_D", "3D");
+	return step2.to_lower();
+}
+
+String GritGdxEmitter::sanitize(const String &p_name) {
+	String out;
+	for (int i = 0; i < p_name.length(); i++) {
+		const char32_t c = p_name[i];
+		if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			out += String::chr(c);
+		}
+	}
+	return out.is_empty() ? String("value") : out;
+}
+
+String GritGdxEmitter::cpp_storage(Variant::Type p_type) {
+	switch (p_type) {
+		case Variant::NIL:
+			return "Variant";
+		case Variant::BOOL:
+			return "bool";
+		case Variant::INT:
+			return "int64_t";
+		case Variant::FLOAT:
+			return "double";
+		case Variant::STRING:
+			return "String";
+		case Variant::STRING_NAME:
+			return "StringName";
+		case Variant::NODE_PATH:
+			return "NodePath";
+		case Variant::RID:
+			return "RID";
+		case Variant::VECTOR2:
+			return "Vector2";
+		case Variant::VECTOR2I:
+			return "Vector2i";
+		case Variant::RECT2:
+			return "Rect2";
+		case Variant::RECT2I:
+			return "Rect2i";
+		case Variant::VECTOR3:
+			return "Vector3";
+		case Variant::VECTOR3I:
+			return "Vector3i";
+		case Variant::TRANSFORM2D:
+			return "Transform2D";
+		case Variant::VECTOR4:
+			return "Vector4";
+		case Variant::VECTOR4I:
+			return "Vector4i";
+		case Variant::PLANE:
+			return "Plane";
+		case Variant::QUATERNION:
+			return "Quaternion";
+		case Variant::AABB:
+			return "AABB";
+		case Variant::BASIS:
+			return "Basis";
+		case Variant::TRANSFORM3D:
+			return "Transform3D";
+		case Variant::PROJECTION:
+			return "Projection";
+		case Variant::COLOR:
+			return "Color";
+		case Variant::PACKED_BYTE_ARRAY:
+			return "PackedByteArray";
+		case Variant::PACKED_INT32_ARRAY:
+			return "PackedInt32Array";
+		case Variant::PACKED_INT64_ARRAY:
+			return "PackedInt64Array";
+		case Variant::PACKED_FLOAT32_ARRAY:
+			return "PackedFloat32Array";
+		case Variant::PACKED_FLOAT64_ARRAY:
+			return "PackedFloat64Array";
+		case Variant::PACKED_STRING_ARRAY:
+			return "PackedStringArray";
+		case Variant::PACKED_VECTOR2_ARRAY:
+			return "PackedVector2Array";
+		case Variant::PACKED_VECTOR3_ARRAY:
+			return "PackedVector3Array";
+		case Variant::PACKED_COLOR_ARRAY:
+			return "PackedColorArray";
+		case Variant::PACKED_VECTOR4_ARRAY:
+			return "PackedVector4Array";
+		case Variant::ARRAY:
+			return "Array";
+		case Variant::DICTIONARY:
+			return "Dictionary";
+		case Variant::CALLABLE:
+			return "Callable";
+		case Variant::SIGNAL:
+			return "Signal";
+		case Variant::OBJECT:
+			return "Object *";
+		default:
+			return "Variant";
+	}
+}
+
+String GritGdxEmitter::default_storage_value(Variant::Type p_type) {
+	switch (p_type) {
+		case Variant::NIL:
+			return "Variant()";
+		case Variant::BOOL:
+			return "false";
+		case Variant::INT:
+			return "0";
+		case Variant::FLOAT:
+			return "0.0";
+		case Variant::OBJECT:
+			return "nullptr";
+		default:
+			return cpp_storage(p_type) + "()";
+	}
+}
+
+String GritGdxEmitter::escaped_string(const String &p_text) {
+	String out = "\"";
+	for (int i = 0; i < p_text.length(); i++) {
+		const char32_t c = p_text[i];
+		switch (c) {
+			case '\\':
+				out += "\\\\";
+				break;
+			case '"':
+				out += "\\\"";
+				break;
+			case '\n':
+				out += "\\n";
+				break;
+			case '\r':
+				out += "\\r";
+				break;
+			case '\t':
+				out += "\\t";
+				break;
+			default:
+				if (c < 0x20) {
+					out += vformat("\\x%02x", int(c));
+				} else {
+					out += String::chr(c);
+				}
+				break;
+		}
+	}
+	return out + "\"";
+}
+
+String GritGdxEmitter::float_literal(double p_value) {
+	String text = String::num(p_value, 17).strip_edges();
+	if (!text.contains(".") && !text.contains("e") && !text.contains("E")) {
+		text += ".0";
+	}
+	return text;
+}
+
+String GritGdxEmitter::variable_name(int p_variable) const {
+	const GritVariable &variable = function->variables[p_variable];
+	String name;
+	switch (variable.role) {
+		case GritVariable::Role::PARAMETER:
+			name = "parameter_";
+			break;
+		case GritVariable::Role::LOCAL:
+			name = "local_";
+			break;
+		case GritVariable::Role::TEMPORARY:
+			name = "temporary_";
+			break;
+	}
+	name += itos(p_variable);
+	const String suffix = sanitize(variable.name);
+	if (!suffix.is_empty()) {
+		name += "_" + suffix;
+	}
+	return name;
+}
+
+const GritGdxProperty *GritGdxEmitter::property_of(int p_member) const {
+	const int *index = klass.property_by_member_index.getptr(p_member);
+	return index ? &klass.properties[*index] : nullptr;
+}
+
+const GritFunction *GritGdxEmitter::method_named(const String &p_name) const {
+	const GritFunction *const *method = methods.getptr(p_name);
+	return method ? *method : nullptr;
+}
+
+Variant::Type GritGdxEmitter::storage_of(const GritOperand &p_operand) const {
+	switch (p_operand.kind) {
+		case GritOperand::Kind::VARIABLE:
+			return function->variables[p_operand.index].storage;
+		case GritOperand::Kind::MEMBER: {
+			const GritGdxProperty *property = property_of(p_operand.index);
+			return property ? property->storage : Variant::NIL;
+		}
+		case GritOperand::Kind::CONSTANT: {
+			const Variant::Type type = function->constant_types[p_operand.index];
+			switch (type) {
+				case Variant::NIL:
+				case Variant::BOOL:
+				case Variant::INT:
+				case Variant::FLOAT:
+				case Variant::STRING:
+					return type;
+				default:
+					return Variant::NIL;
+			}
+		}
+		default:
+			return Variant::NIL;
+	}
+}
+
+String GritGdxEmitter::convert(const String &p_expression, Variant::Type p_from, Variant::Type p_to) const {
+	if (p_from == p_to) {
+		return p_expression;
+	}
+	if (p_to == Variant::NIL) {
+		return p_from == Variant::NIL ? p_expression : "Variant(" + p_expression + ")";
+	}
+	if (p_to == Variant::OBJECT) {
+		return "static_cast<Object *>(" + p_expression + ")";
+	}
+	return "static_cast<" + cpp_storage(p_to) + ">(" + p_expression + ")";
+}
+
+String GritGdxEmitter::default_literal(const Variant &p_value, Variant::Type p_storage) {
+	switch (p_value.get_type()) {
+		case Variant::BOOL:
+			return String(p_value.operator bool() ? "true" : "false");
+		case Variant::INT:
+			return "int64_t(" + itos(p_value.operator int64_t()) + ")";
+		case Variant::FLOAT:
+			return float_literal(p_value.operator double());
+		case Variant::STRING:
+			return "String(" + escaped_string(p_value.operator String()) + ")";
+		case Variant::NIL:
+			return "Variant()";
+		case Variant::ARRAY: {
+			const Array array = p_value;
+			String items;
+			for (int i = 0; i < array.size(); i++) {
+				if (i > 0) {
+					items += ", ";
+				}
+				const Variant &item = array[i];
+				const String literal = default_literal(item, Variant::NIL);
+				if (literal.is_empty()) {
+					return String();
+				}
+				items += literal;
+			}
+			return "Variant(grit_gdx::array({ " + items + " }))";
+		}
+		case Variant::DICTIONARY: {
+			const Dictionary dictionary = p_value;
+			String items;
+			bool first = true;
+			for (const KeyValue<Variant, Variant> &entry : dictionary) {
+				const String key = default_literal(entry.key, Variant::NIL);
+				const String value = default_literal(entry.value, Variant::NIL);
+				if (key.is_empty() || value.is_empty()) {
+					return String();
+				}
+				if (!first) {
+					items += ", ";
+				}
+				items += key + ", " + value;
+				first = false;
+			}
+			return "Variant(grit_gdx::dictionary({ " + items + " }))";
+		}
+		default:
+			return String();
+	}
+}
+
+String GritGdxEmitter::constant_expression(int p_constant) {
+	const Variant::Type type = function->constant_types[p_constant];
+	const Variant &value = p_constant < int(function->constant_values.size()) ? function->constant_values[p_constant] : function->constants[p_constant];
+	switch (type) {
+		case Variant::NIL:
+			return "Variant()";
+		case Variant::BOOL:
+			return value.operator bool() ? "true" : "false";
+		case Variant::INT:
+			return "int64_t(" + itos(value.operator int64_t()) + ")";
+		case Variant::FLOAT:
+			return float_literal(value.operator double());
+		case Variant::STRING:
+			return "String(" + escaped_string(value.operator String()) + ")";
+		case Variant::OBJECT: {
+			// Singleton references (`Time`, `Engine`, `Input`, …) arrive as
+			// object constants; their runtime ids differ, so call the generated
+			// accessor instead.
+			const Object *object = value;
+			if (!object) {
+				return "Variant()";
+			}
+			const StringName class_name = object->get_class_name();
+			if (ClassDB::class_exists(class_name) && Engine::get_singleton()->has_singleton(class_name)) {
+				return "Variant(" + String(class_name) + "::get_singleton())";
+			}
+			reject(vformat("constant object of type %s", class_name));
+			return "Variant()";
+		}
+		default:
+			reject(vformat("constant of type %s", Variant::get_type_name(type)));
+			return "Variant()";
+	}
+}
+
+String GritGdxEmitter::read(const GritOperand &p_operand) {
+	switch (p_operand.kind) {
+		case GritOperand::Kind::VARIABLE:
+			return variable_name(p_operand.index);
+		case GritOperand::Kind::SELF:
+			return "this";
+		case GritOperand::Kind::CONSTANT:
+			return constant_expression(p_operand.index);
+		case GritOperand::Kind::MEMBER: {
+			const GritGdxProperty *property = property_of(p_operand.index);
+			if (!property) {
+				reject("member access with an unknown index");
+				return "Variant()";
+			}
+			return property->field;
+		}
+		case GritOperand::Kind::NIL:
+			return "Variant()";
+		case GritOperand::Kind::CLASS:
+			reject("class reference");
+			return "Variant()";
+	}
+	return "Variant()";
+}
+
+String GritGdxEmitter::read_as(const GritOperand &p_operand, Variant::Type p_type) {
+	return convert(read(p_operand), storage_of(p_operand), p_type);
+}
+
+String GritGdxEmitter::read_any(const GritOperand &p_operand) {
+	const Variant::Type storage = storage_of(p_operand);
+	const String expression = read(p_operand);
+	return storage == Variant::NIL ? expression : "Variant(" + expression + ")";
+}
+
+String GritGdxEmitter::lvalue(const GritOperand &p_operand) {
+	switch (p_operand.kind) {
+		case GritOperand::Kind::VARIABLE:
+			return variable_name(p_operand.index);
+		case GritOperand::Kind::MEMBER: {
+			const GritGdxProperty *property = property_of(p_operand.index);
+			if (!property) {
+				reject("member access with an unknown index");
+				return "grit_invalid_lvalue";
+			}
+			return property->field;
+		}
+		default:
+			reject("assignment to a value that is not a variable");
+			return "grit_invalid_lvalue";
+	}
+}
+
+String GritGdxEmitter::dynamic_operator(Variant::Operator p_operator, const GritOperand &p_left, const GritOperand &p_right) {
+	const char *code = operator_code(p_operator);
+	if (!code) {
+		reject("dynamic operator");
+		return "Variant()";
+	}
+	return String("grit_gdx::binary(") + code + ", " + read_any(p_left) + ", " + read_any(p_right) + ")";
+}
+
+String GritGdxEmitter::call_arguments(const GritStatement &p_statement, int p_first, const GritFunction *p_target) {
+	String arguments;
+	int parameter = 0;
+	for (int i = p_first; i < int(p_statement.operands.size()); i++, parameter++) {
+		if (parameter > 0) {
+			arguments += ", ";
+		}
+		Variant::Type wanted = Variant::NIL;
+		if (p_target) {
+			int seen = 0;
+			for (const GritVariable &variable : p_target->variables) {
+				if (variable.role != GritVariable::Role::PARAMETER) {
+					continue;
+				}
+				if (seen == parameter) {
+					wanted = variable.storage;
+					break;
+				}
+				seen++;
+			}
+		}
+		arguments += read_as(p_statement.operands[i], wanted);
+	}
+	return arguments;
+}
+
+bool GritGdxEmitter::write_operator(const GritStatement &p_statement) {
+	const GritOperand &target = p_statement.target;
+
+	if (p_statement.opcode == GritOpcode::UNARY) {
+		const GritOperand &operand_operand = p_statement.operands[0];
+		const String operand = read(operand_operand);
+		const Variant::Type storage = storage_of(operand_operand);
+		String expression;
+		switch (p_statement.op) {
+			case Variant::OP_NEGATE:
+				expression = "-" + operand;
+				break;
+			case Variant::OP_POSITIVE:
+				expression = "(" + operand + ")";
+				break;
+			case Variant::OP_NOT: {
+				const String truth = storage == Variant::NIL ? "Variant(" + operand + ").booleanize()" : operand;
+				expression = "!(" + truth + ")";
+				break;
+			}
+			case Variant::OP_BIT_NEGATE:
+				expression = "~" + operand;
+				break;
+			default:
+				reject("unary operator");
+				return false;
+		}
+		line(lvalue(target) + " = " + convert(expression, storage, storage_of(target)) + ";");
+		return true;
+	}
+
+	const GritOperand &left_operand = p_statement.operands[0];
+	const GritOperand &right_operand = p_statement.operands[1];
+	const Variant::Type left_storage = storage_of(left_operand);
+	const Variant::Type right_storage = storage_of(right_operand);
+	const Variant::Type target_storage = storage_of(target);
+
+	String op;
+	switch (p_statement.op) {
+		case Variant::OP_ADD:
+			op = "+";
+			break;
+		case Variant::OP_SUBTRACT:
+			op = "-";
+			break;
+		case Variant::OP_MULTIPLY:
+			op = "*";
+			break;
+		case Variant::OP_DIVIDE:
+			op = "/";
+			break;
+		case Variant::OP_MODULE:
+			op = "%";
+			break;
+		case Variant::OP_EQUAL:
+			op = "==";
+			break;
+		case Variant::OP_NOT_EQUAL:
+			op = "!=";
+			break;
+		case Variant::OP_LESS:
+			op = "<";
+			break;
+		case Variant::OP_LESS_EQUAL:
+			op = "<=";
+			break;
+		case Variant::OP_GREATER:
+			op = ">";
+			break;
+		case Variant::OP_GREATER_EQUAL:
+			op = ">=";
+			break;
+		case Variant::OP_AND:
+			op = "&";
+			break;
+		case Variant::OP_OR:
+			op = "|";
+			break;
+		case Variant::OP_XOR:
+			op = "^";
+			break;
+		case Variant::OP_SHIFT_LEFT:
+			op = "<<";
+			break;
+		case Variant::OP_SHIFT_RIGHT:
+			op = ">>";
+			break;
+		default:
+			reject("operator " + Variant::get_operator_name(p_statement.op));
+			return false;
+	}
+
+	String expression;
+	if (left_storage == Variant::NIL || right_storage == Variant::NIL) {
+		expression = dynamic_operator(p_statement.op, left_operand, right_operand);
+		line(lvalue(target) + " = " + convert(expression, Variant::NIL, target_storage) + ";");
+		return true;
+	}
+
+	if ((left_storage == Variant::INT || left_storage == Variant::FLOAT) && (right_storage == Variant::INT || right_storage == Variant::FLOAT) && left_storage != right_storage) {
+		expression = "(" + convert(read(left_operand), left_storage, Variant::FLOAT) + " " + op + " " + convert(read(right_operand), right_storage, Variant::FLOAT) + ")";
+	} else {
+		expression = "(" + read(left_operand) + " " + op + " " + read(right_operand) + ")";
+	}
+	line(lvalue(target) + " = " + convert(expression, target_storage, target_storage) + ";");
+	return true;
+}
+
+bool GritGdxEmitter::write_access(const GritStatement &p_statement) {
+	switch (p_statement.opcode) {
+		case GritOpcode::GET_KEYED: {
+			const GritOperand &container = p_statement.operands[0];
+			const String key = read_as(p_statement.operands[1], Variant::INT);
+			const Variant::Type container_storage = storage_of(container);
+			String expression;
+			if (container_storage == Variant::ARRAY) {
+				expression = read(container) + "[" + key + "]";
+			} else if (container_storage == Variant::DICTIONARY) {
+				expression = read(container) + "[" + read_any(p_statement.operands[1]) + "]";
+			} else if (container_storage == Variant::STRING) {
+				expression = read(container) + "[" + key + "]";
+			} else {
+				expression = "grit_gdx::get_keyed(" + read_any(container) + ", " + read_any(p_statement.operands[1]) + ")";
+			}
+			line(lvalue(p_statement.target) + " = " + convert(expression, Variant::NIL, storage_of(p_statement.target)) + ";");
+			return true;
+		}
+		case GritOpcode::SET_KEYED: {
+			const GritOperand &container = p_statement.operands[0];
+			const Variant::Type container_storage = storage_of(container);
+			if (container_storage == Variant::ARRAY) {
+				line(read(container) + "[" + read_as(p_statement.operands[1], Variant::INT) + "] = " + read_any(p_statement.operands[2]) + ";");
+			} else if (container_storage == Variant::DICTIONARY) {
+				line(read(container) + "[" + read_any(p_statement.operands[1]) + "] = " + read_any(p_statement.operands[2]) + ";");
+			} else {
+				line("grit_gdx::set_keyed(" + read_any(container) + ", " + read_any(p_statement.operands[1]) + ", " + read_any(p_statement.operands[2]) + ");");
+			}
+			return true;
+		}
+		case GritOpcode::GET_PROPERTY: {
+			const String name = String(p_statement.name);
+			const GritGdxProperty *const *property = properties_by_name.getptr(name);
+			String expression;
+			if (property) {
+				expression = (*property)->field;
+			} else {
+				expression = "this->get(StringName(" + escaped_string(name) + "))";
+			}
+			line(lvalue(p_statement.target) + " = " + convert(expression, property ? (*property)->storage : Variant::NIL, storage_of(p_statement.target)) + ";");
+			return true;
+		}
+		case GritOpcode::SET_PROPERTY: {
+			const String name = String(p_statement.name);
+			const GritGdxProperty *const *property = properties_by_name.getptr(name);
+			if (property) {
+				line((*property)->field + " = " + read_as(p_statement.operands[0], (*property)->storage) + ";");
+			} else {
+				line("this->set(StringName(" + escaped_string(name) + "), " + read_any(p_statement.operands[0]) + ");");
+			}
+			return true;
+		}
+		case GritOpcode::GET_NAMED: {
+			const String base = read_any(p_statement.operands[0]);
+			const String expression = "grit_gdx::get_named(" + base + ", StringName(" + escaped_string(String(p_statement.name)) + "))";
+			line(lvalue(p_statement.target) + " = " + convert(expression, Variant::NIL, storage_of(p_statement.target)) + ";");
+			return true;
+		}
+		case GritOpcode::SET_NAMED: {
+			line("grit_gdx::set_named(" + read_any(p_statement.operands[0]) + ", StringName(" + escaped_string(String(p_statement.name)) + "), " + read_any(p_statement.operands[1]) + ");");
+			return true;
+		}
+		case GritOpcode::CONSTRUCT: {
+			const String type = cpp_storage(p_statement.builtin_type);
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			line(lvalue(p_statement.target) + " = " + type + "(" + arguments + ");");
+			return true;
+		}
+		case GritOpcode::CONSTRUCT_ARRAY: {
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			line(lvalue(p_statement.target) + " = grit_gdx::array({ " + arguments + " });");
+			return true;
+		}
+		case GritOpcode::CONSTRUCT_DICTIONARY: {
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			line(lvalue(p_statement.target) + " = grit_gdx::dictionary({ " + arguments + " });");
+			return true;
+		}
+		default:
+			reject("access opcode");
+			return false;
+	}
+}
+
+bool GritGdxEmitter::write_return(const GritStatement &p_statement) {
+	const GritType &return_type = function->types[function->return_type];
+	if (return_type.kind == GritType::Kind::BUILTIN && return_type.builtin_type == Variant::NIL) {
+		line("return;");
+		return true;
+	}
+	if (return_type.kind == GritType::Kind::VARIANT) {
+		line("return " + read_any(p_statement.operands[0]) + ";");
+		return true;
+	}
+	if (return_type.kind == GritType::Kind::BUILTIN) {
+		line("return " + read_as(p_statement.operands[0], return_type.builtin_type) + ";");
+		return true;
+	}
+	line("return " + read_any(p_statement.operands[0]) + ";");
+	return true;
+}
+
+bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
+	const GritOperand &target = p_statement.target;
+	const String name = String(p_statement.name);
+
+	switch (p_statement.opcode) {
+		case GritOpcode::CALL_UTILITY: {
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			const String expression = "UtilityFunctions::" + name + "(" + arguments + ")";
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL_GDSCRIPT_UTILITY: {
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			String expression;
+			if (!is_gdscript_utility(name, arguments, expression)) {
+				reject(vformat("GDScript utility function \"%s\"", name));
+				return false;
+			}
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL: {
+			const GritOperand &base = p_statement.operands[0];
+			const GritFunction *method = method_named(name);
+			String expression;
+			if (base.kind == GritOperand::Kind::SELF && method && is_supported(name)) {
+				expression = "this->" + sanitize(name) + "(" + call_arguments(p_statement, 1, method) + ")";
+			} else {
+				String arguments;
+				for (uint32_t i = 1; i < p_statement.operands.size(); i++) {
+					if (i > 1) {
+						arguments += ", ";
+					}
+					arguments += read_any(p_statement.operands[i]);
+				}
+				const String base_expression = base.kind == GritOperand::Kind::SELF ? String("Variant(this)") : read_any(base);
+				expression = "grit_gdx::call_method(" + base_expression + ", StringName(" + escaped_string(name) + ")" + (arguments.is_empty() ? String() : ", " + arguments) + ")";
+			}
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL_NATIVE_STATIC: {
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			const String expression = String(p_statement.class_name) + "::" + name + "(" + arguments + ")";
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL_METHOD_BIND: {
+			String arguments;
+			for (uint32_t i = 1; i < p_statement.operands.size(); i++) {
+				if (i > 1) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			const String expression = "grit_gdx::call_method(" + read_any(p_statement.operands[0]) + ", StringName(" + escaped_string(name) + ")" + (arguments.is_empty() ? String() : ", " + arguments) + ")";
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL_BUILTIN: {
+			String arguments;
+			for (uint32_t i = 1; i < p_statement.operands.size(); i++) {
+				if (i > 1) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			const String expression = "grit_gdx::call_method(" + read_any(p_statement.operands[0]) + ", StringName(" + escaped_string(name) + ")" + (arguments.is_empty() ? String() : ", " + arguments) + ")";
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL_SUPER:
+		case GritOpcode::CALL_ASYNC:
+		case GritOpcode::CALL_BUILTIN_STATIC:
+		case GritOpcode::CREATE_LAMBDA:
+			reject("unsupported call form");
+			return false;
+		default:
+			reject("unsupported call");
+			return false;
+	}
+}
+
+bool GritGdxEmitter::write_control(const GritStatement &p_statement) {
+	switch (p_statement.opcode) {
+		case GritOpcode::IF: {
+			const Variant::Type condition_storage = storage_of(p_statement.operands[0]);
+			const String condition = condition_storage == Variant::BOOL ? read(p_statement.operands[0]) : read_any(p_statement.operands[0]) + ".booleanize()";
+			line("if (" + condition + ") {");
+			indentation++;
+			if (!write_block(p_statement.blocks[0])) {
+				return false;
+			}
+			indentation--;
+			if (p_statement.blocks[1] >= 0 && !function->blocks[p_statement.blocks[1]].statements.is_empty()) {
+				line("} else {");
+				indentation++;
+				if (!write_block(p_statement.blocks[1])) {
+					return false;
+				}
+				indentation--;
+			}
+			line("}");
+			return true;
+		}
+		case GritOpcode::WHILE: {
+			line("for (;;) {");
+			indentation++;
+			if (!write_block(p_statement.blocks[0])) {
+				return false;
+			}
+			const Variant::Type condition_storage = storage_of(p_statement.operands[0]);
+			const String condition = condition_storage == Variant::BOOL ? read(p_statement.operands[0]) : read_any(p_statement.operands[0]) + ".booleanize()";
+			line("if (!(" + condition + ")) { break; }");
+			if (!write_block(p_statement.blocks[1])) {
+				return false;
+			}
+			indentation--;
+			line("}");
+			return true;
+		}
+		case GritOpcode::FOR_RANGE: {
+			const String from = read_as(p_statement.operands[0], Variant::INT);
+			const String to = read_as(p_statement.operands[1], Variant::INT);
+			const String step = read_as(p_statement.operands[2], Variant::INT);
+			const String from_symbol = "range_from_" + itos(symbol_count);
+			const String to_symbol = "range_to_" + itos(symbol_count);
+			const String step_symbol = "range_step_" + itos(symbol_count);
+			const String counter = "range_counter_" + itos(symbol_count);
+			symbol_count++;
+			line("{");
+			indentation++;
+			line("const int64_t " + from_symbol + " = " + from + ";");
+			line("const int64_t " + to_symbol + " = " + to + ";");
+			line("const int64_t " + step_symbol + " = " + step + ";");
+			line("for (int64_t " + counter + " = " + from_symbol + "; " + step_symbol + " != 0 && (" + step_symbol + " > 0 ? " + counter + " < " + to_symbol + " : " + counter + " > " + to_symbol + "); " + counter + " += " + step_symbol + ") {");
+			indentation++;
+			line(lvalue(p_statement.target) + " = " + convert(counter, Variant::INT, storage_of(p_statement.target)) + ";");
+			if (!write_block(p_statement.blocks[0])) {
+				return false;
+			}
+			indentation--;
+			line("}");
+			indentation--;
+			line("}");
+			return true;
+		}
+		case GritOpcode::FOR_EACH: {
+			const GritOperand &container = p_statement.operands[0];
+			const Variant::Type container_storage = storage_of(container);
+			const String container_symbol = "foreach_container_" + itos(symbol_count);
+			const String index_symbol = "foreach_index_" + itos(symbol_count);
+			symbol_count++;
+			line("{");
+			indentation++;
+			if (container_storage == Variant::STRING) {
+				line("const String " + container_symbol + " = " + read(container) + ";");
+			} else if (container_storage == Variant::ARRAY) {
+				line("const Array " + container_symbol + " = " + read(container) + ";");
+			} else if (container_storage == Variant::NIL) {
+				line("const Array " + container_symbol + " = grit_gdx::iterate(" + read_any(container) + ");");
+			} else {
+				reject("for over this container type");
+				return false;
+			}
+			const String size_expression = container_storage == Variant::STRING ? container_symbol + ".length()" : container_symbol + ".size()";
+			line("for (int64_t " + index_symbol + " = 0; " + index_symbol + " < " + size_expression + "; " + index_symbol + "++) {");
+			indentation++;
+			line(lvalue(p_statement.target) + " = " + convert(container_symbol + "[" + index_symbol + "]", Variant::NIL, storage_of(p_statement.target)) + ";");
+			if (!write_block(p_statement.blocks[0])) {
+				return false;
+			}
+			indentation--;
+			line("}");
+			indentation--;
+			line("}");
+			return true;
+		}
+		case GritOpcode::BREAK:
+			line("break;");
+			return true;
+		case GritOpcode::CONTINUE:
+			line("continue;");
+			return true;
+		case GritOpcode::RETURN:
+			return write_return(p_statement);
+		default:
+			reject("unsupported control opcode");
+			return false;
+	}
+}
+
+bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
+	switch (p_statement.opcode) {
+		case GritOpcode::ASSIGN:
+		case GritOpcode::ASSIGN_TYPED: {
+			const Variant::Type storage = storage_of(p_statement.target);
+			if (storage == Variant::OBJECT) {
+				line(lvalue(p_statement.target) + " = " + convert(read_any(p_statement.operands[0]), Variant::NIL, Variant::OBJECT) + ";");
+			} else {
+				line(lvalue(p_statement.target) + " = " + read_as(p_statement.operands[0], storage) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CLEAR:
+			line(lvalue(p_statement.target) + " = " + default_storage_value(storage_of(p_statement.target)) + ";");
+			return true;
+		case GritOpcode::TEST:
+		case GritOpcode::UNARY:
+		case GritOpcode::BINARY:
+			return write_operator(p_statement);
+		case GritOpcode::GET_KEYED:
+		case GritOpcode::SET_KEYED:
+		case GritOpcode::GET_NAMED:
+		case GritOpcode::SET_NAMED:
+		case GritOpcode::GET_PROPERTY:
+		case GritOpcode::SET_PROPERTY:
+		case GritOpcode::CONSTRUCT:
+		case GritOpcode::CONSTRUCT_ARRAY:
+		case GritOpcode::CONSTRUCT_DICTIONARY:
+			return write_access(p_statement);
+		case GritOpcode::CALL:
+		case GritOpcode::CALL_ASYNC:
+		case GritOpcode::CALL_SUPER:
+		case GritOpcode::CALL_UTILITY:
+		case GritOpcode::CALL_GDSCRIPT_UTILITY:
+		case GritOpcode::CALL_BUILTIN:
+		case GritOpcode::CALL_BUILTIN_STATIC:
+		case GritOpcode::CALL_NATIVE_STATIC:
+		case GritOpcode::CALL_METHOD_BIND:
+		case GritOpcode::CREATE_LAMBDA:
+			return write_call(p_statement);
+		case GritOpcode::AWAIT:
+			reject("await");
+			return false;
+		case GritOpcode::TYPE_TEST:
+			reject("type test");
+			return false;
+		case GritOpcode::CAST:
+			reject("cast");
+			return false;
+		case GritOpcode::GET_STATIC:
+		case GritOpcode::SET_STATIC:
+		case GritOpcode::GET_GLOBAL:
+		case GritOpcode::DEFAULT_ARGUMENT:
+			reject("static or global access");
+			return false;
+		case GritOpcode::ASSERT:
+			reject("assert");
+			return false;
+		case GritOpcode::IF_NOT_SHARED:
+			reject("shared value branch");
+			return false;
+		default:
+			return write_control(p_statement);
+	}
+}
+
+bool GritGdxEmitter::write_block(int p_block) {
+	for (const GritStatement &statement : function->blocks[p_block].statements) {
+		if (!write_statement(statement) || !reject_reason.is_empty()) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool GritGdxEmitter::is_virtual_name(const String &p_name) {
+	return find_virtual(p_name) != nullptr;
+}
+
+String GritGdxEmitter::virtual_signature_of(const GritFunction &p_function) {
+	const VirtualInfo *info = find_virtual(String(p_function.name));
+	if (!info) {
+		return String();
+	}
+	String signature = String(info->return_type) + " " + sanitize(String(p_function.name)) + "(";
+	for (int i = 0; i < info->param_count; i++) {
+		if (i > 0) {
+			signature += ", ";
+		}
+		signature += String(info->params[i].type) + " " + String(info->params[i].name);
+	}
+	return signature + ") override";
+}
+
+String GritGdxEmitter::function_return_cpp(const GritFunction &p_function) {
+	const GritType &return_type = p_function.types[p_function.return_type];
+	if (return_type.kind == GritType::Kind::VARIANT) {
+		return "Variant";
+	}
+	if (return_type.kind == GritType::Kind::BUILTIN) {
+		if (return_type.builtin_type == Variant::NIL) {
+			return "void";
+		}
+		return cpp_storage(return_type.builtin_type);
+	}
+	return "Object *";
+}
+
+String GritGdxEmitter::function_parameter_cpp(const GritVariable &p_variable, const String &p_name) {
+	if (p_variable.storage == Variant::NIL) {
+		return "const Variant &" + p_name;
+	}
+	return cpp_storage(p_variable.storage) + " " + p_name;
+}
+
+bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_virtual, StringBuilder &r_output) {
+	function = &p_function;
+	reject_reason = String();
+	body = StringBuilder();
+	indentation = 1;
+	symbol_count = 0;
+
+	if (String(p_function.signature).begins_with("static ")) {
+		reject("static functions are not supported");
+		return false;
+	}
+	if (String(p_function.signature).contains(" optional ")) {
+		reject("optional parameters are not supported");
+		return false;
+	}
+	if (p_function.await_count > 0) {
+		reject("await is not supported");
+		return false;
+	}
+	if (p_function.rest_variable >= 0) {
+		reject("rest parameters are not supported");
+		return false;
+	}
+
+	const VirtualInfo *virtual_info = p_is_virtual ? find_virtual(String(p_function.name)) : nullptr;
+	LocalVector<int> parameter_variables;
+	for (uint32_t i = 0; i < p_function.variables.size(); i++) {
+		if (p_function.variables[i].role == GritVariable::Role::PARAMETER) {
+			parameter_variables.push_back(i);
+		}
+	}
+	if (virtual_info && int(parameter_variables.size()) != virtual_info->param_count) {
+		reject(vformat("\"%s\" must take %d parameters", p_function.name, virtual_info->param_count));
+		return false;
+	}
+
+	String signature_parameters;
+	LocalVector<String> aliases;
+	if (virtual_info) {
+		for (int i = 0; i < virtual_info->param_count; i++) {
+			if (i > 0) {
+				signature_parameters += ", ";
+			}
+			signature_parameters += String(virtual_info->params[i].type) + " " + String(virtual_info->params[i].name);
+			const GritVariable &variable = p_function.variables[parameter_variables[i]];
+			aliases.push_back(cpp_storage(variable.storage) + " " + variable_name(parameter_variables[i]) + " = " + String(virtual_info->params[i].name) + ";");
+		}
+	} else {
+		for (uint32_t i = 0; i < parameter_variables.size(); i++) {
+			if (i > 0) {
+				signature_parameters += ", ";
+			}
+			const GritVariable &variable = p_function.variables[parameter_variables[i]];
+			const String parameter_name = "p_" + sanitize(variable.name);
+			signature_parameters += function_parameter_cpp(variable, parameter_name);
+			aliases.push_back(cpp_storage(variable.storage) + " " + variable_name(parameter_variables[i]) + " = " + parameter_name + ";");
+		}
+	}
+
+	// GDScript enables processing implicitly when a script defines _process; a
+	// native override has to ask for it, and the class's own _ready is the place.
+	if (String(p_function.name) == "_ready") {
+		for (const GritFunction &other : klass.functions) {
+			if (other.name == StringName("_process")) {
+				line("set_process(true);");
+			}
+			if (other.name == StringName("_physics_process")) {
+				line("set_physics_process(true);");
+			}
+		}
+	}
+
+	if (!write_block(0) || !reject_reason.is_empty()) {
+		return false;
+	}
+
+	const String return_cpp = virtual_info ? String(virtual_info->return_type) : function_return_cpp(p_function);
+	r_output.append(return_cpp + " " + klass.class_name + "::" + sanitize(String(p_function.name)) + "(" + signature_parameters + ") {\n");
+	for (const String &alias : aliases) {
+		r_output.append("\t" + alias + "\n");
+	}
+	for (uint32_t i = 0; i < p_function.variables.size(); i++) {
+		const GritVariable &variable = p_function.variables[i];
+		if (variable.role == GritVariable::Role::PARAMETER) {
+			continue;
+		}
+		r_output.append("\t" + cpp_storage(variable.storage) + " " + variable_name(i) + " = " + default_storage_value(variable.storage) + ";\n");
+	}
+	r_output.append(body.as_string());
+	if (return_cpp == "Variant") {
+		r_output.append("\treturn Variant();\n");
+	} else if (return_cpp == "Object *") {
+		r_output.append("\treturn nullptr;\n");
+	} else if (return_cpp != "void") {
+		const GritType &type = p_function.types[p_function.return_type];
+		r_output.append("\treturn " + default_storage_value(type.kind == GritType::Kind::BUILTIN ? type.builtin_type : Variant::NIL) + ";\n");
+	}
+	r_output.append("}\n\n");
+	function = nullptr;
+	return true;
+}
+
+String GritGdxEmitter::header_file_name(const GritGdxClass &p_class) {
+	return snake_case(p_class.class_name) + ".h";
+}
+
+String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
+	StringBuilder out;
+	out.append("#pragma once\n\n");
+	out.append("#include <godot_cpp/classes/" + snake_case(String(p_class.base_type)) + ".hpp>\n");
+	out.append("#include <godot_cpp/core/class_db.hpp>\n");
+	out.append("#include <godot_cpp/variant/variant.hpp>\n");
+	out.append("#include <godot_cpp/variant/string.hpp>\n");
+	out.append("#include <godot_cpp/variant/string_name.hpp>\n");
+	out.append("#include <godot_cpp/variant/node_path.hpp>\n");
+	out.append("#include <godot_cpp/variant/array.hpp>\n");
+	out.append("#include <godot_cpp/variant/dictionary.hpp>\n");
+	out.append("#include <godot_cpp/variant/color.hpp>\n");
+	out.append("#include <godot_cpp/variant/vector2.hpp>\n");
+	out.append("#include <godot_cpp/variant/vector3.hpp>\n");
+	out.append("#include <godot_cpp/variant/transform2d.hpp>\n");
+	out.append("#include <godot_cpp/variant/transform3d.hpp>\n\n");
+	out.append("#include \"grit_gdx_helpers.h\"\n\n");
+	out.append("namespace godot {\n\n");
+	out.append("class " + p_class.class_name + " : public " + String(p_class.base_type) + " {\n");
+	out.append("\tGDCLASS(" + p_class.class_name + ", " + String(p_class.base_type) + ")\n\n");
+
+	for (const GritGdxProperty &property : p_class.properties) {
+		String initializer;
+		if (property.has_default) {
+			if (property.storage == Variant::NIL) {
+				initializer = default_literal(property.default_value, Variant::NIL);
+			} else {
+				initializer = default_literal(property.default_value, property.storage);
+			}
+		}
+		if (initializer.is_empty()) {
+			initializer = default_storage_value(property.storage);
+		}
+		out.append("\t" + cpp_storage(property.storage) + " " + property.field + " = " + initializer + ";\n");
+	}
+
+	out.append("\npublic:\n\tstatic void _bind_methods();\n\n");
+	for (const GritGdxProperty &property : p_class.properties) {
+		const String type = cpp_storage(property.storage);
+		out.append("\t" + type + " " + property.getter + "() const;\n");
+		out.append("\tvoid " + property.setter + "(" + (property.storage == Variant::NIL ? String("const Variant &p_value") : type + " p_value") + ");\n");
+	}
+	out.append("\n");
+
+	GritGdxEmitter emitter(p_class);
+	emitter.prepare();
+	bool has_ready = emitter.is_supported("_ready");
+	for (const GritFunction &p_function : p_class.functions) {
+		const bool is_virtual = is_virtual_name(String(p_function.name));
+		if (!emitter.is_supported(String(p_function.name))) {
+			continue;
+		}
+		if (is_virtual) {
+			out.append("\t" + virtual_signature_of(p_function) + ";\n");
+			continue;
+		}
+		String parameters;
+		int count = 0;
+		for (const GritVariable &variable : p_function.variables) {
+			if (variable.role != GritVariable::Role::PARAMETER) {
+				continue;
+			}
+			if (count > 0) {
+				parameters += ", ";
+			}
+			parameters += function_parameter_cpp(variable, "p_" + sanitize(variable.name));
+			count++;
+		}
+		out.append("\t" + function_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
+	}
+
+	bool needs_process = false;
+	for (const GritFunction &p_function : p_class.functions) {
+		if (p_function.name == StringName("_process") || p_function.name == StringName("_physics_process")) {
+			needs_process = true;
+		}
+	}
+	if (needs_process && !has_ready) {
+		out.append("\tvoid _ready() override;\n");
+	}
+	out.append("};\n\n} // namespace godot\n");
+	return out.as_string();
+}
+
+String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
+	StringBuilder out;
+	out.append("#include \"" + header_file_name(p_class) + "\"\n\n");
+	out.append("#include <godot_cpp/core/class_db.hpp>\n");
+	out.append("#include <godot_cpp/core/object.hpp>\n");
+	out.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
+	// Singleton constants (Time, Engine, Input, …) are emitted as
+	// <Class>::get_singleton(), which needs the class header.
+	HashSet<String> singleton_includes;
+	for (const GritFunction &function_entry : p_class.functions) {
+		for (uint32_t i = 0; i < function_entry.constant_types.size(); i++) {
+			if (function_entry.constant_types[i] != Variant::OBJECT || i >= function_entry.constant_values.size()) {
+				continue;
+			}
+			const Object *object = function_entry.constant_values[i];
+			if (!object) {
+				continue;
+			}
+			const StringName class_name = object->get_class_name();
+			if (ClassDB::class_exists(class_name) && Engine::get_singleton()->has_singleton(class_name)) {
+				singleton_includes.insert(String(class_name));
+			}
+		}
+	}
+	for (const String &name : singleton_includes) {
+		out.append("#include <godot_cpp/classes/" + snake_case(name) + ".hpp>\n");
+	}
+	out.append("\n");
+	out.append("using namespace godot;\n\n");
+
+
+	GritGdxEmitter emitter(p_class);
+	emitter.prepare();
+
+	for (const GritGdxProperty &property : p_class.properties) {
+		const String type = cpp_storage(property.storage);
+		out.append(type + " " + p_class.class_name + "::" + property.getter + "() const {\n");
+		out.append("\treturn " + property.field + ";\n");
+		out.append("}\n\n");
+		out.append("void " + p_class.class_name + "::" + property.setter + "(" + (property.storage == Variant::NIL ? String("const Variant &p_value") : type + " p_value") + ") {\n");
+		out.append("\t" + property.field + " = p_value;\n");
+		out.append("}\n\n");
+	}
+
+	bool has_ready = emitter.is_supported("_ready");
+	bool needs_process = false;
+	for (const GritFunction &p_function : p_class.functions) {
+		if (!emitter.is_supported(String(p_function.name))) {
+			continue;
+		}
+		if (p_function.name == StringName("_process") || p_function.name == StringName("_physics_process")) {
+			needs_process = true;
+		}
+	}
+
+	for (const GritFunction &p_function : p_class.functions) {
+		if (!emitter.is_supported(String(p_function.name))) {
+			continue;
+		}
+		const bool is_virtual = is_virtual_name(String(p_function.name));
+		StringBuilder emitted;
+		if (!emitter.emit_function(p_function, is_virtual, emitted)) {
+			continue;
+		}
+		out.append(emitted);
+	}
+
+	if (needs_process && !has_ready) {
+		out.append("void " + p_class.class_name + "::_ready() {\n");
+		for (const GritFunction &p_function : p_class.functions) {
+			if (p_function.name == StringName("_process")) {
+				out.append("\tset_process(true);\n");
+			}
+			if (p_function.name == StringName("_physics_process")) {
+				out.append("\tset_physics_process(true);\n");
+			}
+		}
+		out.append("}\n\n");
+	}
+
+	out.append("void " + p_class.class_name + "::_bind_methods() {\n");
+	for (const GritGdxProperty &property : p_class.properties) {
+		out.append("\tClassDB::bind_method(D_METHOD(\"" + property.getter + "\"), &" + p_class.class_name + "::" + property.getter + ");\n");
+		out.append("\tClassDB::bind_method(D_METHOD(\"" + property.setter + "\", \"value\"), &" + p_class.class_name + "::" + property.setter + ");\n");
+	}
+	for (const GritGdxSignal &signal : p_class.signals) {
+		String arguments;
+		for (uint32_t i = 0; i < signal.arguments.size(); i++) {
+			if (i > 0) {
+				arguments += ", ";
+			}
+			const PropertyInfo &info = signal.arguments[i];
+			arguments += "PropertyInfo(Variant::" + variant_enum(info.type) + ", " + escaped_string(String(info.name)) + ")";
+		}
+		out.append("\tADD_SIGNAL(MethodInfo(" + escaped_string(String(signal.name)) + (arguments.is_empty() ? String() : ", " + arguments) + "));\n");
+	}
+	for (const GritFunction &p_function : p_class.functions) {
+		if (is_virtual_name(String(p_function.name))) {
+			continue;
+		}
+		if (!emitter.is_supported(String(p_function.name))) {
+			continue;
+		}
+		String names;
+		int count = 0;
+		for (const GritVariable &variable : p_function.variables) {
+			if (variable.role != GritVariable::Role::PARAMETER) {
+				continue;
+			}
+			if (count > 0) {
+				names += ", ";
+			}
+			names += escaped_string(sanitize(variable.name));
+			count++;
+		}
+		out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + ");\n");
+	}
+	for (const GritGdxProperty &property : p_class.properties) {
+		// Every script variable is a property so `object.name` keeps working;
+		// only @export-ed ones are shown in the inspector.
+		const PropertyInfo &info = property.info;
+		const int usage = property.is_export ? int(info.usage & ~PROPERTY_USAGE_SCRIPT_VARIABLE) : int(PROPERTY_USAGE_STORAGE);
+		out.append("\tADD_PROPERTY(PropertyInfo(Variant::" + variant_enum(property.is_export ? info.type : (info.type == Variant::NIL ? Variant::NIL : info.type)) + ", " + escaped_string(property.name) + ", static_cast<PropertyHint>(" + itos(int(info.hint)) + "), " + escaped_string(info.hint_string) + ", " + itos(usage) + "), " + escaped_string(property.setter) + ", " + escaped_string(property.getter) + ");\n");
+	}
+	out.append("}\n");
+	return out.as_string();
+}
+
+LocalVector<GritGdxSkipped> GritGdxEmitter::skipped_functions(const GritGdxClass &p_class) {
+	LocalVector<GritGdxSkipped> skipped;
+	GritGdxEmitter emitter(p_class);
+	emitter.prepare();
+	for (const GritFunction &function_entry : p_class.functions) {
+		if (emitter.is_supported(String(function_entry.name))) {
+			continue;
+		}
+		emitter.reject_reason = String();
+		StringBuilder probe;
+		emitter.emit_function(function_entry, is_virtual_name(String(function_entry.name)), probe);
+		GritGdxSkipped entry;
+		entry.name = String(function_entry.name);
+		entry.reason = emitter.reject_reason.is_empty() ? "not supported" : emitter.reject_reason;
+		skipped.push_back(entry);
+	}
+	return skipped;
+}
+
+
+String GritGdxEmitter::helpers_file_name() {
+	return "grit_gdx_helpers.h";
+}
+
+String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
+	StringBuilder helpers;
+	helpers.append("#pragma once\n\n");
+	helpers.append("#include <godot_cpp/variant/variant.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/array.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/dictionary.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/string.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
+	helpers.append("#include <godot_cpp/core/object.hpp>\n\n");
+	helpers.append("#include <initializer_list>\n\n");
+	helpers.append("using namespace godot;\n\n");
+	helpers.append("namespace grit_gdx {\n\n");
+	helpers.append("inline Object *object_of(const Variant &p_value) {\n");
+	helpers.append("\treturn static_cast<Object *>(p_value);\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Variant binary(Variant::Operator p_operator, const Variant &p_left, const Variant &p_right) {\n");
+	helpers.append("\tVariant result;\n");
+	helpers.append("\tbool valid = false;\n");
+	helpers.append("\tVariant::evaluate(p_operator, p_left, p_right, result, valid);\n");
+	helpers.append("\tif (!valid) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: incompatible operand types.\");\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn result;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Variant get_named(const Variant &p_object, const StringName &p_name) {\n");
+	helpers.append("\treturn object_of(p_object)->get(p_name);\n");
+	helpers.append("}\n\n");
+	helpers.append("inline void set_named(const Variant &p_object, const StringName &p_name, const Variant &p_value) {\n");
+	helpers.append("\tobject_of(p_object)->set(p_name, p_value);\n");
+helpers.append("}\n\n");
+	helpers.append("inline Variant get_keyed(const Variant &p_container, const Variant &p_key) {\n");
+	helpers.append("\tif (p_container.get_type() == Variant::DICTIONARY) {\n");
+	helpers.append("\t\tDictionary dictionary = p_container;\n");
+	helpers.append("\t\treturn dictionary[p_key];\n");
+	helpers.append("\t}\n");
+	helpers.append("\tif (p_container.get_type() == Variant::STRING) {\n");
+	helpers.append("\t\tString text = p_container;\n");
+	helpers.append("\t\treturn text[static_cast<int64_t>(p_key)];\n");
+	helpers.append("\t}\n");
+	helpers.append("\tArray array = p_container;\n");
+	helpers.append("\treturn array[static_cast<int64_t>(p_key)];\n");
+	helpers.append("}\n\n");
+	helpers.append("inline void set_keyed(const Variant &p_container, const Variant &p_key, const Variant &p_value) {\n");
+	helpers.append("\tif (p_container.get_type() == Variant::DICTIONARY) {\n");
+	helpers.append("\t\tDictionary dictionary = p_container;\n");
+	helpers.append("\t\tdictionary[p_key] = p_value;\n");
+	helpers.append("\t\treturn;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tArray array = p_container;\n");
+	helpers.append("\tarray[static_cast<int64_t>(p_key)] = p_value;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Variant call_method(Variant p_base, const StringName &p_method) {\n");
+	helpers.append("\treturn p_base.call(p_method);\n");
+	helpers.append("}\n\n");
+	helpers.append("template <typename... Args>\n");
+	helpers.append("inline Variant call_method(Variant p_base, const StringName &p_method, const Args &...p_args) {\n");
+	helpers.append("\treturn p_base.call(p_method, p_args...);\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Array iterate(const Variant &p_container) {\n");
+	helpers.append("\tif (p_container.get_type() == Variant::DICTIONARY) {\n");
+	helpers.append("\t\tDictionary dictionary = p_container;\n");
+	helpers.append("\t\treturn dictionary.keys();\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn static_cast<Array>(p_container);\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Array array(std::initializer_list<Variant> p_items) {\n");
+	helpers.append("\tArray result;\n");
+	helpers.append("\tfor (const Variant &item : p_items) {\n");
+	helpers.append("\t\tresult.push_back(item);\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn result;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Dictionary dictionary(std::initializer_list<Variant> p_items) {\n");
+	helpers.append("\tDictionary result;\n");
+	helpers.append("\tauto item = p_items.begin();\n");
+	helpers.append("\twhile (item != p_items.end()) {\n");
+	helpers.append("\t\tconst Variant &key = *item++;\n");
+	helpers.append("\t\tresult[key] = item != p_items.end() ? *item++ : Variant();\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn result;\n");
+	helpers.append("}\n\n");
+	helpers.append("} // namespace grit_gdx\n\n");
+	return helpers.as_string();
+}

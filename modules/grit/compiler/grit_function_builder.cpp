@@ -65,6 +65,7 @@ int GritFunctionBuilder::add_own_constant(const Variant &p_value) {
 	const bool primitive = type == Variant::NIL || type == Variant::BOOL || type == Variant::INT || type == Variant::FLOAT;
 	constant_values.push_back(p_value);
 	function.constants.push_back(primitive ? p_value : Variant());
+	function.constant_values.push_back(p_value);
 	function.constant_types.push_back(type);
 	function.constant_initializers.push_back(primitive ? String() : GritCppEmitter::constant_initializer(p_value));
 	return function.constants.size() - 1;

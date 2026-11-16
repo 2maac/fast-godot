@@ -102,6 +102,7 @@ if env.editor_build:
     write_inline_catalog(os.path.join(Dir(".").srcnode().abspath, "compiler", "grit_inline_catalog.gen.inc"))
     env_grit.add_source_files(env.modules_sources, "compiler/*.cpp")
     env_grit.add_source_files(env.modules_sources, "editor/*.cpp")
+    env_grit.add_source_files(env.modules_sources, "gdextension/*.cpp")
 
 generated_directory = env["grit_generated"]
 if generated_directory:
