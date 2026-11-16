@@ -178,13 +178,22 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 		return ERR_INVALID_PARAMETER;
 	}
 
-	// Two classes in one extension must not share a name.
+	// Two classes in one extension must not share a name. The entry for this very
+	// script does not count: re-converting it must keep its class name.
 	GritGdxManifest manifest;
 	manifest.load(p_extension_directory);
-	if (manifest.has_class(r_class.class_name)) {
+	const auto taken_by_other_script = [&manifest, &path](const String &p_class_name) {
+		for (const GritGdxManifestEntry &entry : manifest.classes) {
+			if (entry.script_path != path && entry.class_name == p_class_name) {
+				return true;
+			}
+		}
+		return false;
+	};
+	if (taken_by_other_script(r_class.class_name)) {
 		const String base = r_class.class_name;
 		int suffix = 1;
-		while (manifest.has_class(r_class.class_name)) {
+		while (taken_by_other_script(r_class.class_name)) {
 			r_class.class_name = suffix == 1 ? base + "Native" : base + "Native" + itos(suffix);
 			suffix++;
 		}

@@ -154,8 +154,17 @@ static Error convert_node(const String &p_scene_path, const String &p_node_path,
 			r_error = vformat("node \"%s\" was not found in \"%s\"", p_node_path, p_scene_path);
 			return ERR_DOES_NOT_EXIST;
 		}
-		if (!lines[header + 1].strip_edges().begins_with("script =")) {
-			r_error = vformat("node \"%s\" in \"%s\" has no script", p_node_path, p_scene_path);
+		// The editor writes script = ExtResource(...) after the node's other
+		// properties, so look through the whole node block.
+		bool has_script = false;
+		for (int i = header + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
+			if (lines[i].strip_edges() == script_line) {
+				has_script = true;
+				break;
+			}
+		}
+		if (!has_script) {
+			r_error = vformat("node \"%s\" in \"%s\" does not use \"%s\"", p_node_path, p_scene_path, p_script_path);
 			return ERR_INVALID_PARAMETER;
 		}
 		targets.push_back(header);
