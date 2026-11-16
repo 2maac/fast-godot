@@ -4,7 +4,7 @@ title: Examples
 
 # Examples
 
-Every example below was run against a Fast_Godot build on macOS; the values shown are the ones it
+Every example below was run against a Fast Godot build on macOS; the values shown are the ones it
 printed.
 
 ## Strings with libc

@@ -1,6 +1,6 @@
-# Fast_Godot
+# Fast Godot
 
-Fast_Godot is a custom build of Godot **4.7.2** with two additions:
+Fast Godot is a custom build of Godot **4.7.2** with two additions:
 
 - **Grit** — compiles a project's GDScript into C++ and links it into a
   per-project export template, so game logic runs as native code instead of
