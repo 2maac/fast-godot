@@ -11,7 +11,7 @@ Fast Godot is a custom build of Godot **4.7.2** with two additions:
 - **CFFI** — lets GDScript call into C libraries directly.
 
 The CFFI reference is at [2maac.github.io/fast-godot](https://2maac.github.io/fast-godot/)
-and in [`docs/`](docs/). This fork has no CI and publishes no releases; editors and
+and in [`docs/`](docs/). This repository has no CI and publishes no releases; editors and
 build toolchains are produced locally.
 
 Functions Grit cannot compile stay on the GDScript VM, and the export log names
