@@ -22,6 +22,9 @@ public:
 
 	static bool can_make_gdextension(Node *p_node);
 	static void run_menu_check(const String &p_scene_path);
+	// Debug harness (GRIT_GDX_AUTOTEST=<scene>): drives the menu's entry points in
+	// a real editor window and reports what the tree shows at each step.
+	void run_autotest(const String &p_scene_path);
 
 private:
 	void _make_gdextension(const Array &p_selection);
@@ -47,4 +50,10 @@ private:
 	PopupMenu *submenu = nullptr;
 	Vector<String> submenu_extensions;
 	String active_scene;
+	Timer *autotest_timer = nullptr;
+	int autotest_step = 0;
+	bool autotest_opened = false;
+	bool action_finished = true;
+	String autotest_scene;
+	void _autotest_tick();
 };

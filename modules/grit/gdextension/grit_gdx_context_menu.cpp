@@ -26,7 +26,10 @@
 #include "scene/resources/packed_scene.h"
 
 #include "editor/editor_data.h"
+#include "core/extension/gdextension_manager.h"
+#include "editor/editor_interface.h"
 #include "editor/editor_node.h"
+#include "scene/main/timer.h"
 
 static bool is_generated_class(const StringName &p_class) {
 	if (!ClassDB::class_exists(p_class)) {
@@ -238,6 +241,7 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 	}
 
 	_close_dialog();
+	active_scene = p_scene_path;
 	job.instantiate();
 	const Error error = job->start(p_script_path, extension, p_scene_path, p_node_path);
 	_start_job();
@@ -248,12 +252,14 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 
 void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path) {
 	_close_dialog();
+	active_scene = p_scene_path;
 	job.instantiate();
 	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path);
 	_start_job();
 }
 
 void GritGdxContextMenuPlugin::_start_job() {
+	action_finished = false;
 	dialog = memnew(AcceptDialog);
 	dialog->set_title("Make GDExtension");
 	dialog->set_min_size(Vector2i(560, 0));
@@ -305,6 +311,38 @@ void GritGdxContextMenuPlugin::_poll() {
 	const Error error = job->complete(report);
 	print_line(report);
 
+	if (error == OK) {
+		// A new library is not registered until the manager loads it; do that now
+		// (the doc race that made this crash on quit is fixed) and reload the scene
+		// so the tree shows the node's new type without restarting the editor.
+		const String directory = job->get_extension_directory();
+		const String descriptor = directory.path_join(GritGdxManifest::extension_name(directory) + ".gdextension");
+		GDExtensionManager *manager = GDExtensionManager::get_singleton();
+		if (manager && !directory.is_empty() && FileAccess::exists(descriptor)) {
+			// Adding a class to an extension rebuilds a library the editor already has
+			// loaded, so reload it (the descriptors are generated with reloadable=true);
+			// a first conversion just loads it.
+			const bool loaded = manager->is_extension_loaded(descriptor);
+			const GDExtensionManager::LoadStatus status = loaded ? manager->reload_extension(descriptor) : manager->load_extension(descriptor);
+			print_line(status == GDExtensionManager::LOAD_STATUS_OK ? vformat("Grit: %s \"%s\".", loaded ? "reloaded" : "loaded", descriptor) : vformat("Grit: \"%s\" is not active; restart the editor to use its classes.", descriptor));
+		}
+		if (!active_scene.is_empty() && EditorNode::get_singleton()) {
+			EditorData &data = EditorNode::get_editor_data();
+			for (int i = 0; i < data.get_edited_scene_count(); i++) {
+				if (data.get_scene_path(i) != active_scene) {
+					continue;
+				}
+				if (EditorNode::get_singleton()->is_scene_unsaved(i)) {
+					print_line(vformat("Grit: \"%s\" has unsaved changes; reopen it to see the result.", active_scene));
+				} else {
+					callable_mp(EditorInterface::get_singleton(), &EditorInterface::reload_scene_from_path).bind(active_scene).call_deferred();
+				}
+				break;
+			}
+		}
+	}
+	active_scene = String();
+
 	if (status_label) {
 		status_label->set_text(error == OK ? report : report + "\nGrit: the action failed; see the report above.");
 	}
@@ -315,6 +353,7 @@ void GritGdxContextMenuPlugin::_poll() {
 	if (dialog) {
 		dialog->get_ok_button()->set_disabled(false);
 	}
+	action_finished = true;
 }
 
 void GritGdxContextMenuPlugin::_close_dialog() {
@@ -392,5 +431,125 @@ void GritGdxContextMenuPlugin::run_menu_check(const String &p_scene_path) {
 	SceneTree *tree = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop());
 	if (tree) {
 		tree->quit();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GUI autotest harness
+// ---------------------------------------------------------------------------
+
+static String _autotest_state(Node *p_node) {
+	if (!p_node) {
+		return "no node";
+	}
+	const Ref<Script> script = p_node->get_script();
+	return vformat("class=%s script=%s", p_node->get_class_name(), script.is_valid() ? script->get_path() : String("<none>"));
+}
+
+void GritGdxContextMenuPlugin::run_autotest(const String &p_scene_path) {
+	autotest_scene = p_scene_path;
+	autotest_step = 0;
+	autotest_timer = memnew(Timer);
+	autotest_timer->set_wait_time(1.0);
+	autotest_timer->set_one_shot(false);
+	EditorNode::get_singleton()->get_gui_base()->add_child(autotest_timer);
+	autotest_timer->connect(SNAME("timeout"), callable_mp(this, &GritGdxContextMenuPlugin::_autotest_tick));
+	autotest_timer->start();
+}
+
+void GritGdxContextMenuPlugin::_autotest_tick() {
+	EditorNode *editor = EditorNode::get_singleton();
+	Node *root = editor ? editor->get_edited_scene() : nullptr;
+	if (!root) {
+		if (!autotest_opened) {
+			autotest_opened = true;
+			print_line("Grit autotest: opening " + autotest_scene);
+			EditorInterface::get_singleton()->open_scene_from_path(autotest_scene);
+		} else {
+			print_line("Grit autotest: waiting for the scene");
+		}
+		return;
+	}
+	EditorSelection *selection = editor->get_editor_selection();
+	Node *child = root->get_node_or_null(NodePath("Child"));
+
+	if (!action_finished) {
+		return; // _poll() has not completed (and reloaded the scene) yet
+	}
+
+	switch (autotest_step) {
+		case 0: {
+			print_line(vformat("Grit autotest [0] opened: root %s | child %s", _autotest_state(root), _autotest_state(child)));
+			if (!child) {
+				print_line("Grit autotest: no Child node, stopping");
+				autotest_timer->stop();
+				return;
+			}
+			selection->clear();
+			selection->add_node(child);
+			const Ref<Script> child_script = child->get_script();
+			print_line(vformat("Grit autotest [1] converting the child from %s", child_script.is_valid() ? child_script->get_path() : String("<none>")));
+			_start_add(child_script->get_path(), "res://gdext/auto", autotest_scene, "Child");
+			autotest_step = 1;
+		} break;
+		case 1: {
+			print_line("Grit autotest [2] child converted; in-memory tree says: " + _autotest_state(root->get_node_or_null(NodePath("Child"))));
+			Node *live_child = root->get_node_or_null(NodePath("Child"));
+			if (live_child) {
+				selection->clear();
+				selection->add_node(live_child);
+			}
+			const Ref<Script> root_script = root->get_script();
+			print_line(vformat("Grit autotest [3] converting the root from %s into the same extension", root_script.is_valid() ? root_script->get_path() : String("<none>")));
+			_start_add(root_script->get_path(), "res://gdext/auto", autotest_scene, ".");
+			autotest_step = 2;
+		} break;
+		case 2: {
+			print_line("Grit autotest [4] both converted; in-memory tree says: root " + _autotest_state(root) + " | child " + _autotest_state(root->get_node_or_null(NodePath("Child"))));
+			print_line(vformat("Grit autotest [5] file says: root type=%s", GritGdxApply::scene_node_type(autotest_scene, ".")));
+			const String root_type = GritGdxApply::scene_node_type(autotest_scene, ".");
+			print_line(vformat("Grit autotest [6] scene reload; \"%s\" registered=%s", root_type, ClassDB::class_exists(root_type) ? "yes" : "no"));
+			EditorInterface::get_singleton()->reload_scene_from_path(autotest_scene);
+			autotest_step = 3;
+		} break;
+		case 3: {
+			Node *reloaded = editor->get_edited_scene();
+			print_line(vformat("Grit autotest [7] after reload: root %s | child %s", _autotest_state(reloaded), _autotest_state(reloaded ? reloaded->get_node_or_null(NodePath("Child")) : nullptr)));
+			if (!reloaded) {
+				print_line("Grit autotest: scene did not reload, stopping");
+				autotest_timer->stop();
+				return;
+			}
+			Node *live_child = reloaded->get_node_or_null(NodePath("Child"));
+			selection->clear();
+			selection->add_node(live_child ? live_child : reloaded);
+			print_line("Grit autotest [8] converting the child back");
+			Array nodes;
+			nodes.push_back(live_child ? live_child : reloaded);
+			_convert_back(nodes);
+			autotest_step = 4;
+		} break;
+		case 4: {
+			Node *reloaded = editor->get_edited_scene();
+			print_line(vformat("Grit autotest [9] child reverted; in-memory: %s", _autotest_state(reloaded->get_node_or_null(NodePath("Child")))));
+			selection->clear();
+			selection->add_node(reloaded);
+			print_line("Grit autotest [10] converting the root back");
+			Array nodes;
+			nodes.push_back(reloaded);
+			_convert_back(nodes);
+			autotest_step = 5;
+		} break;
+		case 5: {
+			Node *reloaded = editor->get_edited_scene();
+			print_line(vformat("Grit autotest [11] root reverted; in-memory: %s", _autotest_state(reloaded)));
+			print_line(vformat("Grit autotest [12] file says: root type=%s", GritGdxApply::scene_node_type(autotest_scene, ".")));
+			print_line("Grit autotest: done");
+			autotest_timer->stop();
+			EditorNode::get_singleton()->get_tree()->quit();
+			autotest_step = 6;
+		} break;
+		default:
+			break;
 	}
 }

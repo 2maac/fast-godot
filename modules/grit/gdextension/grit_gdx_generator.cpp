@@ -446,6 +446,9 @@ Error GritGdxGenerator::write_extension_files(const String &p_extension_director
 	StringBuilder descriptor;
 	descriptor.append("[configuration]\n\n");
 	descriptor.append("entry_symbol = \"" + name + "_library_init\"\n");
+	// Lets the editor pick up a rebuilt library (adding a class to an existing
+	// extension) without restarting; ignored outside editor builds.
+	descriptor.append("reloadable = true\n");
 	descriptor.append("compatibility_minimum = \"4.7\"\n\n");
 	descriptor.append("[libraries]\n\n");
 	descriptor.append(platform + ".debug = \"res://" + relative_output + "/bin/lib" + name + "." + platform + "." + arch + ".debug" + extension + "\"\n");

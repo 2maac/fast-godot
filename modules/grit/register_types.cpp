@@ -64,6 +64,11 @@ static void grit_editor_init() {
 	Ref<GritGdxContextMenuPlugin> gdextension_menu;
 	gdextension_menu.instantiate();
 	EditorContextMenuPluginManager::get_singleton()->add_plugin(EditorContextMenuPlugin::CONTEXT_SLOT_SCENE_TREE, gdextension_menu);
+	// Debug harness: GRIT_GDX_AUTOTEST=<scene> drives the actions in a real editor.
+	const String autotest_scene = OS::get_singleton()->get_environment("GRIT_GDX_AUTOTEST");
+	if (!autotest_scene.is_empty()) {
+		callable_mp(gdextension_menu.ptr(), &GritGdxContextMenuPlugin::run_autotest).bind(autotest_scene).call_deferred();
+	}
 	String menu_check_scene;
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {

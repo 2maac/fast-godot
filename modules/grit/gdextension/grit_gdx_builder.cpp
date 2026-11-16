@@ -262,6 +262,9 @@ bool GritGdxBuilder::build(const String &p_project_directory, const String &p_li
 	arguments.push_back("arch=" + grit_gdx_arch_key());
 	arguments.push_back("custom_api_file=" + api_json_path());
 	arguments.push_back("godot_cpp=" + godot_cpp_root());
+	// Instances must be re-creatable for GDExtensionManager::reload_extension(),
+	// which the editor uses after a rebuild (adding a class to an extension).
+	arguments.push_back("use_hot_reload=yes");
 	arguments.push_back("-j" + itos(MAX(1, OS::get_singleton()->get_processor_count())));
 	const String config = grit_gdx_target_config(p_target);
 	print_line(vformat("Grit: building the GDExtension library (%s, %s).", config, grit_gdx_arch_key()));

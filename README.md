@@ -53,16 +53,16 @@ or `_process` overrides the native virtual. The identifier of the generated
 class is de-collided against `ClassDB`, so a `Control` script becomes
 `ControlNative` rather than shadowing the engine class.
 
-A new class is registered when the editor starts, so restart the editor (or
-reopen the project) to instantiate it; **Convert Back** keeps working before that
-because it reads the node's type from the scene file.
+Every action reloads the edited scene and, when a library changed, the extension
+itself (the descriptors set `reloadable = true` and the libraries are built with
+hot reload support), so the scene tree shows the new node type immediately and no
+editor restart is needed. Adding a class to an extension reloads the shared
+library in place.
 
 godot-cpp ships with the toolchain (`10.0.0-stable`, the release that targets
 this engine's GDExtension API, which also fixed a crash when the editor quit with
 a library loaded) and its static libraries are built by the toolchain's own
-Python and SCons, so converting never clones or builds godot-cpp by hand. The
-descriptor does not enable `reloadable`; hot reload would need the extension
-built with `use_hot_reload=yes` and only applies to extensions already loaded.
+Python and SCons, so converting never clones or builds godot-cpp by hand.
 
 ## Export Presets
 
