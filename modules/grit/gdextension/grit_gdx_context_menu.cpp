@@ -9,6 +9,7 @@
 
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
+#include "core/config/project_settings.h"
 #include "core/extension/gdextension_manager.h"
 #include "editor/file_system/editor_file_system.h"
 #include "core/object/class_db.h"
@@ -27,6 +28,7 @@
 #include "scene/resources/packed_scene.h"
 
 #include "editor/editor_data.h"
+#include "core/config/project_settings.h"
 #include "core/extension/gdextension_manager.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/editor_interface.h"
@@ -292,6 +294,36 @@ void GritGdxContextMenuPlugin::_start_job() {
 	timer->start();
 }
 
+// The manager writes extension_list.cfg only when an extension is added or
+// removed; an extension this action just loaded is already "loaded", so make sure
+// the file names it (otherwise the next start cannot find the class).
+static void _remember_descriptor(const String &p_descriptor) {
+	const String path = ProjectSettings::get_singleton()->get_project_data_path().path_join("extension_list.cfg");
+	Vector<String> lines;
+	if (FileAccess::exists(path)) {
+		Error read_error = OK;
+		const String text = FileAccess::get_file_as_string(path, &read_error);
+		if (read_error == OK) {
+			for (const String &line : text.split("\n")) {
+				const String entry = line.strip_edges();
+				if (!entry.is_empty()) {
+					lines.push_back(entry);
+				}
+			}
+		}
+	}
+	if (lines.has(p_descriptor)) {
+		return;
+	}
+	lines.push_back(p_descriptor);
+	Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
+	if (file.is_valid()) {
+		for (const String &entry : lines) {
+			file->store_line(entry);
+		}
+	}
+}
+
 // Defined after _poll; queued from it to run after the scene reload.
 static void _sync_extensions_after_action(const String &p_descriptor);
 
@@ -330,6 +362,9 @@ void GritGdxContextMenuPlugin::_poll() {
 			const bool loaded = manager->is_extension_loaded(descriptor);
 			const GDExtensionManager::LoadStatus status = loaded ? manager->reload_extension(descriptor) : manager->load_extension(descriptor);
 			print_line(status == GDExtensionManager::LOAD_STATUS_OK ? vformat("Grit: %s \"%s\".", loaded ? "reloaded" : "loaded", descriptor) : vformat("Grit: \"%s\" is not active; restart the editor to use its classes.", descriptor));
+			if (status == GDExtensionManager::LOAD_STATUS_OK) {
+				_remember_descriptor(descriptor);
+			}
 		}
 		if (!active_scene.is_empty() && EditorNode::get_singleton()) {
 			EditorData &data = EditorNode::get_editor_data();
@@ -555,6 +590,13 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 			print_line(vformat("Grit autotest [5] file says: root type=%s", GritGdxApply::scene_node_type(autotest_scene, ".")));
 			const String root_type = GritGdxApply::scene_node_type(autotest_scene, ".");
 			print_line(vformat("Grit autotest [6] scene reload; \"%s\" registered=%s", root_type, ClassDB::class_exists(root_type) ? "yes" : "no"));
+			print_line(vformat("Grit autotest [6b] extension_list: %s", FileAccess::get_file_as_string(ProjectSettings::get_singleton()->get_project_data_path().path_join("extension_list.cfg")).strip_edges().replace("\n", " | ")));
+			if (!OS::get_singleton()->get_environment("GRIT_GDX_AUTOTEST_CONVERT_ONLY").is_empty()) {
+				print_line("Grit autotest: stopping after the conversions");
+				autotest_timer->stop();
+				EditorNode::get_singleton()->get_tree()->quit();
+				return;
+			}
 			EditorInterface::get_singleton()->reload_scene_from_path(autotest_scene);
 			autotest_step = 3;
 		} break;
