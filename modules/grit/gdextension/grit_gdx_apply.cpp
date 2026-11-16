@@ -535,7 +535,7 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	if (!r_result.library_path.is_empty()) {
 		report.append(vformat("  library: %s\n", r_result.library_path));
 	}
-	report.append("  restart the editor so the new extension is loaded, then reopen the scene\n");
+	report.append("  the editor reloads the scene and the extension\n");
 	r_report = report.as_string();
 	return OK;
 }
@@ -700,7 +700,7 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 	if (r_result.built) {
 		report.append(vformat("  library: %s\n", r_result.library_path));
 	}
-	report.append("  restart the editor, then reopen the scene\n");
+	report.append("  the editor reloads the scene and the extension\n");
 	r_report = report.as_string();
 	return OK;
 }

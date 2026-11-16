@@ -10,6 +10,7 @@
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
 #include "core/extension/gdextension_manager.h"
+#include "editor/file_system/editor_file_system.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
 #include "scene/gui/box_container.h"
@@ -27,6 +28,7 @@
 
 #include "editor/editor_data.h"
 #include "core/extension/gdextension_manager.h"
+#include "editor/file_system/editor_file_system.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "scene/main/timer.h"
@@ -290,6 +292,9 @@ void GritGdxContextMenuPlugin::_start_job() {
 	timer->start();
 }
 
+// Defined after _poll; queued from it to run after the scene reload.
+static void _sync_extensions_after_action(const String &p_descriptor);
+
 void GritGdxContextMenuPlugin::_poll() {
 	if (job.is_null()) {
 		return;
@@ -312,16 +317,16 @@ void GritGdxContextMenuPlugin::_poll() {
 	print_line(report);
 
 	if (error == OK) {
-		// A new library is not registered until the manager loads it; do that now
-		// (the doc race that made this crash on quit is fixed) and reload the scene
-		// so the tree shows the node's new type without restarting the editor.
+		// A new library is not registered until the manager loads it; adding a class
+		// rebuilds a library the editor already has open, so reload it then. The
+		// scene reload is deferred, and the unload of a removed extension (revert of
+		// the last class) is queued after it: the old scene's instances must be gone
+		// before their classes disappear, or tearing them down crashes.
 		const String directory = job->get_extension_directory();
-		const String descriptor = directory.path_join(GritGdxManifest::extension_name(directory) + ".gdextension");
+		const String descriptor = directory.is_empty() ? String() : directory.path_join(GritGdxManifest::extension_name(directory) + ".gdextension");
 		GDExtensionManager *manager = GDExtensionManager::get_singleton();
-		if (manager && !directory.is_empty() && FileAccess::exists(descriptor)) {
-			// Adding a class to an extension rebuilds a library the editor already has
-			// loaded, so reload it (the descriptors are generated with reloadable=true);
-			// a first conversion just loads it.
+		const bool descriptor_exists = !descriptor.is_empty() && FileAccess::exists(descriptor);
+		if (manager && descriptor_exists) {
 			const bool loaded = manager->is_extension_loaded(descriptor);
 			const GDExtensionManager::LoadStatus status = loaded ? manager->reload_extension(descriptor) : manager->load_extension(descriptor);
 			print_line(status == GDExtensionManager::LOAD_STATUS_OK ? vformat("Grit: %s \"%s\".", loaded ? "reloaded" : "loaded", descriptor) : vformat("Grit: \"%s\" is not active; restart the editor to use its classes.", descriptor));
@@ -340,6 +345,7 @@ void GritGdxContextMenuPlugin::_poll() {
 				break;
 			}
 		}
+		callable_mp_static(&_sync_extensions_after_action).bind(descriptor).call_deferred();
 	}
 	active_scene = String();
 
@@ -434,6 +440,40 @@ void GritGdxContextMenuPlugin::run_menu_check(const String &p_scene_path) {
 	}
 }
 
+static void _sync_extensions_after_action(const String &p_descriptor) {
+	GDExtensionManager *manager = GDExtensionManager::get_singleton();
+	if (!manager) {
+		return;
+	}
+	if (!p_descriptor.is_empty() && !FileAccess::exists(p_descriptor) && manager->is_extension_loaded(p_descriptor)) {
+		manager->unload_extension(p_descriptor);
+		print_line(vformat("Grit: unloaded \"%s\" (extension removed).", p_descriptor));
+	}
+	// Keep .godot/extension_list.cfg in sync: a deleted extension must not be loaded
+	// on the next start, and a new one must be.
+	HashSet<String> descriptors;
+	for (const String &loaded : manager->get_loaded_extensions()) {
+		if (FileAccess::exists(loaded)) {
+			descriptors.insert(loaded);
+		}
+	}
+	Ref<DirAccess> root = DirAccess::open("res://gdext");
+	if (root.is_valid()) {
+		for (const String &subdirectory : root->get_directories()) {
+			Ref<DirAccess> folder = DirAccess::open("res://gdext/" + subdirectory);
+			if (folder.is_null()) {
+				continue;
+			}
+			for (const String &file : folder->get_files()) {
+				if (file.get_extension() == "gdextension") {
+					descriptors.insert("res://gdext/" + subdirectory + "/" + file);
+				}
+			}
+		}
+	}
+	manager->ensure_extensions_loaded(descriptors);
+}
+
 // ---------------------------------------------------------------------------
 // GUI autotest harness
 // ---------------------------------------------------------------------------
@@ -461,13 +501,9 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 	EditorNode *editor = EditorNode::get_singleton();
 	Node *root = editor ? editor->get_edited_scene() : nullptr;
 	if (!root) {
-		if (!autotest_opened) {
-			autotest_opened = true;
-			print_line("Grit autotest: opening " + autotest_scene);
-			EditorInterface::get_singleton()->open_scene_from_path(autotest_scene);
-		} else {
-			print_line("Grit autotest: waiting for the scene");
-		}
+		// Keep asking: the editor ignores open requests while its first scan runs.
+		print_line("Grit autotest: opening " + autotest_scene);
+		EditorInterface::get_singleton()->open_scene_from_path(autotest_scene);
 		return;
 	}
 	EditorSelection *selection = editor->get_editor_selection();
@@ -488,7 +524,12 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 			selection->clear();
 			selection->add_node(child);
 			const Ref<Script> child_script = child->get_script();
-			print_line(vformat("Grit autotest [1] converting the child from %s", child_script.is_valid() ? child_script->get_path() : String("<none>")));
+			if (child_script.is_null()) {
+				print_line("Grit autotest: the child has no script, stopping");
+				autotest_timer->stop();
+				return;
+			}
+			print_line(vformat("Grit autotest [1] converting the child from %s", child_script->get_path()));
 			_start_add(child_script->get_path(), "res://gdext/auto", autotest_scene, "Child");
 			autotest_step = 1;
 		} break;
@@ -500,7 +541,12 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 				selection->add_node(live_child);
 			}
 			const Ref<Script> root_script = root->get_script();
-			print_line(vformat("Grit autotest [3] converting the root from %s into the same extension", root_script.is_valid() ? root_script->get_path() : String("<none>")));
+			if (root_script.is_null()) {
+				print_line("Grit autotest: the root has no script, stopping");
+				autotest_timer->stop();
+				return;
+			}
+			print_line(vformat("Grit autotest [3] converting the root from %s into the same extension", root_script->get_path()));
 			_start_add(root_script->get_path(), "res://gdext/auto", autotest_scene, ".");
 			autotest_step = 2;
 		} break;
