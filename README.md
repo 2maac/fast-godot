@@ -1,5 +1,7 @@
 # Fast Godot
 
+<img src="docs/assets/fast-godot-logo.png" alt="Fast Godot" width="520">
+
 Fast Godot is a custom build of Godot **4.7.2** with two additions:
 
 - **Grit** — compiles a project's GDScript into C++ and links it into a
