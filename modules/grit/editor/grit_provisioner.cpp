@@ -608,7 +608,25 @@ String GritProvisioner::configured_source() {
 
 String GritProvisioner::configured_toolchain() {
 	const String root = _toolchain_root();
-	return _toolchain_usable(root) ? root : String();
+	if (_toolchain_usable(root)) {
+		return root;
+	}
+	if (!root.is_empty()) {
+		// An explicit setting that points nowhere: report it, do not guess.
+		return String();
+	}
+	// The Download button installs into home_toolchain_folder(); adopt it when it
+	// is already complete so the editor does not offer a download it has done.
+	const String home = home_toolchain_folder();
+	if (_toolchain_complete(home)) {
+		EditorSettings *settings = EditorSettings::get_singleton();
+		if (settings) {
+			settings->set(GritProvisioner::SETTING_TOOLCHAIN_ROOT, home);
+		}
+		print_line(vformat("Grit: using the downloaded toolchain in \"%s\".", home));
+		return home;
+	}
+	return String();
 }
 
 String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {

@@ -295,6 +295,11 @@ void GritExportPlugin::_ensure_native_preset() {
 		}
 		// The exporter refuses to run without a texture format.
 		preset->set("texture_format/s3tc_bptc", true);
+		if (name == "macOS Fast") {
+			// macOS refuses to export without a bundle identifier, and an empty
+			// field only surfaces as a validation error later.
+			_apply_default_bundle_identifier(preset);
+		}
 		exporter->add_export_preset(preset, 0);
 		exporter->save_presets();
 		print_line("Grit: added the \"" + name + "\" preset.");
