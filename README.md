@@ -13,26 +13,12 @@ The CFFI reference is at [2maac.github.io/fast-godot](https://2maac.github.io/fa
 and in [`docs/`](docs/). This fork has no CI and publishes no releases; editors and
 build toolchains are produced locally.
 
-## How fast is it?
-
-Grit compiles at function granularity, so the gain depends on what the code does.
-Measured on this fork (macOS arm64, GDScript VM versus compiled):
-
-| workload | VM | native | speedup |
-|---|---|---|---|
-| 3M iterations of integer arithmetic | 39.9 ms | 0.5 ms | ~80x |
-| 1M calls to a small function | 64.0 ms | 5.8 ms | ~11x |
-
-Straight-line code gains most; call-heavy code is bounded by the call boundary.
-GPU-bound 3D scenes will not show a difference — there the renderer, not script,
-sets the frame time.
-
 Functions Grit cannot compile stay on the GDScript VM, and the export log names
 each one with the reason.
 
-## Export model: only Fast presets
+## Export Presets
 
-There are no VM/stock exports. Every project builds its own template:
+There are no stock exports. Every project builds its own template on export:
 
 | platform | preset | template |
 |---|---|---|
