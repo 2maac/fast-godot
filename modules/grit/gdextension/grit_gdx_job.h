@@ -25,6 +25,7 @@ public:
 	bool is_finished() const { return finished.load(); }
 	int get_progress() const { return progress.load(); }
 	String get_status() const;
+	String get_extension_directory() const;
 	String get_report() const;
 
 	// Main thread, once is_finished(): joins and returns the action result.

@@ -53,6 +53,11 @@ public:
 	// context menu).
 	static Vector<String> class_users(const String &p_class_name);
 
+	// type="..." of a node as written in the scene file. The editor keeps the
+	// scene it loaded in memory, so this is the only way to see a type it has not
+	// reloaded yet.
+	static String scene_node_type(const String &p_scene_path, const String &p_node_path);
+
 	// Where a generated class lives and what it has to be restored to.
 	struct RevertTarget {
 		String extension_directory;

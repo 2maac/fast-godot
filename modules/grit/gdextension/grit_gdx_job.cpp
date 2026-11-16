@@ -87,6 +87,10 @@ String GritGdxJob::get_status() const {
 	return status;
 }
 
+String GritGdxJob::get_extension_directory() const {
+	return result.extension_directory;
+}
+
 String GritGdxJob::get_report() const {
 	MutexLock lock(mutex);
 	return report;

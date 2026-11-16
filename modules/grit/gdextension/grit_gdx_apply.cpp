@@ -347,6 +347,23 @@ int GritGdxApply::count_script_users(const String &p_script_path, Vector<String>
 	return users;
 }
 
+String GritGdxApply::scene_node_type(const String &p_scene_path, const String &p_node_path) {
+	Error error = OK;
+	const String text = FileAccess::get_file_as_string(p_scene_path, &error);
+	if (error != OK) {
+		return String();
+	}
+	const PackedStringArray lines = text.split("\n");
+	const Vector<SceneNodeInfo> nodes = scene_nodes(lines);
+	const int header = find_node_line(nodes, p_node_path);
+	if (header < 0) {
+		return String();
+	}
+	String type;
+	scene_attribute(lines[header], "type", type);
+	return type;
+}
+
 Vector<String> GritGdxApply::class_users(const String &p_class_name) {
 	return find_class_users(p_class_name);
 }

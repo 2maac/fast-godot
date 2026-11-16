@@ -9,6 +9,7 @@
 
 #include "core/io/resource_loader.h"
 #include "core/object/callable_mp.h"
+#include "core/extension/gdextension_manager.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
 #include "scene/gui/box_container.h"
@@ -100,12 +101,24 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 		if (selected.size() == 1) {
 			Node *node = selected.front()->get();
 			makeable = can_make_gdextension(node);
-			if (is_generated_class(node->get_class_name())) {
-				revert_class = String(node->get_class_name());
-				revert_extension = extension_of_class(revert_class);
+			// The editor may still hold the scene it loaded before a conversion, so
+			// the node's in-memory type can be stale; trust the scene file.
+			String node_class = String(node->get_class_name());
+			String scene;
+			String path;
+			if (!is_generated_class(node_class) && node_location(node, scene, path)) {
+				const String file_type = GritGdxApply::scene_node_type(scene, path);
+				if (!file_type.is_empty()) {
+					node_class = file_type;
+				}
+			}
+			GritGdxApply::RevertTarget target;
+			if (!node_class.is_empty() && GritGdxApply::find_revert_target(node_class, target)) {
+				revert_class = node_class;
+				revert_extension = target.extension_directory;
 				// Offered for any generated node; the class itself is only dropped
 				// when no other node uses it.
-				revertable = !revert_extension.is_empty();
+				revertable = true;
 			}
 			single = true;
 		}
@@ -291,6 +304,16 @@ void GritGdxContextMenuPlugin::_poll() {
 	String report;
 	const Error error = job->complete(report);
 	print_line(report);
+	if (error == OK) {
+		const String directory = job->get_extension_directory();
+		const String name = GritGdxManifest::extension_name(directory);
+		const String descriptor = directory.path_join(name + ".gdextension");
+		GDExtensionManager *manager = GDExtensionManager::get_singleton();
+		if (manager && !directory.is_empty() && FileAccess::exists(descriptor) && !manager->is_extension_loaded(descriptor)) {
+			const GDExtensionManager::LoadStatus status = manager->load_extension(descriptor);
+			print_line(status == GDExtensionManager::LOAD_STATUS_OK ? vformat("Grit: loaded \"%s\".", descriptor) : vformat("Grit: \"%s\" is not active yet; restart the editor.", descriptor));
+		}
+	}
 	if (status_label) {
 		status_label->set_text(error == OK ? report : report + "\nGrit: the action failed; see the report above.");
 	}
@@ -331,11 +354,16 @@ void GritGdxContextMenuPlugin::_convert_back(const Array &p_selection) {
 		_show_message("Save the scene first: the node must belong to the edited scene.");
 		return;
 	}
-	if (!is_generated_class(node->get_class_name())) {
+	String class_name = String(node->get_class_name());
+	if (!is_generated_class(class_name)) {
+		// Stale in-memory scene: use the type written in the file.
+		class_name = GritGdxApply::scene_node_type(scene, path);
+	}
+	GritGdxApply::RevertTarget target;
+	if (class_name.is_empty() || !GritGdxApply::find_revert_target(class_name, target)) {
 		return;
 	}
-	const String class_name = String(node->get_class_name());
-	const String extension = extension_of_class(class_name);
+	const String extension = target.extension_directory;
 	if (extension.is_empty()) {
 		print_line("Grit: could not find the extension that owns \"" + class_name + "\".");
 		return;
