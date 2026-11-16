@@ -1,5 +1,3 @@
-<h1 align="center">Fast Godot</h1>
-
 <p align="center">
   <img src="docs/assets/fast-godot-logo.png" alt="Fast Godot" width="420">
 </p>
