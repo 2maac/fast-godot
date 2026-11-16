@@ -6,7 +6,7 @@ Fast Godot is a custom build of Godot **4.7.2** with two additions:
 
 - **Grit** — compiles a project's GDScript into C++ and links it into a
   per-project export template, so game logic runs as native code instead of
-  bytecode. Native code can be up to 80x in some cases.
+  bytecode. Native code can be up to 80x faster in some cases.
   
 - **CFFI** — lets GDScript call into C libraries directly.
 
