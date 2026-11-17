@@ -1,0 +1,6 @@
+{
+	"extension": "lambda_test",
+	"script": "res://main.gd",
+	"scene": "res://main.tscn",
+	"run_args": []
+}

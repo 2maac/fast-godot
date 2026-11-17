@@ -322,18 +322,29 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 		}
 	}
 
-	// Functions the emitter can handle.
+	// Functions the emitter can handle. Lambdas are kept too: a call site creates
+	// a callable for them, so they are emitted as internal methods rather than
+	// bound as script methods (see GritGdxEmitter).
 	for (const GritFunction &function : recording.functions) {
-		if (function.registry_key.contains(">")) {
-			// Lambdas are separate functions; the call site decides whether it is
-			// supported, so they are reported rather than generated.
-			continue;
-		}
 		if (String(function.name).begins_with("@")) {
 			GritGdxSkipped skipped;
 			skipped.name = String(function.name);
 			skipped.reason = "implicit GDScript accessor";
 			r_class.skipped.push_back(skipped);
+			continue;
+		}
+		if (function.registry_key.contains(">")) {
+			// A lambda is not a script method: an unsupported one is reported under
+			// an internal name so no stub is generated for it, and the creation site
+			// reports the method that uses it.
+			if (!function.is_supported()) {
+				GritGdxSkipped skipped;
+				skipped.name = vformat("@lambda:%d", function.initial_line);
+				skipped.reason = function.unsupported_reason;
+				r_class.skipped.push_back(skipped);
+			} else {
+				r_class.functions.push_back(function);
+			}
 			continue;
 		}
 		if (!function.is_supported()) {

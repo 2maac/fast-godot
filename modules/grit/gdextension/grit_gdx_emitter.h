@@ -3,6 +3,7 @@
 #include "grit_gdx_class.h"
 
 #include "core/string/string_builder.h"
+#include "core/templates/hash_set.h"
 
 // Emits a godot-cpp GDExtension class from Grit IR.
 //
@@ -43,6 +44,31 @@ private:
 	HashMap<StringName, bool> binding_static_by_function;
 	// Static methods have no `this`; the body must not touch members or self.
 	bool static_function = false;
+
+	// A lambda is emitted as an internal method; a creation site builds a
+	// CallableCustom that calls it with the captured values prepended.
+	struct LambdaInfo {
+		String method;
+		int kind = 0;
+		bool use_self = false;
+	};
+	struct LambdaSite {
+		String method;
+		String key;
+		int kind = 0;
+		bool use_self = false;
+		int captures = 0;
+		int declared = 0;
+	};
+	HashMap<String, LambdaInfo> lambdas_by_key;
+	HashMap<const GritStatement *, LambdaSite> lambda_sites;
+	HashSet<String> supported_lambdas;
+	bool lambda_function = false;
+
+	static bool is_lambda_function(const GritFunction &p_function);
+	static int lambda_key_line(const String &p_key);
+	void prepare_lambdas();
+	const LambdaInfo *lambda_info(const GritFunction &p_function) const;
 	int last_opcode = -1;
 	int last_statement_line = 0;
 
@@ -85,6 +111,8 @@ private:
 	bool write_block(int p_block);
 	bool write_statement(const GritStatement &p_statement);
 	bool write_assert(const GritStatement &p_statement);
+	bool write_create_lambda(const GritStatement &p_statement);
+	static void emit_lambda_callable(const GritGdxClass &p_class, const GritGdxEmitter &p_emitter, StringBuilder &r_out);
 	void write_abort_return();
 	bool write_type_test(const GritStatement &p_statement);
 	bool write_cast(const GritStatement &p_statement);

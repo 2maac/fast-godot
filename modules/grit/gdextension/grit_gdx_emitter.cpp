@@ -168,6 +168,101 @@ GritGdxEmitter::GritGdxEmitter(const GritGdxClass &p_class) :
 	for (const GritGdxProperty &property : klass.properties) {
 		properties_by_name.insert(property.name, &property);
 	}
+	prepare_lambdas();
+}
+
+bool GritGdxEmitter::is_lambda_function(const GritFunction &p_function) {
+	return p_function.registry_key.contains(">");
+}
+
+// "res://x.gd::f:3><anonymous lambda>:12#0" -> 12
+int GritGdxEmitter::lambda_key_line(const String &p_key) {
+	const int hash = p_key.rfind("#");
+	if (hash < 0) {
+		return -1;
+	}
+	const int colon = p_key.rfind(":", hash);
+	if (colon < 0) {
+		return -1;
+	}
+	return p_key.substr(colon + 1, hash - colon - 1).to_int();
+}
+
+const GritGdxEmitter::LambdaInfo *GritGdxEmitter::lambda_info(const GritFunction &p_function) const {
+	return lambdas_by_key.getptr(p_function.registry_key);
+}
+
+// Assigns a method name to every lambda and pairs each creation site with the
+// lambda function the front end recorded for it (matched by line).
+void GritGdxEmitter::prepare_lambdas() {
+	lambdas_by_key.clear();
+	lambda_sites.clear();
+	LocalVector<const GritFunction *> lambdas;
+	for (const GritFunction &function_entry : klass.functions) {
+		if (!is_lambda_function(function_entry)) {
+			continue;
+		}
+		LambdaInfo info;
+		info.method = "_grit_lambda_" + itos(lambdas.size());
+		info.kind = int(lambdas.size());
+		lambdas_by_key.insert(function_entry.registry_key, info);
+		lambdas.push_back(&function_entry);
+	}
+	if (lambdas.is_empty()) {
+		return;
+	}
+	for (const GritFunction &function_entry : klass.functions) {
+		if (is_lambda_function(function_entry)) {
+			continue;
+		}
+		LocalVector<const GritFunction *> candidates;
+		for (const GritFunction *lambda : lambdas) {
+			if (lambda->registry_key.begins_with(String(function_entry.registry_key) + ">")) {
+				candidates.push_back(lambda);
+			}
+		}
+		LocalVector<bool> used;
+		used.resize(candidates.size());
+		const auto take = [&](int p_line) -> int {
+			for (uint32_t i = 0; i < candidates.size(); i++) {
+				if (!used[i] && lambda_key_line(candidates[i]->registry_key) == p_line) {
+					used[i] = true;
+					return int(i);
+				}
+			}
+			for (uint32_t i = 0; i < candidates.size(); i++) {
+				if (!used[i]) {
+					used[i] = true;
+					return int(i);
+				}
+			}
+			return -1;
+		};
+		for (const GritBlock &block : function_entry.blocks) {
+			for (const GritStatement &statement : block.statements) {
+				if (statement.opcode != GritOpcode::CREATE_LAMBDA) {
+					continue;
+				}
+				const int match = take(statement.line);
+				if (match < 0) {
+					continue;
+				}
+				const GritFunction *lambda = candidates[match];
+				const LambdaInfo *info = lambdas_by_key.getptr(lambda->registry_key);
+				LambdaSite site;
+				site.method = info->method;
+				site.key = lambda->registry_key;
+				site.kind = info->kind;
+				site.use_self = statement.validated;
+				site.captures = int(statement.operands.size());
+				site.declared = lambda->parameter_count - site.captures;
+				lambda_sites.insert(&statement, site);
+				LambdaInfo updated = *info;
+				updated.use_self = statement.validated;
+				lambdas_by_key.insert(lambda->registry_key, updated);
+			}
+		}
+	}
 }
 
 void GritGdxEmitter::line(const String &p_text) {
@@ -191,9 +286,22 @@ bool GritGdxEmitter::is_supported(const String &p_name) const {
 
 void GritGdxEmitter::prepare() {
 	supported_methods.clear();
+	supported_lambdas.clear();
 	binding_defaults_by_function.clear();
 	declaration_parameters_by_function.clear();
 	binding_static_by_function.clear();
+
+	// Lambdas first: a creation site needs to know whether its lambda converts
+	// before the enclosing method can be emitted.
+	for (const GritFunction &function_entry : klass.functions) {
+		if (!is_lambda_function(function_entry)) {
+			continue;
+		}
+		StringBuilder probe;
+		if (emit_function(function_entry, false, probe)) {
+			supported_lambdas.insert(function_entry.registry_key);
+		}
+	}
 
 	// A call site asks whether the callee converts, and the callee may appear
 	// later in the recording, so support is resolved to a fixpoint: every pass
@@ -201,6 +309,9 @@ void GritGdxEmitter::prepare() {
 	for (int pass = 0; pass < 4; pass++) {
 		bool grew = false;
 		for (const GritFunction &function_entry : klass.functions) {
+			if (is_lambda_function(function_entry)) {
+				continue;
+			}
 			const bool was = is_supported(String(function_entry.name));
 			StringBuilder probe;
 			const bool is_virtual = is_virtual_name(String(function_entry.name));
@@ -219,17 +330,18 @@ void GritGdxEmitter::prepare() {
 		}
 	}
 
-	// The metadata (state fields, defaults, declarations) is recorded by a last
+	// The metadata (defaults, declarations, static-ness) is recorded by a last
 	// pass over the settled support set.
 	binding_defaults_by_function.clear();
 	declaration_parameters_by_function.clear();
 	binding_static_by_function.clear();
 	for (const GritFunction &function_entry : klass.functions) {
-		if (!is_supported(String(function_entry.name))) {
+		const bool lambda = is_lambda_function(function_entry);
+		if (lambda ? !supported_lambdas.has(function_entry.registry_key) : !is_supported(String(function_entry.name))) {
 			continue;
 		}
 		StringBuilder probe;
-		const bool is_virtual = is_virtual_name(String(function_entry.name));
+		const bool is_virtual = !lambda && is_virtual_name(String(function_entry.name));
 		emit_function(function_entry, is_virtual, probe);
 	}
 	reject_reason = String();
@@ -1080,9 +1192,7 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 			}
 			return true;
 		}
-		case GritOpcode::CREATE_LAMBDA:
-			reject(vformat("unsupported call form: %s", name));
-			return false;
+
 		default:
 			reject("unsupported call");
 			return false;
@@ -1439,6 +1549,115 @@ bool GritGdxEmitter::write_cast(const GritStatement &p_statement) {
 	return true;
 }
 
+// `func(...): ...` becomes a CallableCustom that calls the lambda's internal
+// method with the captured values prepended to the call arguments.
+bool GritGdxEmitter::write_create_lambda(const GritStatement &p_statement) {
+	const LambdaSite *site = lambda_sites.getptr(&p_statement);
+	if (!site) {
+		reject("a lambda creation site without a recorded function");
+		return false;
+	}
+	if (!supported_lambdas.has(site->key)) {
+		reject("a lambda in this method cannot be converted");
+		return false;
+	}
+	String captures;
+	for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+		if (i > 0) {
+			captures += ", ";
+		}
+		captures += read_any(p_statement.operands[i]);
+	}
+	const String capture_value = captures.is_empty() ? String("Array()") : "grit_gdx::array({ " + captures + " })";
+	const String lambda_type = "GritLambda" + klass.class_name;
+	line(lvalue(p_statement.target) + " = Callable(memnew(" + lambda_type + "(" + itos(site->kind) + ", " + capture_value + ", " + (site->use_self ? String("this") : String("nullptr")) + ")));");
+	return true;
+}
+
+// One CallableCustom for every lambda of the class; `kind` selects which
+// internal method receives the captures plus the call arguments.
+void GritGdxEmitter::emit_lambda_callable(const GritGdxClass &p_class, const GritGdxEmitter &p_emitter, StringBuilder &r_out) {
+	bool any = false;
+	for (const GritFunction &function_entry : p_class.functions) {
+		if (is_lambda_function(function_entry) && p_emitter.supported_lambdas.has(function_entry.registry_key)) {
+			any = true;
+			break;
+		}
+	}
+	if (!any) {
+		return;
+	}
+	const String type = "GritLambda" + p_class.class_name;
+	r_out.append("namespace {\n\n");
+	r_out.append("struct " + type + " : public CallableCustom {\n");
+	r_out.append("\tint64_t kind = 0;\n");
+	r_out.append("\tArray captures;\n");
+	r_out.append("\tuint64_t owner_id = 0;\n");
+	r_out.append("\t" + p_class.class_name + " *owner = nullptr;\n");
+	r_out.append("\t" + type + "(int64_t p_kind, const Array &p_captures, " + p_class.class_name + " *p_owner) :\n");
+	r_out.append("\t\t\tkind(p_kind), captures(p_captures), owner(p_owner), owner_id(p_owner ? p_owner->get_instance_id() : 0) {}\n");
+	r_out.append("\tuint32_t hash() const override {\n\t\treturn static_cast<uint32_t>(owner_id) ^ static_cast<uint32_t>(kind);\n\t}\n");
+	r_out.append("\tString get_as_text() const override {\n\t\treturn \"Grit lambda\";\n\t}\n");
+	r_out.append("\tstatic bool compare_equal(const CallableCustom *p_a, const CallableCustom *p_b) {\n\t\treturn p_a == p_b;\n\t}\n");
+	r_out.append("\tstatic bool compare_less(const CallableCustom *p_a, const CallableCustom *p_b) {\n\t\treturn p_a < p_b;\n\t}\n");
+	r_out.append("\tCompareEqualFunc get_compare_equal_func() const override {\n\t\treturn &compare_equal;\n\t}\n");
+	r_out.append("\tCompareLessFunc get_compare_less_func() const override {\n\t\treturn &compare_less;\n\t}\n");
+	r_out.append("\tObjectID get_object() const override {\n\t\treturn ObjectID(owner_id);\n\t}\n");
+	// A plain lambda has no object, which the default is_valid() would reject.
+	r_out.append("\tbool is_valid() const override {\n");
+	r_out.append("\t\tif (owner_id == 0) {\n\t\t\treturn true;\n\t\t}\n");
+	r_out.append("\t\treturn ObjectDB::get_instance(ObjectID(owner_id)) != nullptr;\n");
+	r_out.append("\t}\n");
+	r_out.append("\tvoid call(const Variant **p_args, int p_argcount, Variant &r_return_value, GDExtensionCallError &r_error) const override {\n");
+	r_out.append("\t\tr_error.error = GDEXTENSION_CALL_OK;\n");
+	r_out.append("\t\tswitch (kind) {\n");
+	for (const GritFunction &function_entry : p_class.functions) {
+		if (!is_lambda_function(function_entry) || !p_emitter.supported_lambdas.has(function_entry.registry_key)) {
+			continue;
+		}
+		const LambdaInfo *info = p_emitter.lambda_info(function_entry);
+		const LambdaSite *site = nullptr;
+		for (const KeyValue<const GritStatement *, LambdaSite> &entry : p_emitter.lambda_sites) {
+			if (entry.value.key == function_entry.registry_key) {
+				site = &entry.value;
+				break;
+			}
+		}
+		if (!info || !site) {
+			continue;
+		}
+		LocalVector<Variant::Type> storages;
+		for (const GritVariable &variable : function_entry.variables) {
+			if (variable.role == GritVariable::Role::PARAMETER) {
+				storages.push_back(variable.storage);
+			}
+		}
+		String arguments;
+		for (uint32_t i = 0; i < storages.size(); i++) {
+			if (i > 0) {
+				arguments += ", ";
+			}
+			const String source = int(i) < site->captures ? "captures[" + itos(i) + "]" : "*p_args[" + itos(int(i) - site->captures) + "]";
+			arguments += p_emitter.convert(source, Variant::NIL, storages[i]);
+		}
+		const String call_expression = String(site->use_self ? "owner->" : p_class.class_name + "::") + info->method + "(" + arguments + ")";
+		const String return_cpp = function_return_cpp(function_entry);
+		r_out.append("\t\t\tcase " + itos(info->kind) + ": {\n");
+		r_out.append("\t\t\t\tif (p_argcount != " + itos(site->declared) + ") {\n\t\t\t\t\tr_error.error = GDEXTENSION_CALL_ERROR_INVALID_ARGUMENT;\n\t\t\t\t\treturn;\n\t\t\t\t}\n");
+		if (site->use_self) {
+			r_out.append("\t\t\t\tif (owner == nullptr) {\n\t\t\t\t\tr_error.error = GDEXTENSION_CALL_ERROR_INSTANCE_IS_NULL;\n\t\t\t\t\treturn;\n\t\t\t\t}\n");
+		}
+		if (return_cpp == "void") {
+			r_out.append("\t\t\t\t" + call_expression + ";\n\t\t\t\tr_return_value = Variant();\n");
+		} else {
+			r_out.append("\t\t\t\tr_return_value = Variant(" + call_expression + ");\n");
+		}
+		r_out.append("\t\t\t\treturn;\n\t\t\t}\n");
+	}
+	r_out.append("\t\t\tdefault:\n\t\t\t\tr_error.error = GDEXTENSION_CALL_ERROR_INVALID_METHOD;\n\t\t\t\treturn;\n\t\t}\n");
+	r_out.append("\t}\n};\n\n} // namespace\n\n");
+}
+
 bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 	last_opcode = int(p_statement.opcode);
 	last_statement_line = p_statement.line;
@@ -1486,8 +1705,9 @@ bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 		case GritOpcode::CALL_BUILTIN_STATIC:
 		case GritOpcode::CALL_NATIVE_STATIC:
 		case GritOpcode::CALL_METHOD_BIND:
-		case GritOpcode::CREATE_LAMBDA:
 			return write_call(p_statement);
+		case GritOpcode::CREATE_LAMBDA:
+			return write_create_lambda(p_statement);
 		case GritOpcode::AWAIT:
 			reject("await (a GDExtension method cannot suspend and resume)");
 			return false;
@@ -1582,7 +1802,21 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	indentation = 1;
 	symbol_count = 0;
 
-	static_function = String(p_function.signature).begins_with("static ");
+	lambda_function = is_lambda_function(p_function);
+	const LambdaInfo *lambda = lambda_function ? lambda_info(p_function) : nullptr;
+	if (lambda_function && !lambda) {
+		reject("a lambda without a recorded creation site");
+		return false;
+	}
+	static_function = lambda_function ? !lambda->use_self : String(p_function.signature).begins_with("static ");
+	if (lambda_function && p_function.optional_parameter_count > 0) {
+		reject("a lambda with optional parameters");
+		return false;
+	}
+	if (lambda_function && p_function.rest_variable >= 0) {
+		reject("a lambda with rest parameters");
+		return false;
+	}
 	if (static_function && p_is_virtual) {
 		reject("a static function cannot override a virtual method");
 		return false;
@@ -1628,7 +1862,7 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + (typed.is_empty() ? String(virtual_info->params[i].name) : typed) + ";");
 		}
 	} else {
-		const int required = p_function.parameter_count - p_function.optional_parameter_count;
+		const int required = lambda_function ? p_function.parameter_count : p_function.parameter_count - p_function.optional_parameter_count;
 		for (uint32_t i = 0; i < parameter_variables.size(); i++) {
 			if (i > 0) {
 				signature_parameters += ", ";
@@ -1676,7 +1910,8 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 
 	const String return_cpp = entry_return_cpp(p_function);
-	const String qualified_name = klass.class_name + "::" + sanitize(String(p_function.name));
+	const String method_name = lambda_function ? lambda->method : sanitize(String(p_function.name));
+	const String qualified_name = klass.class_name + "::" + method_name;
 	// `static` belongs to the declaration only.
 	r_output.append(return_cpp + " " + qualified_name + "(" + signature_parameters + ") {\n");
 	for (const String &alias : aliases) {
@@ -1701,10 +1936,11 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 	r_output.append("}\n\n");
 
-	binding_defaults_by_function.insert(p_function.name, binding_defaults);
-	declaration_parameters_by_function.insert(p_function.name, declaration_parameters);
-	binding_static_by_function.insert(p_function.name, static_function);
+	binding_defaults_by_function.insert(p_function.registry_key, binding_defaults);
+	declaration_parameters_by_function.insert(p_function.registry_key, declaration_parameters);
+	binding_static_by_function.insert(p_function.registry_key, static_function);
 	static_function = false;
+	lambda_function = false;
 	function = nullptr;
 	return true;
 }
@@ -1772,6 +2008,9 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 
 	bool has_ready = emitter.is_supported("_ready");
 	for (const GritFunction &p_function : p_class.functions) {
+		if (is_lambda_function(p_function)) {
+			continue;
+		}
 		const bool is_virtual = is_virtual_name(String(p_function.name));
 		if (!emitter.is_supported(String(p_function.name))) {
 			continue;
@@ -1781,7 +2020,7 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 			continue;
 		}
 		String parameters;
-		if (const String *declaration = emitter.declaration_parameters_by_function.getptr(p_function.name)) {
+		if (const String *declaration = emitter.declaration_parameters_by_function.getptr(p_function.registry_key)) {
 			parameters = *declaration;
 		} else {
 			int count = 0;
@@ -1812,6 +2051,23 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	for (const GritGdxSkipped &entry : stub_methods(p_class)) {
 		out.append("\tvoid _grit_unconverted_" + sanitize(String(entry.name)) + "(const Variant **p_args, GDExtensionInt p_argcount, GDExtensionCallError &r_error);\n");
 	}
+	// Lambdas are internal methods: a CallableCustom calls them with the
+	// captured values prepended to the call arguments.
+	for (const GritFunction &p_function : p_class.functions) {
+		if (!is_lambda_function(p_function)) {
+			continue;
+		}
+		if (!emitter.supported_lambdas.has(p_function.registry_key)) {
+			continue;
+		}
+		const String *declaration = emitter.declaration_parameters_by_function.getptr(p_function.registry_key);
+		const LambdaInfo *info = emitter.lambda_info(p_function);
+		if (!declaration || !info) {
+			continue;
+		}
+		const bool lambda_static = emitter.binding_static_by_function.getptr(p_function.registry_key) ? *emitter.binding_static_by_function.getptr(p_function.registry_key) : !info->use_self;
+		out.append("\t" + String(lambda_static ? "static " : "") + entry_return_cpp(p_function) + " " + info->method + "(" + *declaration + ");\n");
+	}
 
 	out.append("};\n\n} // namespace godot\n");
 	return out.as_string();
@@ -1822,6 +2078,7 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 	out.append("#include \"" + header_file_name(p_class) + "\"\n\n");
 	out.append("#include <godot_cpp/core/class_db.hpp>\n");
 	out.append("#include <godot_cpp/core/memory.hpp>\n");
+	out.append("#include <godot_cpp/variant/callable_custom.hpp>\n");
 	out.append("#include <godot_cpp/core/object.hpp>\n");
 	out.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
 	out.append("#include <godot_cpp/templates/hash_map.hpp>\n");
@@ -1855,6 +2112,7 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 
 	GritGdxEmitter emitter(p_class);
 	emitter.prepare();
+	emit_lambda_callable(p_class, emitter, out);
 
 	for (const GritGdxProperty &property : p_class.properties) {
 		const String type = cpp_storage(property.storage);
@@ -1883,10 +2141,11 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 	const LocalVector<GritGdxSkipped> stubs = stub_methods(p_class);
 
 	for (const GritFunction &p_function : p_class.functions) {
-		if (!emitter.is_supported(String(p_function.name))) {
+		const bool lambda = is_lambda_function(p_function);
+		if (lambda ? !emitter.supported_lambdas.has(p_function.registry_key) : !emitter.is_supported(String(p_function.name))) {
 			continue;
 		}
-		const bool is_virtual = is_virtual_name(String(p_function.name));
+		const bool is_virtual = !lambda && is_virtual_name(String(p_function.name));
 		StringBuilder emitted;
 		if (!emitter.emit_function(p_function, is_virtual, emitted)) {
 			continue;
@@ -1932,7 +2191,7 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		out.append("\tADD_SIGNAL(MethodInfo(" + escaped_string(String(signal.name)) + (arguments.is_empty() ? String() : ", " + arguments) + "));\n");
 	}
 	for (const GritFunction &p_function : p_class.functions) {
-		if (is_virtual_name(String(p_function.name))) {
+		if (is_lambda_function(p_function) || is_virtual_name(String(p_function.name))) {
 			continue;
 		}
 		if (!emitter.is_supported(String(p_function.name))) {
@@ -1951,12 +2210,12 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 			count++;
 		}
 		String defaults;
-		if (const LocalVector<String> *values = emitter.binding_defaults_by_function.getptr(p_function.name)) {
+		if (const LocalVector<String> *values = emitter.binding_defaults_by_function.getptr(p_function.registry_key)) {
 			for (const String &value : *values) {
 				defaults += ", " + value;
 			}
 		}
-		const bool *bind_static = emitter.binding_static_by_function.getptr(p_function.name);
+		const bool *bind_static = emitter.binding_static_by_function.getptr(p_function.registry_key);
 		if (bind_static && *bind_static) {
 			out.append("\tClassDB::bind_static_method(\"" + p_class.class_name + "\", D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
 		} else {
@@ -2004,7 +2263,7 @@ LocalVector<GritGdxSkipped> GritGdxEmitter::skipped_functions(const GritGdxClass
 	GritGdxEmitter emitter(p_class);
 	emitter.prepare();
 	for (const GritFunction &function_entry : p_class.functions) {
-		if (emitter.is_supported(String(function_entry.name))) {
+		if (is_lambda_function(function_entry) || emitter.is_supported(String(function_entry.name))) {
 			continue;
 		}
 		emitter.reject_reason = String();

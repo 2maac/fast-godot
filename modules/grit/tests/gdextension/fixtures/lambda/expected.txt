@@ -1,0 +1,6 @@
+lambda start
+sorted: [3, 2, 1]
+scaled: [30, 20, 10]
+self lambda: true
+hit 7
+LAMBDA DONE
