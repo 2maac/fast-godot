@@ -49,9 +49,9 @@ func _ready() -> void:
 	var both = await pair
 	print("T6 array: ", both, " size: ", both.size())
 
-	print("T7 generated coroutine called with await")
+	print("T7 awaited generated coroutine")
 	await _early()
-	print("T7 returned (generated coroutines resume immediately)")
+	print("T7 returned after the awaited coroutine")
 
 	print("T8 non-signal await")
 	var direct = await 99
@@ -68,6 +68,14 @@ func _ready() -> void:
 	call_deferred("_emit_value", 9)
 	await get_tree().create_timer(0.05).timeout
 	print("T11 waiters done")
+
+	print("T12 await generated coroutine value")
+	var doubled_value = await _delayed_value(20)
+	print("T12 value: ", doubled_value)
+
+	print("T13 GDScript awaits a generated coroutine")
+	var nested = await helper.call_back(self)
+	print("T13 value: ", nested)
 
 	print("T10 plain function in the same class")
 	print("T10 sum: ", _sum(2, 3))
@@ -93,6 +101,10 @@ func _wait_for_ping(p_name: String) -> void:
 
 func _sum(p_a: int, p_b: int) -> int:
 	return p_a + p_b
+
+func _delayed_value(p_value: int) -> int:
+	await get_tree().create_timer(0.03).timeout
+	return p_value * 2
 
 func _early() -> void:
 	await get_tree().process_frame

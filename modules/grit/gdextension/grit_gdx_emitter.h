@@ -64,6 +64,7 @@ private:
 	static bool is_virtual_name(const String &p_name);
 	static String virtual_signature_of(const GritFunction &p_function);
 	static String function_return_cpp(const GritFunction &p_function);
+	static String entry_return_cpp(const GritFunction &p_function);
 	String return_type_of(const GritFunction &p_function) const;
 	static String function_parameter_cpp(const GritVariable &p_variable, const String &p_name);
 

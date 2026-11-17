@@ -1549,6 +1549,21 @@ String GritGdxEmitter::function_return_cpp(const GritFunction &p_function) {
 	return "Object *";
 }
 
+// What the *entry* method returns. A coroutine hands back a signal that fires on
+// completion (or its value when it finished synchronously), so callers can await
+// it the way GDScript awaits a function state. Virtuals must keep the engine's
+// signature and are therefore not awaitable.
+String GritGdxEmitter::entry_return_cpp(const GritFunction &p_function) {
+	const VirtualInfo *info = is_virtual_name(String(p_function.name)) ? find_virtual(String(p_function.name)) : nullptr;
+	if (info) {
+		return String(info->return_type);
+	}
+	if (p_function.await_count > 0) {
+		return "Variant";
+	}
+	return function_return_cpp(p_function);
+}
+
 String GritGdxEmitter::return_type_of(const GritFunction &p_function) const {
 	const VirtualInfo *info = is_virtual_name(String(p_function.name)) ? find_virtual(String(p_function.name)) : nullptr;
 	return info ? String(info->return_type) : function_return_cpp(p_function);
@@ -1660,7 +1675,9 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 		return false;
 	}
 
-	const String return_cpp = virtual_info ? String(virtual_info->return_type) : function_return_cpp(p_function);
+	// A coroutine's entry returns Variant (its completion signal), so the
+	// definition must use the same type the header declares.
+	const String return_cpp = entry_return_cpp(p_function);
 	const String qualified_name = klass.class_name + "::" + sanitize(String(p_function.name));
 
 	if (!coroutine) {
@@ -1693,21 +1710,37 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	// Entry point: allocate the state, copy the arguments in and run until the
 	// first suspension. The caller sees a plain method call that returns at
 	// once, the way a GDScript coroutine returns its function state.
+	const bool awaitable = !p_is_virtual;
 	r_output.append(return_cpp + " " + qualified_name + "(" + signature_parameters + ") {\n");
 	r_output.append("\t" + state_struct_name + " *grit_state = memnew(" + state_struct_name + ");\n");
 	r_output.append("\tgrit_state->handle = ++grit_await_next;\n");
+	if (awaitable) {
+		// A user signal on a plain RefCounted is enough: the caller only needs
+		// something to await, and the state keeps the token alive.
+		r_output.append("\tgrit_state->token.instantiate();\n");
+		r_output.append("\tgrit_state->token->add_user_signal(\"completed\");\n");
+	}
 	for (const String &copy : parameter_copies) {
 		r_output.append("\t" + copy + "\n");
 	}
-	r_output.append("\t" + state_step_method + "(grit_state);\n");
-	r_output.append("\tif (grit_state->ip == 0) {\n\t\tmemdelete(grit_state);\n\t}\n");
-	if (return_cpp == "Variant") {
-		r_output.append("\treturn Variant();\n");
-	} else if (return_cpp == "Object *") {
-		r_output.append("\treturn nullptr;\n");
-	} else if (return_cpp != "void") {
-		const GritType &type = p_function.types[p_function.return_type];
-		r_output.append("\treturn " + default_storage_value(type.kind == GritType::Kind::BUILTIN ? type.builtin_type : Variant::NIL) + ";\n");
+	if (awaitable) {
+		r_output.append("\tconst Variant grit_result = " + state_step_method + "(grit_state);\n");
+		r_output.append("\tif (grit_state->ip == 0) {\n");
+		r_output.append("\t\tmemdelete(grit_state);\n");
+		r_output.append("\t\treturn grit_result;\n");
+		r_output.append("\t}\n");
+		r_output.append("\treturn Variant(Signal(grit_state->token.ptr(), \"completed\"));\n");
+	} else {
+		r_output.append("\t" + state_step_method + "(grit_state);\n");
+		r_output.append("\tif (grit_state->ip == 0) {\n\t\tmemdelete(grit_state);\n\t}\n");
+		if (return_cpp == "Variant") {
+			r_output.append("\treturn Variant();\n");
+		} else if (return_cpp == "Object *") {
+			r_output.append("\treturn nullptr;\n");
+		} else if (return_cpp != "void") {
+			const GritType &type = p_function.types[p_function.return_type];
+			r_output.append("\treturn " + default_storage_value(type.kind == GritType::Kind::BUILTIN ? type.builtin_type : Variant::NIL) + ";\n");
+		}
 	}
 	r_output.append("}\n\n");
 
@@ -1750,8 +1783,18 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	r_output.append("\t} else {\n");
 	r_output.append("\t\tstate->awaited = Variant();\n");
 	r_output.append("\t}\n");
-	r_output.append("\t" + state_step_method + "(state);\n");
-	r_output.append("\tif (state->ip == 0) {\n\t\tmemdelete(state);\n\t}\n");
+	r_output.append("\tconst Variant result = " + state_step_method + "(state);\n");
+	r_output.append("\tif (state->ip == 0) {\n");
+	if (awaitable) {
+		r_output.append("\t\tconst Ref<RefCounted> token = state->token;\n");
+	}
+	r_output.append("\t\tmemdelete(state);\n");
+	if (awaitable) {
+		r_output.append("\t\tif (token.is_valid()) {\n");
+		r_output.append("\t\t\ttoken->emit_signal(\"completed\", result);\n");
+		r_output.append("\t\t}\n");
+	}
+	r_output.append("\t}\n");
 	r_output.append("}\n\n");
 
 	await_state_fields.insert(p_function.name, state_fields);
@@ -1769,6 +1812,8 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	out.append("#include <godot_cpp/classes/" + snake_case(String(p_class.base_type)) + ".hpp>\n");
 	out.append("#include <godot_cpp/core/class_db.hpp>\n");
 	out.append("#include <godot_cpp/templates/hash_map.hpp>\n");
+	out.append("#include <godot_cpp/classes/ref.hpp>\n");
+	out.append("#include <godot_cpp/classes/ref_counted.hpp>\n");
 	out.append("#include <godot_cpp/variant/variant.hpp>\n");
 	out.append("#include <godot_cpp/variant/string.hpp>\n");
 	out.append("#include <godot_cpp/variant/string_name.hpp>\n");
@@ -1846,7 +1891,7 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 			parameters += function_parameter_cpp(variable, "p_" + sanitize(variable.name));
 			count++;
 		}
-		out.append("\t" + function_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
+		out.append("\t" + entry_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
 	}
 
 	bool needs_process = false;
@@ -1876,6 +1921,9 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 			out.append("\t\tint64_t ip = 0;\n");
 			out.append("\t\tint64_t handle = 0;\n");
 			out.append("\t\tVariant awaited;\n");
+			if (!is_virtual_name(name)) {
+				out.append("\t\tRef<RefCounted> token;\n");
+			}
 			const LocalVector<StateField> *fields = emitter.await_state_fields.getptr(p_function.name);
 			if (fields) {
 				for (const StateField &field : *fields) {
@@ -1902,6 +1950,8 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 	out.append("#include <godot_cpp/core/object.hpp>\n");
 	out.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
 	out.append("#include <godot_cpp/templates/hash_map.hpp>\n");
+	out.append("#include <godot_cpp/classes/ref.hpp>\n");
+	out.append("#include <godot_cpp/classes/ref_counted.hpp>\n");
 	out.append("#include <godot_cpp/templates/pair.hpp>\n");
 	// Singleton constants (Time, Engine, Input, …) are emitted as
 	// <Class>::get_singleton(), which needs the class header.

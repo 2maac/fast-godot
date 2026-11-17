@@ -12,12 +12,14 @@ T5 own signal value
 T5 value: 42
 T6 multi-arg signal
 T6 array: [3, 4] size: 2
-T7 returned (generated coroutines resume immediately)
+T7 returned after the awaited coroutine
 T8 direct: 99
 T9 doubled: 42
 T11 two waiters on one signal
 pinged A: 9
 pinged B: 9
 T11 waiters done
+T12 value: 40
+T13 value: 42
 T10 sum: 5
 ALL DONE
