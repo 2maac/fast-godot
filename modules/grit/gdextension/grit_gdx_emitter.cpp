@@ -3,6 +3,7 @@
 #include "core/math/math_funcs.h"
 #include "core/config/engine.h"
 #include "core/object/class_db.h"
+#include "core/os/os.h"
 #include "core/string/string_builder.h"
 
 namespace {
@@ -208,6 +209,18 @@ void GritGdxEmitter::prepare_lambdas() {
 		lambdas_by_key.insert(function_entry.registry_key, info);
 		lambdas.push_back(&function_entry);
 	}
+	const bool debug_lambdas = OS::get_singleton()->get_environment("GRIT_GDX_DEBUG_LAMBDAS") == "1";
+	if (debug_lambdas) {
+		print_line(vformat("Grit debug: %d lambda function(s), %d class function(s)", lambdas.size(), klass.functions.size()));
+		for (const GritFunction *lambda : lambdas) {
+			print_line("  lambda key: " + lambda->registry_key);
+		}
+		for (const GritFunction &f : klass.functions) {
+			if (!is_lambda_function(f)) {
+				print_line("  function key: " + f.registry_key);
+			}
+		}
+	}
 	if (lambdas.is_empty()) {
 		return;
 	}
@@ -221,18 +234,23 @@ void GritGdxEmitter::prepare_lambdas() {
 				candidates.push_back(lambda);
 			}
 		}
-		LocalVector<bool> used;
+		// LocalVector<bool>::resize does not initialise trivial elements; leaving
+		// them uninitialised made the pairing depend on heap garbage.
+		LocalVector<uint8_t> used;
 		used.resize(candidates.size());
+		for (uint32_t i = 0; i < used.size(); i++) {
+			used[i] = 0;
+		}
 		const auto take = [&](int p_line) -> int {
 			for (uint32_t i = 0; i < candidates.size(); i++) {
 				if (!used[i] && lambda_key_line(candidates[i]->registry_key) == p_line) {
-					used[i] = true;
+					used[i] = 1;
 					return int(i);
 				}
 			}
 			for (uint32_t i = 0; i < candidates.size(); i++) {
 				if (!used[i]) {
-					used[i] = true;
+					used[i] = 1;
 					return int(i);
 				}
 			}
@@ -244,6 +262,9 @@ void GritGdxEmitter::prepare_lambdas() {
 					continue;
 				}
 				const int match = take(statement.line);
+				if (debug_lambdas) {
+					print_line(vformat("  site line %d -> match %d (%s)", statement.line, match, match >= 0 ? candidates[match]->registry_key : String("none")));
+				}
 				if (match < 0) {
 					continue;
 				}
@@ -300,6 +321,8 @@ void GritGdxEmitter::prepare() {
 		StringBuilder probe;
 		if (emit_function(function_entry, false, probe)) {
 			supported_lambdas.insert(function_entry.registry_key);
+		} else if (OS::get_singleton()->get_environment("GRIT_GDX_DEBUG_LAMBDAS") == "1") {
+			print_line("  lambda failed: " + function_entry.registry_key + " -> " + (reject_reason.is_empty() ? String("no reason") : reject_reason));
 		}
 	}
 
