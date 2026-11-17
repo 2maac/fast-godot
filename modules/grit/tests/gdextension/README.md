@@ -44,6 +44,15 @@ than as a stub.
 
 ## Notes
 
+- Verified on macOS, on Linux (WSL: the editor is built from the commit with the
+  bundled GCC 9 toolchain, godot-cpp built by the conversion, ~6m20s per editor
+  build) and on Windows (generated sources built with the Windows toolchain and
+  run under the 4.7.2 release editor).
+- Run a verification from a **committed tree**: `git archive HEAD | tar -x -C
+  <dir>`, or a clean worktree. Copying a working tree while it is being edited
+  produces a mix of commits, which once made a "verified" run mean nothing (the
+  copy was detected by comparing blob hashes with the commit).
+
 - Conversions run with a throwaway `HOME` so the editor dumps its extension API
   inside the temporary directory. Building the extension needs a godot-cpp
   checkout the process may write to.
