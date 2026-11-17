@@ -421,13 +421,16 @@ Error GritGdxGenerator::write_extension_files(const String &p_extension_director
 	build.append("godot_cpp = ARGUMENTS.get(\"godot_cpp\") or os.environ.get(\"GRIT_GDX_GODOT_CPP\", \"godot-cpp\")\n");
 	build.append("env = SConscript(os.path.join(godot_cpp, \"SConstruct\"))\n");
 	build.append("env.Append(CPPPATH=[\"src/\"])\n");
-	build.append("env[\"SHLIBPREFIX\"] = \"\"\n");
-	build.append("env[\"SHLIBSUFFIX\"] = \"\"\n\n");
+	build.append("env[\"SHLIBPREFIX\"] = \"\"\n\n");
 	build.append("sources = Glob(\"src/*.cpp\")\n\n");
 	build.append("name = \"" + name + "\"\n");
 	build.append("arch = env[\"arch\"]\n");
 	build.append("config = \"debug\" if env[\"target\"] in (\"debug\", \"template_debug\", \"editor\") else \"release\"\n");
 	build.append("extension = {\"macos\": \".dylib\", \"windows\": \".dll\"}.get(env[\"platform\"], \".so\")\n");
+	// SCons keeps a target whose suffix matches $SHLIBSUFFIX and refuses one that
+	// does not, so the target keeps the full artifact name. Windows only accepts
+	// this when SHLIBSUFFIX is set (clearing it broke the build there).
+	build.append("env[\"SHLIBSUFFIX\"] = extension\n");
 	build.append("artifact = \"bin/lib%s.%s.%s.%s%s\" % (name, env[\"platform\"], arch, config, extension)\n\n");
 	build.append("library = env.SharedLibrary(target=artifact, source=sources)\n");
 	build.append("env.Default(library)\n");
