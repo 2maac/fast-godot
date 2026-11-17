@@ -42,16 +42,29 @@ An extension folder holds:
 | `src/` | generated class sources and the class registry |
 | `bin/lib<name>.<platform>.<arch>.<config>.<ext>` | the built library |
 
-The conversion is all-or-nothing: a script with a construct the emitter cannot
-translate is refused with the function name and the reason, and there is no
-"convert anyway". A script that other nodes also use is refused when it declares
-a `class_name`, because those nodes would lose their script.
+The conversion reports what it will do before writing anything: the dialog names
+the class, how many methods convert and which stay behind with the reason, and the
+button reads **Convert Anyway** when a method cannot be translated. A skipped
+method still exists on the generated class as a stub that logs an error when
+called, so a call fails loudly instead of silently doing nothing. A script where
+nothing converts is refused, and so is a script that other nodes also use when it
+declares a `class_name` (those nodes would lose their script), or one whose parent
+is another script. `--grit-gdx-plan` prints the same report headlessly and
+`--grit-gdx-partial` accepts a partial class from the command line.
 
 Generated classes are ordinary godot-cpp classes: exported variables become
 properties, `signal` declarations become signals, and a script-defined `_ready`
 or `_process` overrides the native virtual. The identifier of the generated
 class is de-collided against `ClassDB`, so a `Control` script becomes
 `ControlNative` rather than shadowing the engine class.
+
+What converts: functions, exported variables, signals, virtual overrides,
+`is`/`as` (built-in, native and preloaded script types), `assert`, optional
+parameters, static functions, typed containers (`Array[T]`, `Dictionary[K, V]`)
+and lambdas (`func(...): ...`, including captured values). What does not:
+`await` — a GDExtension method cannot suspend and resume, so a method that awaits
+is reported and stays behind — rest parameters (`...args`), `static var`, and
+`is`/`as` on an inner-class script type.
 
 Every action reloads the edited scene and, when a library changed, the extension
 itself (the descriptors set `reloadable = true` and the libraries are built with
@@ -152,9 +165,10 @@ with `load_threaded_request(..., use_sub_threads = true)`.
 ## Status
 
 - macOS, Linux and Windows editors build locally.
-- Scripted nodes convert to GDExtension classes on macOS, with the library built
-  by the toolchain's godot-cpp; conversion and conversion back have been
-  exercised on small projects.
+- Scripted nodes convert to GDExtension classes on macOS and Linux (the library
+  is built by the toolchain's godot-cpp); conversion, conversion back and a
+  fixture project suite are exercised, and the generated sources were also built
+  and run with the Windows toolchain.
 - Linux, Windows, macOS and HTML5 Fast templates build; the Linux and HTML5
   exports have been run and benchmarked, the Windows export has not been run on
   Windows yet.
