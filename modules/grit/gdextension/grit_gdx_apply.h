@@ -33,10 +33,31 @@ public:
 		String skipped_report;
 	};
 
+	// What converting a script would produce, without writing or building
+	// anything: the class name, how many methods convert, and which ones stay
+	// behind with the reason. Used by the pre-flight dialog and the CLI.
+	struct Plan {
+		String script_path;
+		String class_name;
+		String base_type;
+		int converted_functions = 0;
+		LocalVector<GritGdxSkipped> skipped;
+
+		int skipped_functions() const { return skipped.size(); }
+		bool is_partial() const { return !skipped.is_empty(); }
+		// One line, e.g. "converts 7 of 9 methods".
+		String summary() const;
+		// Multi-line list of the methods that stay behind.
+		String skipped_text() const;
+	};
+	static Error plan(const String &p_script_path, Plan &r_plan, String &r_error);
+
 	// Main thread. Adds the script's class to the extension (creating it).
 	// `p_node_path` is relative to the edited scene root ("." is the root); an
-	// empty path converts every node that uses the script.
-	static Error prepare(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, GritGdxClass &r_class, Result &r_result, String &r_report);
+	// empty path converts every node that uses the script. With
+	// `p_allow_partial` the class is generated even when some methods cannot be
+	// translated (they are reported and simply missing from the class).
+	static Error prepare(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial, GritGdxClass &r_class, Result &r_result, String &r_report);
 
 	// Worker thread.
 	static Error build(const String &p_extension_directory, const String &p_target, const Progress &p_progress, String &r_library, String &r_error);
@@ -68,7 +89,7 @@ public:
 	static bool find_revert_target(const String &p_class_name, RevertTarget &r_target);
 
 	// prepare + build + finish, for the command line.
-	static Error run(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, Result &r_result, String &r_report);
+	static Error run(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, bool p_allow_partial, Result &r_result, String &r_report);
 
 private:
 	static Vector<String> collect_scenes(const String &p_directory);

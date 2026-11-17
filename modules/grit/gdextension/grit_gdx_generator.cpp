@@ -557,12 +557,14 @@ Error GritGdxGenerator::remove_class(const String &p_extension_directory, const 
 void GritGdxGenerator::run_from_command_line() {
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	String add_script;
+	String plan_script;
 	String revert_class;
 	String extension;
 	String scene;
 	String node_path;
 	bool revert = false;
 	bool build = false;
+	bool allow_partial = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
 		const auto next_value = [&]() -> String {
@@ -575,6 +577,8 @@ void GritGdxGenerator::run_from_command_line() {
 		};
 		if (argument == "--grit-gdx-add" || argument == "--grit-gdx") {
 			add_script = next_value();
+		} else if (argument == "--grit-gdx-plan") {
+			plan_script = next_value();
 		} else if (argument == "--grit-gdx-revert") {
 			revert = true;
 		} else if (argument == "--grit-gdx-class") {
@@ -587,12 +591,24 @@ void GritGdxGenerator::run_from_command_line() {
 			node_path = next_value();
 		} else if (argument == "--grit-gdx-build") {
 			build = true;
+		} else if (argument == "--grit-gdx-partial") {
+			allow_partial = true;
 		}
 	}
 
 	String report;
 	Error error = OK;
-	if (revert) {
+	if (!plan_script.is_empty()) {
+		// Pre-flight only: report what a conversion would produce.
+		GritGdxApply::Plan plan;
+		String plan_error;
+		error = GritGdxApply::plan(plan_script, plan, plan_error);
+		if (error == OK) {
+			report = vformat("Grit: \"%s\" -> class \"%s\" (%s)\n  %s\n%s", plan.script_path, plan.class_name, plan.base_type, plan.summary(), plan.skipped_text());
+		} else {
+			report = "Grit: " + plan_error;
+		}
+	} else if (revert) {
 		if (revert_class.is_empty()) {
 			report = "Grit: revert needs --grit-gdx-class (the extension is found automatically).";
 			error = ERR_INVALID_PARAMETER;
@@ -615,7 +631,7 @@ void GritGdxGenerator::run_from_command_line() {
 			error = ERR_INVALID_PARAMETER;
 		} else {
 			GritGdxApply::Result result;
-			error = GritGdxApply::run(add_script, extension, scene, node_path, build, result, report);
+			error = GritGdxApply::run(add_script, extension, scene, node_path, build, allow_partial, result, report);
 		}
 	} else {
 		return;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "grit_gdx_apply.h"
+
 #include "editor/inspector/editor_context_menu_plugin.h"
 
 class Node;
@@ -34,7 +36,10 @@ private:
 	void _submenu_selected(int p_index);
 
 	void _prompt_extension_name(const String &p_script_path, const String &p_scene_path, const String &p_node_path, const String &p_default_name);
-	void _start_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path);
+	void _start_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path, bool p_allow_partial);
+	// A partial conversion needs an explicit "Convert Anyway".
+	void _confirm_partial(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path, const GritGdxApply::Plan &p_plan);
+	void _confirm_partial_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path);
 	void _start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path);
 	void _start_job();
 	void _poll();
@@ -43,6 +48,7 @@ private:
 	Ref<GritGdxJob> job;
 	AcceptDialog *dialog = nullptr;
 	ConfirmationDialog *name_dialog = nullptr;
+	ConfirmationDialog *confirm_dialog = nullptr;
 	LineEdit *name_edit = nullptr;
 	Label *status_label = nullptr;
 	ProgressBar *progress_bar = nullptr;

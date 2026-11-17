@@ -17,6 +17,9 @@ public:
 	// Functions the backend cannot express, with the reason, so the caller can
 	// report them instead of silently leaving them behind.
 	static LocalVector<GritGdxSkipped> skipped_functions(const GritGdxClass &p_class);
+	// Skipped methods that get a stub (everything but virtuals and the implicit
+	// GDScript accessors), so a call fails loudly at runtime.
+	static LocalVector<GritGdxSkipped> stub_methods(const GritGdxClass &p_class);
 	// Small runtime shared by every generated class (operator evaluation,
 	// keyed access, literals).
 	static String emit_helpers(const GritGdxClass &p_class);

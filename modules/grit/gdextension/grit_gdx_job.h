@@ -18,7 +18,9 @@ public:
 	~GritGdxJob();
 
 	// Main thread. Adding a class: generation happens here, the build in run().
-	Error start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path);
+	// `p_allow_partial` converts the methods that work even when some cannot be
+	// translated (they are reported and missing from the class).
+	Error start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial);
 	// Main thread. Reverting a class: everything happens on the worker.
 	Error start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path);
 

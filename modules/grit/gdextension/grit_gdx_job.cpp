@@ -10,12 +10,12 @@ GritGdxJob::~GritGdxJob() {
 	}
 }
 
-Error GritGdxJob::start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path) {
+Error GritGdxJob::start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial) {
 	mode = Mode::ADD;
 	GritGdxBuilder::resolve_paths();
 
 	String prepare_report;
-	prepare_error = GritGdxApply::prepare(p_script_path, p_extension_directory, p_scene_path, p_node_path, klass, result, prepare_report);
+	prepare_error = GritGdxApply::prepare(p_script_path, p_extension_directory, p_scene_path, p_node_path, p_allow_partial, klass, result, prepare_report);
 	report = prepare_report;
 	{
 		MutexLock lock(mutex);

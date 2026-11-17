@@ -27,9 +27,11 @@ public:
 	static String snake_case(const String &p_name);
 	static String class_file_stem(const String &p_class_name);
 	static LocalVector<GritGdxSkipped> collect_skipped(const GritGdxClass &p_class);
+	// Records a script and classifies its methods without writing any file: the
+	// pre-flight plan (and the CLI's --grit-gdx-plan) builds on it.
+	static Error collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error);
 
 private:
-	static Error collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error);
 	static Error write_file(const String &p_path, const String &p_content);
 	static Error write_registry(const String &p_extension_directory, const GritGdxManifest &p_manifest);
 	static String pascal_case(const String &p_text);

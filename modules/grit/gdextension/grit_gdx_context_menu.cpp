@@ -184,7 +184,53 @@ void GritGdxContextMenuPlugin::_submenu_selected(int p_index) {
 		return;
 	}
 	const Ref<GDScript> script = node->get_script();
-	_start_add(script->get_path(), submenu_extensions[p_index], scene, path);
+	const String script_path = script->get_path();
+	GritGdxApply::Plan plan;
+	String plan_error;
+	if (GritGdxApply::plan(script_path, plan, plan_error) != OK) {
+		_show_message(plan_error);
+		return;
+	}
+	if (plan.converted_functions <= 0) {
+		_show_message(vformat("Grit: no method of \"%s\" can be converted yet.\n\n%s", script_path, plan.skipped_text()));
+		return;
+	}
+	if (!plan.is_partial()) {
+		_start_add(script_path, submenu_extensions[p_index], scene, path, false);
+		return;
+	}
+	_confirm_partial(script_path, submenu_extensions[p_index], scene, path, plan);
+}
+
+void GritGdxContextMenuPlugin::_confirm_partial(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path, const GritGdxApply::Plan &p_plan) {
+	if (confirm_dialog) {
+		confirm_dialog->queue_free();
+		confirm_dialog = nullptr;
+	}
+	confirm_dialog = memnew(ConfirmationDialog);
+	confirm_dialog->set_title("Make GDExtension");
+	confirm_dialog->set_ok_button_text("Convert Anyway");
+	confirm_dialog->set_min_size(Vector2i(520, 0));
+
+	VBoxContainer *box = memnew(VBoxContainer);
+	confirm_dialog->add_child(box);
+	Label *label = memnew(Label);
+	label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	label->set_custom_minimum_size(Vector2i(500, 0));
+	label->set_text(vformat("%s.\n\nThese stay behind as stubs that log an error when called:\n%s\nConvert Back restores the script at any time.", p_plan.summary().capitalize(), p_plan.skipped_text()));
+	box->add_child(label);
+
+	EditorNode::get_singleton()->get_gui_base()->add_child(confirm_dialog);
+	confirm_dialog->popup_centered();
+	confirm_dialog->connect(SceneStringName(confirmed), callable_mp(this, &GritGdxContextMenuPlugin::_confirm_partial_add).bind(p_script_path, p_extension, p_scene_path, p_node_path));
+}
+
+void GritGdxContextMenuPlugin::_confirm_partial_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path) {
+	if (confirm_dialog) {
+		confirm_dialog->queue_free();
+		confirm_dialog = nullptr;
+	}
+	_start_add(p_script_path, p_extension, p_scene_path, p_node_path, true);
 }
 
 void GritGdxContextMenuPlugin::_make_gdextension(const Array &p_selection) {
@@ -207,14 +253,26 @@ void GritGdxContextMenuPlugin::_make_gdextension(const Array &p_selection) {
 }
 
 void GritGdxContextMenuPlugin::_prompt_extension_name(const String &p_script_path, const String &p_scene_path, const String &p_node_path, const String &p_default_name) {
+	// Pre-flight: what the conversion would produce, before anything is written.
+	GritGdxApply::Plan plan;
+	String plan_error;
+	if (GritGdxApply::plan(p_script_path, plan, plan_error) != OK) {
+		_show_message(plan_error);
+		return;
+	}
+	if (plan.converted_functions <= 0) {
+		_show_message(vformat("Grit: no method of \"%s\" can be converted yet.\n\n%s", p_script_path, plan.skipped_text()));
+		return;
+	}
+
 	if (name_dialog) {
 		name_dialog->queue_free();
 		name_dialog = nullptr;
 	}
 	name_dialog = memnew(ConfirmationDialog);
 	name_dialog->set_title("Make GDExtension");
-	name_dialog->set_ok_button_text("Create");
-	name_dialog->set_min_size(Vector2i(420, 0));
+	name_dialog->set_ok_button_text(plan.is_partial() ? "Convert Anyway" : "Create");
+	name_dialog->set_min_size(Vector2i(460, 0));
 
 	VBoxContainer *box = memnew(VBoxContainer);
 	name_dialog->add_child(box);
@@ -225,12 +283,22 @@ void GritGdxContextMenuPlugin::_prompt_extension_name(const String &p_script_pat
 	name_edit->set_text(p_default_name);
 	box->add_child(name_edit);
 
+	Label *plan_label = memnew(Label);
+	plan_label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	plan_label->set_custom_minimum_size(Vector2i(440, 0));
+	if (plan.is_partial()) {
+		plan_label->set_text(vformat("%s into \"%s\" (%s).\n\nThese stay behind as stubs that log an error when called:\n%s", plan.summary().capitalize(), plan.class_name, plan.base_type, plan.skipped_text()));
+	} else {
+		plan_label->set_text(vformat("%s into \"%s\" (%s).", plan.summary().capitalize(), plan.class_name, plan.base_type));
+	}
+	box->add_child(plan_label);
+
 	EditorNode::get_singleton()->get_gui_base()->add_child(name_dialog);
 	name_dialog->popup_centered();
-	name_dialog->connect(SceneStringName(confirmed), callable_mp(this, &GritGdxContextMenuPlugin::_start_add).bind(p_script_path, String(), p_scene_path, p_node_path));
+	name_dialog->connect(SceneStringName(confirmed), callable_mp(this, &GritGdxContextMenuPlugin::_start_add).bind(p_script_path, String(), p_scene_path, p_node_path, plan.is_partial()));
 }
 
-void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path) {
+void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path, bool p_allow_partial) {
 	String extension = p_extension;
 	if (extension.is_empty()) {
 		if (!name_edit) {
@@ -247,7 +315,7 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 	_close_dialog();
 	active_scene = p_scene_path;
 	job.instantiate();
-	const Error error = job->start(p_script_path, extension, p_scene_path, p_node_path);
+	const Error error = job->start(p_script_path, extension, p_scene_path, p_node_path, p_allow_partial);
 	_start_job();
 	if (error != OK) {
 		_poll();
@@ -565,7 +633,7 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 				return;
 			}
 			print_line(vformat("Grit autotest [1] converting the child from %s", child_script->get_path()));
-			_start_add(child_script->get_path(), "res://gdext/auto", autotest_scene, "Child");
+			_start_add(child_script->get_path(), "res://gdext/auto", autotest_scene, "Child", false);
 			autotest_step = 1;
 		} break;
 		case 1: {
@@ -582,7 +650,7 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 				return;
 			}
 			print_line(vformat("Grit autotest [3] converting the root from %s into the same extension", root_script->get_path()));
-			_start_add(root_script->get_path(), "res://gdext/auto", autotest_scene, ".");
+			_start_add(root_script->get_path(), "res://gdext/auto", autotest_scene, ".", false);
 			autotest_step = 2;
 		} break;
 		case 2: {

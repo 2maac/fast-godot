@@ -1,6 +1,7 @@
 #include "grit_gdx_apply.h"
 
 #include "grit_gdx_builder.h"
+#include "grit_gdx_emitter.h"
 #include "grit_gdx_generator.h"
 #include "grit_gdx_manifest.h"
 #include "grit_gdx_platform.h"
@@ -400,7 +401,42 @@ Error GritGdxApply::remove_directory(const String &p_path) {
 // add flow
 // ---------------------------------------------------------------------------
 
-Error GritGdxApply::prepare(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, GritGdxClass &r_class, Result &r_result, String &r_report) {
+String GritGdxApply::Plan::summary() const {
+	const int total = converted_functions + skipped_functions();
+	if (skipped.is_empty()) {
+		return vformat("converts all %d method(s)", total);
+	}
+	return vformat("converts %d of %d methods", converted_functions, total);
+}
+
+String GritGdxApply::Plan::skipped_text() const {
+	StringBuilder text;
+	for (const GritGdxSkipped &entry : skipped) {
+		text.append(vformat("  %s: %s\n", entry.name, entry.reason));
+	}
+	return text.as_string();
+}
+
+Error GritGdxApply::plan(const String &p_script_path, Plan &r_plan, String &r_error) {
+	const String script_path = p_script_path.begins_with("res://") ? p_script_path : ProjectSettings::get_singleton()->localize_path(p_script_path);
+	GritGdxClass klass;
+	// No extension directory: class-name collisions inside the target extension
+	// are a naming detail, not a reason for a method to stay behind.
+	const Error error = GritGdxGenerator::collect(script_path, String(), klass, r_error);
+	if (error != OK) {
+		return error;
+	}
+	const LocalVector<GritGdxSkipped> emitter_skipped = GritGdxEmitter::skipped_functions(klass);
+	r_plan = Plan();
+	r_plan.script_path = script_path;
+	r_plan.class_name = klass.class_name;
+	r_plan.base_type = String(klass.base_type);
+	r_plan.converted_functions = int(klass.functions.size()) - int(emitter_skipped.size());
+	r_plan.skipped = GritGdxGenerator::collect_skipped(klass);
+	return OK;
+}
+
+Error GritGdxApply::prepare(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial, GritGdxClass &r_class, Result &r_result, String &r_report) {
 	Error error = OK;
 	const String script_path = p_script_path.begins_with("res://") ? p_script_path : ProjectSettings::get_singleton()->localize_path(p_script_path);
 	Ref<GDScript> script = GDScriptCache::get_full_script(script_path, error);
@@ -440,13 +476,30 @@ Error GritGdxApply::prepare(const String &p_script_path, const String &p_extensi
 	r_result.class_name = r_class.class_name;
 
 	if (r_result.skipped_functions > 0) {
-		StringBuilder refusal;
-		refusal.append(r_report);
-		refusal.append(vformat("\n  %d function(s) cannot be converted, so nothing was built and the project was not changed:\n", r_result.skipped_functions));
-		refusal.append(r_result.skipped_report);
-		refusal.append("  rewrite or remove those functions, then try again\n");
-		r_report = refusal.as_string();
-		return ERR_INVALID_DATA;
+		// A class with no convertible method has nothing to offer; a partial
+		// class is allowed when the caller asked for it (the report still names
+		// what stays behind, and Convert Back restores the script).
+		const int converted = int(r_class.functions.size()) - int(GritGdxEmitter::skipped_functions(r_class).size());
+		StringBuilder text;
+		text.append(r_report);
+		if (converted <= 0) {
+			text.append(vformat("\n  none of the %d function(s) can be converted, so nothing was built and the project was not changed:\n", r_result.skipped_functions));
+			text.append(r_result.skipped_report);
+			text.append("  rewrite or remove those functions, then try again\n");
+			r_report = text.as_string();
+			return ERR_INVALID_DATA;
+		}
+		if (!p_allow_partial) {
+			text.append(vformat("\n  %d function(s) cannot be converted, so nothing was built and the project was not changed:\n", r_result.skipped_functions));
+			text.append(r_result.skipped_report);
+			text.append("  rewrite or remove those functions, then try again\n");
+			r_report = text.as_string();
+			return ERR_INVALID_DATA;
+		}
+		text.append(vformat("\n  converting %d of %d methods; these stay behind as stubs that log an error when called:\n", converted, converted + r_result.skipped_functions));
+		text.append(r_result.skipped_report);
+		text.append("  Convert Back restores the script at any time\n");
+		r_report = text.as_string();
 	}
 	return OK;
 }
@@ -540,9 +593,9 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	return OK;
 }
 
-Error GritGdxApply::run(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, Result &r_result, String &r_report) {
+Error GritGdxApply::run(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, bool p_allow_partial, Result &r_result, String &r_report) {
 	GritGdxClass klass;
-	Error error = prepare(p_script_path, p_extension_directory, p_scene_path, p_node_path, klass, r_result, r_report);
+	Error error = prepare(p_script_path, p_extension_directory, p_scene_path, p_node_path, p_allow_partial, klass, r_result, r_report);
 	if (error != OK) {
 		return error;
 	}

@@ -1676,6 +1676,9 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	if (needs_process && !has_ready) {
 		out.append("\tvoid _ready() override;\n");
 	}
+	for (const GritGdxSkipped &entry : stub_methods(p_class)) {
+		out.append("\tvoid _grit_unconverted_" + sanitize(String(entry.name)) + "(const Variant **p_args, GDExtensionInt p_argcount, GDExtensionCallError &r_error);\n");
+	}
 
 	if (has_coroutines) {
 		// Each awaiting method gets a heap state object: every local and loop
@@ -1771,6 +1774,10 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		}
 	}
 
+	// Methods the backend cannot translate exist as vararg stubs so a call fails
+	// loudly instead of silently doing nothing.
+	const LocalVector<GritGdxSkipped> stubs = stub_methods(p_class);
+
 	// A node can be freed with awaits pending; those states hold Variants, so
 	// they are released with the class instance.
 	if (has_coroutines) {
@@ -1811,6 +1818,14 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		out.append("}\n\n");
 	}
 
+	for (const GritGdxSkipped &entry : stubs) {
+		const String stub = "_grit_unconverted_" + sanitize(String(entry.name));
+		out.append("void " + p_class.class_name + "::" + stub + "(const Variant **p_args, GDExtensionInt p_argcount, GDExtensionCallError &r_error) {\n");
+		out.append("\tr_error.error = GDEXTENSION_CALL_OK;\n");
+		out.append("\tUtilityFunctions::push_error(String(" + escaped_string("Grit: \"" + String(entry.name) + "\" was not converted (" + String(entry.reason) + ").") + "));\n");
+		out.append("}\n\n");
+	}
+
 	out.append("void " + p_class.class_name + "::_bind_methods() {\n");
 	for (const GritGdxProperty &property : p_class.properties) {
 		out.append("\tClassDB::bind_method(D_METHOD(\"" + property.getter + "\"), &" + p_class.class_name + "::" + property.getter + ");\n");
@@ -1848,6 +1863,14 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		}
 		out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + ");\n");
 	}
+	for (const GritGdxSkipped &entry : stubs) {
+		const String stub = "_grit_unconverted_" + sanitize(String(entry.name));
+		out.append("\t{\n");
+		out.append("\t\tMethodInfo stub_info;\n");
+		out.append("\t\tstub_info.name = " + escaped_string(String(entry.name)) + ";\n");
+		out.append("\t\tClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, " + escaped_string(String(entry.name)) + ", &" + p_class.class_name + "::" + stub + ", stub_info);\n");
+		out.append("\t}\n");
+	}
 	for (const GritFunction &p_function : p_class.functions) {
 		if (p_function.await_count == 0 || !emitter.is_supported(String(p_function.name))) {
 			continue;
@@ -1870,6 +1893,23 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 	}
 	out.append("}\n");
 	return out.as_string();
+}
+
+LocalVector<GritGdxSkipped> GritGdxEmitter::stub_methods(const GritGdxClass &p_class) {
+	LocalVector<GritGdxSkipped> stubs;
+	for (const GritGdxSkipped &entry : skipped_functions(p_class)) {
+		if (!is_virtual_name(String(entry.name))) {
+			stubs.push_back(entry);
+		}
+	}
+	// Virtuals are never stubbed: binding a name like _ready would shadow the
+	// engine's own virtual call.
+	for (const GritGdxSkipped &entry : p_class.skipped) {
+		if (!String(entry.name).begins_with("@") && !is_virtual_name(String(entry.name))) {
+			stubs.push_back(entry);
+		}
+	}
+	return stubs;
 }
 
 LocalVector<GritGdxSkipped> GritGdxEmitter::skipped_functions(const GritGdxClass &p_class) {
