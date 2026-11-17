@@ -41,12 +41,28 @@ func _ready() -> void:
 	scores = [7, 8]
 	print("scores is Array[int]: ", scores is Array[int], " size: ", scores.size())
 	print("param size: ", _count_ints([1, 2, 3]))
+	print("optional params start")
+	print("defaults: ", _repeat("ab"))
+	print("one arg: ", _repeat("ab", 3))
+	print("two args: ", _repeat("ab", 1, "?"))
+	print("float default: ", _scale(2.0))
+	print("float given: ", _scale(2.0, 0.5))
+	print("script-caller default: ", get_node("Helper").call_repeat(self))
 	print("colour: ", Color.from_hsv(0.5, 1.0, 1.0))
 	print("direction: ", Vector2.from_angle(1.5707964))
 	var parent = super.get_parent()
 	print("super parent set: ", (parent is Window) or (parent is Node))
 	print("TYPES DONE")
 	get_tree().quit()
+
+func _repeat(p_text: String, p_times: int = 2, p_mark: String = "!") -> String:
+	var result = ""
+	for i in p_times:
+		result += p_text + p_mark
+	return result
+
+func _scale(p_value: float, p_factor: float = 3.0) -> float:
+	return p_value * p_factor
 
 func _count_ints(p_values: Array[int]) -> int:
 	return p_values.size()

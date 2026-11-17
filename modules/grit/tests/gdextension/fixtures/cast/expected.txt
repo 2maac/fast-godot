@@ -21,6 +21,13 @@ table is Dictionary[String,int]: true
 empty is Array[int]: true size: 0
 scores is Array[int]: true size: 2
 param size: 3
+optional params start
+defaults: ab!ab!
+one arg: ab!ab!ab!
+two args: ab?
+float default: 6.0
+float given: 1.0
+script-caller default: xy!xy!
 colour: (0.0, 1.0, 1.0, 1.0)
 direction: (-0.0, 1.0)
 super parent set: true

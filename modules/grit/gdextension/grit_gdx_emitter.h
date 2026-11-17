@@ -55,6 +55,8 @@ private:
 	String state_map_name;
 	LocalVector<StateField> state_fields;
 	HashMap<StringName, LocalVector<StateField>> await_state_fields;
+	HashMap<StringName, LocalVector<String>> binding_defaults_by_function;
+	HashMap<StringName, String> declaration_parameters_by_function;
 
 	// Trial-emits every function once so header, bindings and call sites agree
 	// on which methods actually exist in the generated class.
@@ -108,6 +110,7 @@ private:
 	bool write_cast(const GritStatement &p_statement);
 	bool container_type_test(const GritType &p_type, const String &p_value, String &r_expression);
 	GritType declared_type_of(const GritOperand &p_operand) const;
+	bool optional_parameter_default(const GritFunction &p_function, int p_parameter_variable, String &r_expression);
 	bool container_element_arguments(const GritType &p_element, String &r_builtin, String &r_native);
 	String typed_container_expression(const GritType &p_type, const String &p_value);
 	bool write_operator(const GritStatement &p_statement);

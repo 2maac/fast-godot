@@ -192,6 +192,8 @@ bool GritGdxEmitter::is_supported(const String &p_name) const {
 void GritGdxEmitter::prepare() {
 	supported_methods.clear();
 	await_state_fields.clear();
+	binding_defaults_by_function.clear();
+	declaration_parameters_by_function.clear();
 	for (const GritFunction &function_entry : klass.functions) {
 		StringBuilder probe;
 		const bool is_virtual = is_virtual_name(String(function_entry.name));
@@ -1359,6 +1361,32 @@ void GritGdxEmitter::write_abort_return() {
 	}
 }
 
+// A GDScript default parameter value is a constant; the front end records it as
+// an assignment inside the DEFAULT_ARGUMENT block of that parameter.
+bool GritGdxEmitter::optional_parameter_default(const GritFunction &p_function, int p_parameter_variable, String &r_expression) {
+	for (const GritStatement &statement : p_function.blocks[0].statements) {
+		if (statement.opcode != GritOpcode::DEFAULT_ARGUMENT || statement.index != p_parameter_variable) {
+			continue;
+		}
+		if (statement.blocks[0] >= 0 && statement.blocks[0] < int(p_function.blocks.size())) {
+			for (const GritStatement &inner : p_function.blocks[statement.blocks[0]].statements) {
+				if ((inner.opcode == GritOpcode::ASSIGN || inner.opcode == GritOpcode::ASSIGN_TYPED) && inner.target.kind == GritOperand::Kind::VARIABLE && inner.target.index == p_parameter_variable && !inner.operands.is_empty()) {
+					if (inner.operands[0].kind != GritOperand::Kind::CONSTANT) {
+						reject("optional parameter default is not a constant");
+						return false;
+					}
+					r_expression = constant_expression(inner.operands[0].index);
+					return true;
+				}
+			}
+		}
+		reject("optional parameter without a recorded default");
+		return false;
+	}
+	reject("optional parameter without a recorded default");
+	return false;
+}
+
 // The declared type of an operand, including container element types, which the
 // storage-only view drops.
 GritType GritGdxEmitter::declared_type_of(const GritOperand &p_operand) const {
@@ -1552,8 +1580,8 @@ bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 		case GritOpcode::SET_STATIC:
 		case GritOpcode::GET_GLOBAL:
 		case GritOpcode::DEFAULT_ARGUMENT:
-			reject("static or global access");
-			return false;
+			// Optional parameter defaults become C++ default arguments.
+			return true;
 		case GritOpcode::ASSERT:
 			return write_assert(p_statement);
 		case GritOpcode::IF_NOT_SHARED:
@@ -1650,8 +1678,8 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 		reject("static functions are not supported");
 		return false;
 	}
-	if (String(p_function.signature).contains(" optional ")) {
-		reject("optional parameters are not supported");
+	if (p_is_virtual && p_function.optional_parameter_count > 0) {
+		reject("a virtual method cannot have optional parameters");
 		return false;
 	}
 	if (p_function.rest_variable >= 0) {
@@ -1672,8 +1700,10 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 
 	String signature_parameters;
+	String declaration_parameters;
 	LocalVector<String> aliases;
 	LocalVector<String> parameter_copies;
+	LocalVector<String> binding_defaults;
 	if (virtual_info) {
 		for (int i = 0; i < virtual_info->param_count; i++) {
 			if (i > 0) {
@@ -1690,12 +1720,25 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			}
 		}
 	} else {
+		const int required = p_function.parameter_count - p_function.optional_parameter_count;
 		for (uint32_t i = 0; i < parameter_variables.size(); i++) {
 			if (i > 0) {
 				signature_parameters += ", ";
 			}
 			const GritVariable &variable = p_function.variables[parameter_variables[i]];
 			const String parameter_name = "p_" + sanitize(variable.name);
+			if (i > 0) {
+				declaration_parameters += ", ";
+			}
+			declaration_parameters += function_parameter_cpp(variable, parameter_name);
+			if (int(i) >= required) {
+				String default_expression;
+				if (!optional_parameter_default(p_function, parameter_variables[i], default_expression)) {
+					return false;
+				}
+				declaration_parameters += " = " + convert(default_expression, Variant::NIL, variable.storage);
+				binding_defaults.push_back("Variant(" + default_expression + ")");
+			}
 			signature_parameters += function_parameter_cpp(variable, parameter_name);
 			const String reference = variable_name(parameter_variables[i]);
 			const String typed = typed_container_expression(function->types[variable.type], "Variant(" + parameter_name + ")");
@@ -1763,6 +1806,8 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 		}
 		r_output.append("}\n\n");
 		await_state_fields.insert(p_function.name, state_fields);
+		binding_defaults_by_function.insert(p_function.name, binding_defaults);
+		declaration_parameters_by_function.insert(p_function.name, declaration_parameters);
 		function = nullptr;
 		return true;
 	}
@@ -1858,6 +1903,8 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	r_output.append("}\n\n");
 
 	await_state_fields.insert(p_function.name, state_fields);
+	binding_defaults_by_function.insert(p_function.name, binding_defaults);
+	declaration_parameters_by_function.insert(p_function.name, declaration_parameters);
 	function = nullptr;
 	return true;
 }
@@ -1944,16 +1991,20 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 			continue;
 		}
 		String parameters;
-		int count = 0;
-		for (const GritVariable &variable : p_function.variables) {
-			if (variable.role != GritVariable::Role::PARAMETER) {
-				continue;
+		if (const String *declaration = emitter.declaration_parameters_by_function.getptr(p_function.name)) {
+			parameters = *declaration;
+		} else {
+			int count = 0;
+			for (const GritVariable &variable : p_function.variables) {
+				if (variable.role != GritVariable::Role::PARAMETER) {
+					continue;
+				}
+				if (count > 0) {
+					parameters += ", ";
+				}
+				parameters += function_parameter_cpp(variable, "p_" + sanitize(variable.name));
+				count++;
 			}
-			if (count > 0) {
-				parameters += ", ";
-			}
-			parameters += function_parameter_cpp(variable, "p_" + sanitize(variable.name));
-			count++;
 		}
 		out.append("\t" + entry_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
 	}
@@ -2158,7 +2209,13 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 			names += escaped_string(sanitize(variable.name));
 			count++;
 		}
-		out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + ");\n");
+		String defaults;
+		if (const LocalVector<String> *values = emitter.binding_defaults_by_function.getptr(p_function.name)) {
+			for (const String &value : *values) {
+				defaults += ", " + value;
+			}
+		}
+		out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
 	}
 	for (const GritGdxSkipped &entry : stubs) {
 		const String stub = "_grit_unconverted_" + sanitize(String(entry.name));
