@@ -13,7 +13,9 @@
 #
 # The staging directory contains everything the editor needs to run:
 #   Fast_Godot.app             a real app bundle (misc/dist/macos_tools.app plus
-#                              the built binary at Contents/MacOS/Godot)
+#                              the built binary at Contents/MacOS/Godot, and the
+#                              dSYM at Contents/MacOS/Godot.dSYM when the build
+#                              extracted one — see separate_debug_symbols)
 #   home/                      created by run.sh: a private HOME for tests, so the
 #                              staged editor never shares config or shader cache
 #   run.sh                     test launcher: same binary, HOME pinned to home/
@@ -42,6 +44,15 @@ cp -R "$ENGINE/misc/dist/macos_tools.app" "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cp "$BIN" "$APP/Contents/MacOS/Godot"
 chmod +x "$APP/Contents/MacOS/Godot"
+# A build with separate_debug_symbols strips the binary, so without the dSYM lldb
+# cannot even name a function. It has to be inside the bundle (beside the binary)
+# and in place before codesign seals it.
+if [ -d "$BIN.dSYM" ]; then
+	cp -R "$BIN.dSYM" "$APP/Contents/MacOS/Godot.dSYM"
+	echo "Grit: staged debug symbols ($(du -sh "$APP/Contents/MacOS/Godot.dSYM" | cut -f1)) at $APP/Contents/MacOS/Godot.dSYM"
+else
+	echo "Grit: no dSYM beside $BIN; the staged editor carries no debug symbols (build with separate_debug_symbols=yes)" >&2
+fi
 # Ad-hoc sign: an unsigned bundle still runs locally, but LaunchServices is
 # happier with a signature and it costs a second.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || echo "Grit: ad-hoc codesign failed (the bundle will still run locally)" >&2
