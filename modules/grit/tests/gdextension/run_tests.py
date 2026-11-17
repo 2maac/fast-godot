@@ -99,6 +99,33 @@ def find_library(work):
     return ""
 
 
+def project_file(project_dir, res_path):
+    return os.path.join(project_dir, res_path[len("res://") :])
+
+
+def check_archive(project_dir, fixture, failures):
+    """The converted node keeps its script attached, pointing at the .gde archive."""
+    script = fixture.get("script", "")
+    scene = fixture.get("scene", "")
+    if not script.startswith("res://") or not scene.startswith("res://"):
+        return
+    stem = script.rsplit(".", 1)[0]
+    archive = project_file(project_dir, stem + ".gde")
+    if not os.path.isfile(archive):
+        failures.append("converted script was not archived next to the source: %s" % archive)
+        return
+    try:
+        with open(project_file(project_dir, scene), "r", encoding="utf-8") as handle:
+            scene_text = handle.read()
+    except OSError as error:
+        failures.append("could not read the converted scene: %s" % error)
+        return
+    if 'path="%s.gde"' % stem not in scene_text:
+        failures.append("the converted node does not reference the .gde archive")
+    if "script = ExtResource(" not in scene_text:
+        failures.append("the converted node lost its script assignment")
+
+
 def run_fixture(name, args, env_with_paths, session):
     """Converts and runs one fixture inside the shared session directory."""
     directory = os.path.join(FIXTURES, name)
@@ -137,6 +164,9 @@ def run_fixture(name, args, env_with_paths, session):
     if not failures and not library:
         failures.append("no extension library was built; the run would use the GDScript VM")
 
+    if not failures:
+        check_archive(work, fixture, failures)
+
     game_output = ""
     if not failures:
         command = [args.editor, "--headless", "--path", work] + fixture.get("run_args", [])
@@ -145,6 +175,18 @@ def run_fixture(name, args, env_with_paths, session):
         matched, missing = contains_in_order(lines, expected)
         if not matched:
             failures.append("expected line never appeared: %r" % missing)
+        # The archived source must not run next to the generated class: each
+        # expected line appears as often in the output as in expected.txt. Count
+        # whole lines, since several expected lines are substrings of others
+        # ("types start" inside "script types start").
+        for wanted in expected:
+            wanted_count = sum(1 for line in expected if line == wanted)
+            seen = sum(1 for line in lines if line.strip() == wanted)
+            if seen > wanted_count:
+                failures.append(
+                    "expected line appeared %d times, want %d (the archive may have run): %r"
+                    % (seen, wanted_count, wanted)
+                )
         for line in forbidden:
             if any(line in output_line for output_line in lines):
                 failures.append("forbidden line appeared: %r" % line)

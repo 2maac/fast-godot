@@ -1,9 +1,13 @@
 #include "register_types.h"
 
+#include "grit_gdx_script.h"
 #include "runtime/grit_registry.h"
 #include "runtime/grit_runtime.h"
 #include "runtime/grit_runtime_code_generator.h"
 
+#include "core/io/resource_loader.h"
+#include "core/io/resource_saver.h"
+#include "core/object/class_db.h"
 #include "modules/gdscript/gdscript_compiler.h"
 
 #ifdef TOOLS_ENABLED
@@ -90,7 +94,26 @@ static void grit_editor_init() {
 }
 #endif
 
+static Ref<GritGdxScriptLoader> grit_gdx_script_loader;
+static Ref<GritGdxScriptSaver> grit_gdx_script_saver;
+
 void initialize_grit_module(ModuleInitializationLevel p_level) {
+	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		// Converted nodes keep their archived source attached as a `.gde` script.
+		// It never instantiates, so it must exist in exported games too: the scene
+		// references it and the loader is what makes that reference resolvable.
+		GDREGISTER_CLASS(GritGdxScript);
+		grit_gdx_script_loader.instantiate();
+		ResourceLoader::add_resource_format_loader(grit_gdx_script_loader);
+		return;
+	}
+#ifdef TOOLS_ENABLED
+	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		grit_gdx_script_saver.instantiate();
+		ResourceSaver::add_resource_format_saver(grit_gdx_script_saver);
+		return;
+	}
+#endif
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		return;
 	}
@@ -115,6 +138,22 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 }
 
 void uninitialize_grit_module(ModuleInitializationLevel p_level) {
+	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
+		if (grit_gdx_script_loader.is_valid()) {
+			ResourceLoader::remove_resource_format_loader(grit_gdx_script_loader);
+			grit_gdx_script_loader.unref();
+		}
+		return;
+	}
+#ifdef TOOLS_ENABLED
+	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
+		if (grit_gdx_script_saver.is_valid()) {
+			ResourceSaver::remove_resource_format_saver(grit_gdx_script_saver);
+			grit_gdx_script_saver.unref();
+		}
+		return;
+	}
+#endif
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		return;
 	}
