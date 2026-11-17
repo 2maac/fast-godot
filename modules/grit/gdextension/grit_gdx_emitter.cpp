@@ -911,7 +911,8 @@ bool GritGdxEmitter::write_return(const GritStatement &p_statement) {
 		return true;
 	}
 	if (return_type.kind == GritType::Kind::BUILTIN) {
-		line("return " + read_as(p_statement.operands[0], return_type.builtin_type) + ";");
+		const String typed = typed_container_expression(return_type, read_any(p_statement.operands[0]));
+		line("return " + (typed.is_empty() ? read_as(p_statement.operands[0], return_type.builtin_type) : typed) + ";");
 		return true;
 	}
 	line("return " + read_any(p_statement.operands[0]) + ";");
@@ -1358,6 +1359,65 @@ void GritGdxEmitter::write_abort_return() {
 	}
 }
 
+// The declared type of an operand, including container element types, which the
+// storage-only view drops.
+GritType GritGdxEmitter::declared_type_of(const GritOperand &p_operand) const {
+	switch (p_operand.kind) {
+		case GritOperand::Kind::VARIABLE:
+			if (p_operand.index >= 0 && p_operand.index < int(function->variables.size())) {
+				return function->types[function->variables[p_operand.index].type];
+			}
+			break;
+		case GritOperand::Kind::MEMBER: {
+			const GritGdxProperty *property = property_of(p_operand.index);
+			if (property) {
+				return GritType::from(property->type);
+			}
+		} break;
+		default:
+			break;
+	}
+	return GritType();
+}
+
+bool GritGdxEmitter::container_element_arguments(const GritType &p_element, String &r_builtin, String &r_native) {
+	if (p_element.kind == GritType::Kind::SCRIPT) {
+		reject("script-typed container elements");
+		return false;
+	}
+	const Variant::Type builtin = p_element.kind == GritType::Kind::NATIVE ? Variant::OBJECT : p_element.builtin_type;
+	r_builtin = "Variant::" + variant_enum(builtin);
+	r_native = "StringName(" + escaped_string(p_element.kind == GritType::Kind::NATIVE ? String(p_element.native_type) : String()) + ")";
+	return true;
+}
+
+// `grit_gdx::typed_array(<value>, …)` when the declared type is a typed
+// container, empty otherwise (the caller keeps its plain assignment).
+String GritGdxEmitter::typed_container_expression(const GritType &p_type, const String &p_value) {
+	if (p_type.kind != GritType::Kind::BUILTIN || !p_type.has_elements()) {
+		return String();
+	}
+	if (p_type.builtin_type == Variant::ARRAY) {
+		String builtin;
+		String native;
+		if (!container_element_arguments(p_type.elements[0], builtin, native)) {
+			return String();
+		}
+		return "grit_gdx::typed_array(" + p_value + ", " + builtin + ", " + native + ")";
+	}
+	if (p_type.builtin_type == Variant::DICTIONARY) {
+		String key_builtin;
+		String key_native;
+		String value_builtin;
+		String value_native;
+		if (!container_element_arguments(p_type.elements[0], key_builtin, key_native) || !container_element_arguments(p_type.elements[1], value_builtin, value_native)) {
+			return String();
+		}
+		return "grit_gdx::typed_dictionary(" + p_value + ", " + key_builtin + ", " + key_native + ", " + value_builtin + ", " + value_native + ")";
+	}
+	return String();
+}
+
 // `is`: a builtin type compares the Variant type, a native type asks the object
 // for its class chain. Script types are still refused: the IR only carries the
 // class-path string, so the check could not tell two inner classes apart.
@@ -1390,20 +1450,10 @@ bool GritGdxEmitter::write_type_test(const GritStatement &p_statement) {
 }
 
 bool GritGdxEmitter::container_type_test(const GritType &p_type, const String &p_value, String &r_expression) {
-	const auto element_argument = [&](const GritType &p_element, String &r_builtin, String &r_native) {
-		if (p_element.kind == GritType::Kind::SCRIPT) {
-			reject("'is' with a script-typed container element");
-			return false;
-		}
-		const Variant::Type builtin = p_element.kind == GritType::Kind::NATIVE ? Variant::OBJECT : p_element.builtin_type;
-		r_builtin = "Variant::" + variant_enum(builtin);
-		r_native = "StringName(" + escaped_string(p_element.kind == GritType::Kind::NATIVE ? String(p_element.native_type) : String()) + ")";
-		return true;
-	};
 	if (p_type.builtin_type == Variant::ARRAY) {
 		String builtin;
 		String native;
-		if (!element_argument(p_type.elements[0], builtin, native)) {
+		if (!container_element_arguments(p_type.elements[0], builtin, native)) {
 			return false;
 		}
 		r_expression = "grit_gdx::is_typed_array(" + p_value + ", " + builtin + ", " + native + ")";
@@ -1413,7 +1463,7 @@ bool GritGdxEmitter::container_type_test(const GritType &p_type, const String &p
 	String key_native;
 	String value_builtin;
 	String value_native;
-	if (!element_argument(p_type.elements[0], key_builtin, key_native) || !element_argument(p_type.elements[1], value_builtin, value_native)) {
+	if (!container_element_arguments(p_type.elements[0], key_builtin, key_native) || !container_element_arguments(p_type.elements[1], value_builtin, value_native)) {
 		return false;
 	}
 	r_expression = "grit_gdx::is_typed_dictionary(" + p_value + ", " + key_builtin + ", " + key_native + ", " + value_builtin + ", " + value_native + ")";
@@ -1450,16 +1500,23 @@ bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 		case GritOpcode::ASSIGN:
 		case GritOpcode::ASSIGN_TYPED: {
 			const Variant::Type storage = storage_of(p_statement.target);
-			if (storage == Variant::OBJECT) {
+			// A typed container target is (re)built as one, so elements are
+			// converted and the value keeps its element type.
+			const String typed = typed_container_expression(declared_type_of(p_statement.target), read_any(p_statement.operands[0]));
+			if (!typed.is_empty()) {
+				line(lvalue(p_statement.target) + " = " + typed + ";");
+			} else if (storage == Variant::OBJECT) {
 				line(lvalue(p_statement.target) + " = " + convert(read_any(p_statement.operands[0]), Variant::NIL, Variant::OBJECT) + ";");
 			} else {
 				line(lvalue(p_statement.target) + " = " + read_as(p_statement.operands[0], storage) + ";");
 			}
 			return true;
 		}
-		case GritOpcode::CLEAR:
-			line(lvalue(p_statement.target) + " = " + default_storage_value(storage_of(p_statement.target)) + ";");
+		case GritOpcode::CLEAR: {
+			const String typed = typed_container_expression(declared_type_of(p_statement.target), "Variant()");
+			line(lvalue(p_statement.target) + " = " + (typed.is_empty() ? default_storage_value(storage_of(p_statement.target)) : typed) + ";");
 			return true;
+		}
 		case GritOpcode::TEST:
 		case GritOpcode::UNARY:
 		case GritOpcode::BINARY:
@@ -1625,10 +1682,11 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			signature_parameters += String(virtual_info->params[i].type) + " " + String(virtual_info->params[i].name);
 			const GritVariable &variable = p_function.variables[parameter_variables[i]];
 			const String reference = variable_name(parameter_variables[i]);
+			const String typed = typed_container_expression(function->types[variable.type], "Variant(" + String(virtual_info->params[i].name) + ")");
 			if (coroutine) {
-				parameter_copies.push_back("grit_state->" + variable_base_name(parameter_variables[i]) + " = " + String(virtual_info->params[i].name) + ";");
+				parameter_copies.push_back("grit_state->" + variable_base_name(parameter_variables[i]) + " = " + (typed.is_empty() ? String(virtual_info->params[i].name) : typed) + ";");
 			} else {
-				aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + String(virtual_info->params[i].name) + ";");
+				aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + (typed.is_empty() ? String(virtual_info->params[i].name) : typed) + ";");
 			}
 		}
 	} else {
@@ -1640,10 +1698,11 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			const String parameter_name = "p_" + sanitize(variable.name);
 			signature_parameters += function_parameter_cpp(variable, parameter_name);
 			const String reference = variable_name(parameter_variables[i]);
+			const String typed = typed_container_expression(function->types[variable.type], "Variant(" + parameter_name + ")");
 			if (coroutine) {
-				parameter_copies.push_back("grit_state->" + variable_base_name(parameter_variables[i]) + " = " + parameter_name + ";");
+				parameter_copies.push_back("grit_state->" + variable_base_name(parameter_variables[i]) + " = " + (typed.is_empty() ? parameter_name : typed) + ";");
 			} else {
-				aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + parameter_name + ";");
+				aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + (typed.is_empty() ? parameter_name : typed) + ";");
 			}
 		}
 	}
@@ -1690,7 +1749,8 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			if (variable.role == GritVariable::Role::PARAMETER) {
 				continue;
 			}
-			r_output.append("\t" + cpp_storage(variable.storage) + " " + variable_name(i) + " = " + default_storage_value(variable.storage) + ";\n");
+			const String typed = typed_container_expression(p_function.types[variable.type], "Variant()");
+			r_output.append("\t" + cpp_storage(variable.storage) + " " + variable_name(i) + " = " + (typed.is_empty() ? default_storage_value(variable.storage) : typed) + ";\n");
 		}
 		r_output.append(body.as_string());
 		if (return_cpp == "Variant") {
@@ -1855,6 +1915,10 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 		if (initializer.is_empty()) {
 			initializer = default_storage_value(property.storage);
 		}
+		const String typed = emitter.typed_container_expression(GritType::from(property.type), "Variant(" + initializer + ")");
+		if (!typed.is_empty()) {
+			initializer = typed;
+		}
 		out.append("\t" + cpp_storage(property.storage) + " " + property.field + " = " + initializer + ";\n");
 	}
 
@@ -1987,7 +2051,8 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		out.append("\treturn " + property.field + ";\n");
 		out.append("}\n\n");
 		out.append("void " + p_class.class_name + "::" + property.setter + "(" + (property.storage == Variant::NIL ? String("const Variant &p_value") : type + " p_value") + ") {\n");
-		out.append("\t" + property.field + " = p_value;\n");
+		const String converted = emitter.typed_container_expression(GritType::from(property.type), "Variant(p_value)");
+		out.append("\t" + property.field + " = " + (converted.is_empty() ? String("p_value") : converted) + ";\n");
 		out.append("}\n\n");
 	}
 
@@ -2232,6 +2297,49 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("\t\treturn false;\n");
 	helpers.append("\t}\n");
 	helpers.append("\treturn object->is_class(p_class);\n");
+	helpers.append("}\n\n");
+	// Building a typed container: set_typed only works on a fresh, empty one, so
+	// the elements are copied in afterwards (which validates them).
+	helpers.append("inline Array typed_array(const Variant &p_value, int64_t p_builtin_type, const StringName &p_native_type) {\n");
+	helpers.append("\tif (p_value.get_type() == Variant::ARRAY) {\n");
+	helpers.append("\t\tArray source = p_value;\n");
+	helpers.append("\t\tif (source.is_typed() && source.get_typed_builtin() == p_builtin_type && source.get_typed_class_name() == p_native_type && source.get_typed_script().operator Object *() == nullptr) {\n");
+	helpers.append("\t\t\treturn source;\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t}\n");
+	helpers.append("\tArray result;\n");
+	helpers.append("\tresult.set_typed(p_builtin_type, p_native_type, Variant());\n");
+	helpers.append("\tif (p_value.get_type() == Variant::ARRAY) {\n");
+	helpers.append("\t\tArray source = p_value;\n");
+	helpers.append("\t\tfor (int64_t i = 0; i < source.size(); i++) {\n");
+	helpers.append("\t\t\tresult.push_back(source[i]);\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t} else if (p_value.get_type() != Variant::NIL) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: cannot convert a non-array value to a typed array.\");\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn result;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Dictionary typed_dictionary(const Variant &p_value, int64_t p_key_builtin, const StringName &p_key_native, int64_t p_value_builtin, const StringName &p_value_native) {\n");
+	helpers.append("\tif (p_value.get_type() == Variant::DICTIONARY) {\n");
+	helpers.append("\t\tDictionary source = p_value;\n");
+	helpers.append("\t\tif (source.is_typed() && source.get_typed_key_builtin() == p_key_builtin && source.get_typed_key_class_name() == p_key_native && source.get_typed_key_script().operator Object *() == nullptr &&\n");
+	helpers.append("\t\t\t\tsource.get_typed_value_builtin() == p_value_builtin && source.get_typed_value_class_name() == p_value_native && source.get_typed_value_script().operator Object *() == nullptr) {\n");
+	helpers.append("\t\t\treturn source;\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t}\n");
+	helpers.append("\tDictionary result;\n");
+	helpers.append("\tresult.set_typed(p_key_builtin, p_key_native, Variant(), p_value_builtin, p_value_native, Variant());\n");
+	helpers.append("\tif (p_value.get_type() == Variant::DICTIONARY) {\n");
+	helpers.append("\t\tDictionary source = p_value;\n");
+	helpers.append("\t\tArray keys = source.keys();\n");
+	helpers.append("\t\tfor (int64_t i = 0; i < keys.size(); i++) {\n");
+	helpers.append("\t\t\tVariant key = keys[i];\n");
+	helpers.append("\t\t\tresult[key] = source[key];\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t} else if (p_value.get_type() != Variant::NIL) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: cannot convert a non-dictionary value to a typed dictionary.\");\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn result;\n");
 	helpers.append("}\n\n");
 	helpers.append("inline bool is_typed_array(const Variant &p_value, int64_t p_builtin_type, const StringName &p_native_type) {\n");
 	helpers.append("\tif (p_value.get_type() != Variant::ARRAY) {\n");

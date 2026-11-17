@@ -13,6 +13,14 @@ tree as Node is null: true
 real as int: 2
 number as String: 5
 Grit: Assertion failed: boom
+typed locals start
+built is Array[int]: true
+built size: 3
+words is Array[String]: true
+table is Dictionary[String,int]: true
+empty is Array[int]: true size: 0
+scores is Array[int]: true size: 2
+param size: 3
 colour: (0.0, 1.0, 1.0, 1.0)
 direction: (-0.0, 1.0)
 super parent set: true

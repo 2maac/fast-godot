@@ -1,5 +1,7 @@
 extends Node2D
 
+var scores: Array[int] = [1]
+
 func _ready() -> void:
 	print("types start")
 	var number: Variant = 5
@@ -25,12 +27,29 @@ func _ready() -> void:
 	print("number as String: ", number as String)
 	assert(true, "fine")
 	_assert_helper()
+	print("typed locals start")
+	var built: Array[int] = [1, 2]
+	print("built is Array[int]: ", built is Array[int])
+	built.append(3)
+	print("built size: ", built.size())
+	var words: Array[String] = ["a"]
+	print("words is Array[String]: ", words is Array[String])
+	var table: Dictionary[String, int] = {"a": 1}
+	print("table is Dictionary[String,int]: ", table is Dictionary[String,int])
+	var empty: Array[int]
+	print("empty is Array[int]: ", empty is Array[int], " size: ", empty.size())
+	scores = [7, 8]
+	print("scores is Array[int]: ", scores is Array[int], " size: ", scores.size())
+	print("param size: ", _count_ints([1, 2, 3]))
 	print("colour: ", Color.from_hsv(0.5, 1.0, 1.0))
 	print("direction: ", Vector2.from_angle(1.5707964))
 	var parent = super.get_parent()
 	print("super parent set: ", (parent is Window) or (parent is Node))
 	print("TYPES DONE")
 	get_tree().quit()
+
+func _count_ints(p_values: Array[int]) -> int:
+	return p_values.size()
 
 func _assert_helper() -> void:
 	assert(false, "boom")

@@ -107,6 +107,9 @@ private:
 	bool write_type_test(const GritStatement &p_statement);
 	bool write_cast(const GritStatement &p_statement);
 	bool container_type_test(const GritType &p_type, const String &p_value, String &r_expression);
+	GritType declared_type_of(const GritOperand &p_operand) const;
+	bool container_element_arguments(const GritType &p_element, String &r_builtin, String &r_native);
+	String typed_container_expression(const GritType &p_type, const String &p_value);
 	bool write_operator(const GritStatement &p_statement);
 	bool write_access(const GritStatement &p_statement);
 	bool write_call(const GritStatement &p_statement);
