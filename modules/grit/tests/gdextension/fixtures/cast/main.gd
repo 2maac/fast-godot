@@ -56,12 +56,19 @@ func _ready() -> void:
 	print("helper is OtherScript: ", helper is OtherScript)
 	print("helper as HelperScript: ", (helper as HelperScript) == helper)
 	print("helper as OtherScript is null: ", (helper as OtherScript) == null)
+	print("static functions start")
+	print("static default: ", _combine(1))
+	print("static explicit: ", _combine(1, 5))
+	print("static from script: ", get_node("Helper").call_static(self))
 	print("colour: ", Color.from_hsv(0.5, 1.0, 1.0))
 	print("direction: ", Vector2.from_angle(1.5707964))
 	var parent = super.get_parent()
 	print("super parent set: ", (parent is Window) or (parent is Node))
 	print("TYPES DONE")
 	get_tree().quit()
+
+static func _combine(p_a: int, p_b: int = 2) -> int:
+	return p_a + p_b
 
 func _repeat(p_text: String, p_times: int = 2, p_mark: String = "!") -> String:
 	var result = ""

@@ -6,6 +6,9 @@ func typed_ints() -> Array[int]:
 func typed_strings() -> Array[String]:
 	return ["a", "b"]
 
+func call_static(p_node: Node) -> int:
+	return p_node._combine(4, 5)
+
 func call_repeat(p_node: Node) -> String:
 	return p_node._repeat("xy")
 

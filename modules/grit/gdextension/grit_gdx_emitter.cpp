@@ -194,10 +194,45 @@ void GritGdxEmitter::prepare() {
 	await_state_fields.clear();
 	binding_defaults_by_function.clear();
 	declaration_parameters_by_function.clear();
+	binding_static_by_function.clear();
+
+	// A call site asks whether the callee converts, and the callee may appear
+	// later in the recording, so support is resolved to a fixpoint: every pass
+	// may mark more methods as convertible and none is unmarked.
+	for (int pass = 0; pass < 4; pass++) {
+		bool grew = false;
+		for (const GritFunction &function_entry : klass.functions) {
+			const bool was = is_supported(String(function_entry.name));
+			StringBuilder probe;
+			const bool is_virtual = is_virtual_name(String(function_entry.name));
+			const bool now = emit_function(function_entry, is_virtual, probe);
+			if (now && !was) {
+				grew = true;
+			}
+			if (now) {
+				supported_methods.insert(function_entry.name, true);
+			} else if (!was) {
+				supported_methods.insert(function_entry.name, false);
+			}
+		}
+		if (!grew) {
+			break;
+		}
+	}
+
+	// The metadata (state fields, defaults, declarations) is recorded by a last
+	// pass over the settled support set.
+	await_state_fields.clear();
+	binding_defaults_by_function.clear();
+	declaration_parameters_by_function.clear();
+	binding_static_by_function.clear();
 	for (const GritFunction &function_entry : klass.functions) {
+		if (!is_supported(String(function_entry.name))) {
+			continue;
+		}
 		StringBuilder probe;
 		const bool is_virtual = is_virtual_name(String(function_entry.name));
-		supported_methods.insert(function_entry.name, emit_function(function_entry, is_virtual, probe));
+		emit_function(function_entry, is_virtual, probe);
 	}
 	reject_reason = String();
 }
@@ -585,10 +620,18 @@ String GritGdxEmitter::read(const GritOperand &p_operand) {
 		case GritOperand::Kind::VARIABLE:
 			return variable_name(p_operand.index);
 		case GritOperand::Kind::SELF:
+			if (static_function) {
+				reject("self in a static function");
+				return "Variant()";
+			}
 			return "this";
 		case GritOperand::Kind::CONSTANT:
 			return constant_expression(p_operand.index);
 		case GritOperand::Kind::MEMBER: {
+			if (static_function) {
+				reject("member access in a static function");
+				return "Variant()";
+			}
 			const GritGdxProperty *property = property_of(p_operand.index);
 			if (!property) {
 				reject("member access with an unknown index");
@@ -966,10 +1009,16 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 		case GritOpcode::CALL_ASYNC: {
 			const GritOperand &base = p_statement.operands[0];
 			const GritFunction *method = method_named(name);
-			const bool self_call = base.kind == GritOperand::Kind::SELF && method && is_supported(name);
+			// GDScript compiles a call to a static method of this class with a CLASS
+			// base, and to an instance method with SELF.
+			const bool callee_is_static = method && String(method->signature).begins_with("static ");
+			const bool self_call = method && is_supported(name) && (base.kind == GritOperand::Kind::SELF || (base.kind == GritOperand::Kind::CLASS && callee_is_static));
 			String expression;
 			if (self_call) {
-				expression = "this->" + sanitize(name) + "(" + call_arguments(p_statement, 1, method) + ")";
+				expression = String(callee_is_static ? klass.class_name + "::" : "this->") + sanitize(name) + "(" + call_arguments(p_statement, 1, method) + ")";
+			} else if (base.kind == GritOperand::Kind::CLASS) {
+				reject("a class-level call that is not a static method of this class");
+				return false;
 			} else {
 				String arguments;
 				for (uint32_t i = 1; i < p_statement.operands.size(); i++) {
@@ -1534,6 +1583,8 @@ bool GritGdxEmitter::write_cast(const GritStatement &p_statement) {
 }
 
 bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
+	last_opcode = int(p_statement.opcode);
+	last_statement_line = p_statement.line;
 	switch (p_statement.opcode) {
 		case GritOpcode::ASSIGN:
 		case GritOpcode::ASSIGN_TYPED: {
@@ -1684,8 +1735,13 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	state_resume_method = await_resume_method(String(p_function.name));
 	state_map_name = await_map_name(String(p_function.name));
 
-	if (String(p_function.signature).begins_with("static ")) {
-		reject("static functions are not supported");
+	static_function = String(p_function.signature).begins_with("static ");
+	if (static_function && p_function.await_count > 0) {
+		reject("a static function cannot await");
+		return false;
+	}
+	if (static_function && p_is_virtual) {
+		reject("a static function cannot override a virtual method");
 		return false;
 	}
 	if (p_is_virtual && p_function.optional_parameter_count > 0) {
@@ -1784,6 +1840,10 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 
 	if (!write_block(0) || !reject_reason.is_empty()) {
+		if (reject_reason.is_empty()) {
+			// Never report a bare "not supported": name the statement that failed.
+			reject(vformat("could not convert a statement (opcode %d, line %d)", last_opcode, last_statement_line));
+		}
 		return false;
 	}
 
@@ -1818,6 +1878,8 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 		await_state_fields.insert(p_function.name, state_fields);
 		binding_defaults_by_function.insert(p_function.name, binding_defaults);
 		declaration_parameters_by_function.insert(p_function.name, declaration_parameters);
+		binding_static_by_function.insert(p_function.name, static_function);
+		static_function = false;
 		function = nullptr;
 		return true;
 	}
@@ -2016,7 +2078,8 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 				count++;
 			}
 		}
-		out.append("\t" + entry_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
+		const bool is_static = String(p_function.signature).begins_with("static ");
+		out.append("\t" + String(is_static ? "static " : "") + entry_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
 	}
 
 	bool needs_process = false;
@@ -2225,7 +2288,12 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 				defaults += ", " + value;
 			}
 		}
-		out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
+		const bool *bind_static = emitter.binding_static_by_function.getptr(p_function.name);
+		if (bind_static && *bind_static) {
+			out.append("\tClassDB::bind_static_method(\"" + p_class.class_name + "\", D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
+		} else {
+			out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
+		}
 	}
 	for (const GritGdxSkipped &entry : stubs) {
 		const String stub = "_grit_unconverted_" + sanitize(String(entry.name));
@@ -2289,7 +2357,7 @@ LocalVector<GritGdxSkipped> GritGdxEmitter::skipped_functions(const GritGdxClass
 		emitter.emit_function(function_entry, is_virtual_name(String(function_entry.name)), probe);
 		GritGdxSkipped entry;
 		entry.name = String(function_entry.name);
-		entry.reason = emitter.reject_reason.is_empty() ? "not supported" : emitter.reject_reason;
+		entry.reason = emitter.reject_reason.is_empty() ? vformat("not supported (opcode %d, line %d)", emitter.last_opcode, emitter.last_statement_line) : emitter.reject_reason;
 		skipped.push_back(entry);
 	}
 	return skipped;

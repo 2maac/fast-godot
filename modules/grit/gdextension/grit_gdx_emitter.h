@@ -57,6 +57,11 @@ private:
 	HashMap<StringName, LocalVector<StateField>> await_state_fields;
 	HashMap<StringName, LocalVector<String>> binding_defaults_by_function;
 	HashMap<StringName, String> declaration_parameters_by_function;
+	HashMap<StringName, bool> binding_static_by_function;
+	// Static methods have no `this`; the body must not touch members or self.
+	bool static_function = false;
+	int last_opcode = -1;
+	int last_statement_line = 0;
 
 	// Trial-emits every function once so header, bindings and call sites agree
 	// on which methods actually exist in the generated class.

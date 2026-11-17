@@ -33,6 +33,10 @@ helper is HelperScript: true
 helper is OtherScript: false
 helper as HelperScript: true
 helper as OtherScript is null: true
+static functions start
+static default: 3
+static explicit: 6
+static from script: 9
 colour: (0.0, 1.0, 1.0, 1.0)
 direction: (-0.0, 1.0)
 super parent set: true
