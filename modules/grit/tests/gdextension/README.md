@@ -6,10 +6,12 @@ directory, converts with the staged editor and runs headless:
 
 | fixture | what it covers |
 |---|---|
-| `plain` | a class with no coroutines: properties, a signal, loops, a helper method |
-| `await` | `await` on signals, timers and frames; loops and nested loops across suspensions; concurrent coroutines; two waiters on one signal; script signals with one and two arguments; awaiting a GDScript coroutine; `await` on a non-signal value; a plain method in the same class |
-| `free` | a node freed while its coroutine is suspended (`--quit-after`, the state must not resume) |
-| `cast` | `is`/`as` for builtins, native classes, typed arrays and typed dictionaries; `assert`; built-in statics (`Color.from_hsv`, `Vector2.from_angle`); `super` calls |
+| `plain` | a class with plain methods: properties, a signal, loops, a helper method |
+| `cast` | `is`/`as` for builtins, native classes, typed arrays and typed dictionaries; `assert`; built-in statics (`Color.from_hsv`, `Vector2.from_angle`); `super` calls; optional parameters; static functions |
+| `lambda` | lambdas with captures, passed to `callable`-taking APIs and called directly |
+
+`await` is not converted: a GDExtension method cannot suspend and resume, so a
+script that awaits has that method reported instead (see HANDOFF §22).
 
 ## Running
 

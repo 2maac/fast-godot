@@ -1,6 +1,0 @@
-{
-	"extension": "free_test",
-	"script": "res://main.gd",
-	"scene": "res://main.tscn",
-	"run_args": ["--quit-after", "120"]
-}
