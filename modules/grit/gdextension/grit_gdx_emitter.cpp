@@ -191,6 +191,7 @@ bool GritGdxEmitter::is_supported(const String &p_name) const {
 
 void GritGdxEmitter::prepare() {
 	supported_methods.clear();
+	await_state_fields.clear();
 	for (const GritFunction &function_entry : klass.functions) {
 		StringBuilder probe;
 		const bool is_virtual = is_virtual_name(String(function_entry.name));
@@ -378,7 +379,7 @@ String GritGdxEmitter::float_literal(double p_value) {
 	return text;
 }
 
-String GritGdxEmitter::variable_name(int p_variable) const {
+String GritGdxEmitter::variable_base_name(int p_variable) const {
 	const GritVariable &variable = function->variables[p_variable];
 	String name;
 	switch (variable.role) {
@@ -398,6 +399,41 @@ String GritGdxEmitter::variable_name(int p_variable) const {
 		name += "_" + suffix;
 	}
 	return name;
+}
+
+String GritGdxEmitter::variable_name(int p_variable) const {
+	const String base = variable_base_name(p_variable);
+	return coroutine ? "p_state->" + base : base;
+}
+
+// Local names live in the coroutine state object, so every read and write goes
+// through this prefix instead of a C++ stack slot.
+String GritGdxEmitter::state_reference(const String &p_name) const {
+	return coroutine ? "p_state->" + p_name : p_name;
+}
+
+void GritGdxEmitter::add_state_field(const String &p_type, const String &p_name, const String &p_initializer) {
+	StateField field;
+	field.type = p_type;
+	field.name = p_name;
+	field.initializer = p_initializer;
+	state_fields.push_back(field);
+}
+
+String GritGdxEmitter::await_struct_name(const String &p_function) {
+	return "GritAwait_" + sanitize(p_function);
+}
+
+String GritGdxEmitter::await_step_method(const String &p_function) {
+	return "_grit_step_" + sanitize(p_function);
+}
+
+String GritGdxEmitter::await_resume_method(const String &p_function) {
+	return "_grit_resume_" + sanitize(p_function);
+}
+
+String GritGdxEmitter::await_map_name(const String &p_function) {
+	return "grit_awaits_" + sanitize(p_function);
 }
 
 const GritGdxProperty *GritGdxEmitter::property_of(int p_member) const {
@@ -514,6 +550,10 @@ String GritGdxEmitter::constant_expression(int p_constant) {
 			return float_literal(value.operator double());
 		case Variant::STRING:
 			return "String(" + escaped_string(value.operator String()) + ")";
+		case Variant::STRING_NAME:
+			return "StringName(String(" + escaped_string(value.operator String()) + "))";
+		case Variant::NODE_PATH:
+			return "NodePath(String(" + escaped_string(value.operator String()) + "))";
 		case Variant::OBJECT: {
 			// Singleton references (`Time`, `Engine`, `Input`, …) arrive as
 			// object constants; their runtime ids differ, so call the generated
@@ -530,8 +570,11 @@ String GritGdxEmitter::constant_expression(int p_constant) {
 			return "Variant()";
 		}
 		default:
-			reject(vformat("constant of type %s", Variant::get_type_name(type)));
-			return "Variant()";
+			// Everything else (vectors, colors, transforms, arrays, dictionaries
+			// and the rest) is rebuilt from its literal form, which is what the
+			// value would print as anyway. Constants are rare enough that the
+			// parse is cheaper than a case for every built-in type.
+			return "UtilityFunctions::str_to_var(String(" + escaped_string(value.stringify()) + "))";
 	}
 }
 
@@ -836,6 +879,18 @@ bool GritGdxEmitter::write_access(const GritStatement &p_statement) {
 
 bool GritGdxEmitter::write_return(const GritStatement &p_statement) {
 	const GritType &return_type = function->types[function->return_type];
+	if (coroutine) {
+		// The step method always yields a Variant; the value only reaches a
+		// resumed GDScript caller through the completion signal, which a
+		// GDExtension entry cannot produce, so it is returned to nobody.
+		line("p_state->ip = 0;");
+		if (return_type.kind == GritType::Kind::BUILTIN && return_type.builtin_type == Variant::NIL) {
+			line("return Variant();");
+		} else {
+			line("return Variant(" + read_any(p_statement.operands[0]) + ");");
+		}
+		return true;
+	}
 	if (return_type.kind == GritType::Kind::BUILTIN && return_type.builtin_type == Variant::NIL) {
 		line("return;");
 		return true;
@@ -893,11 +948,13 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 			}
 			return true;
 		}
-		case GritOpcode::CALL: {
+		case GritOpcode::CALL:
+		case GritOpcode::CALL_ASYNC: {
 			const GritOperand &base = p_statement.operands[0];
 			const GritFunction *method = method_named(name);
+			const bool self_call = base.kind == GritOperand::Kind::SELF && method && is_supported(name);
 			String expression;
-			if (base.kind == GritOperand::Kind::SELF && method && is_supported(name)) {
+			if (self_call) {
 				expression = "this->" + sanitize(name) + "(" + call_arguments(p_statement, 1, method) + ")";
 			} else {
 				String arguments;
@@ -912,6 +969,11 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 			}
 			if (target.kind == GritOperand::Kind::NIL) {
 				line(expression + ";");
+			} else if (self_call && return_type_of(*method) == "void") {
+				// A void method (a coroutine counts: its entry returns nothing)
+				// has no value to hand on, so the result slot is cleared.
+				line(expression + ";");
+				line(lvalue(target) + " = " + default_storage_value(storage_of(target)) + ";");
 			} else {
 				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
 			}
@@ -966,10 +1028,9 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 			return true;
 		}
 		case GritOpcode::CALL_SUPER:
-		case GritOpcode::CALL_ASYNC:
 		case GritOpcode::CALL_BUILTIN_STATIC:
 		case GritOpcode::CREATE_LAMBDA:
-			reject("unsupported call form");
+			reject(vformat("unsupported call form: %s", name));
 			return false;
 		default:
 			reject("unsupported call");
@@ -1019,17 +1080,39 @@ bool GritGdxEmitter::write_control(const GritStatement &p_statement) {
 			const String from = read_as(p_statement.operands[0], Variant::INT);
 			const String to = read_as(p_statement.operands[1], Variant::INT);
 			const String step = read_as(p_statement.operands[2], Variant::INT);
-			const String from_symbol = "range_from_" + itos(symbol_count);
-			const String to_symbol = "range_to_" + itos(symbol_count);
-			const String step_symbol = "range_step_" + itos(symbol_count);
-			const String counter = "range_counter_" + itos(symbol_count);
+			const String from_base = "range_from_" + itos(symbol_count);
+			const String to_base = "range_to_" + itos(symbol_count);
+			const String step_base = "range_step_" + itos(symbol_count);
+			const String counter_base = "range_counter_" + itos(symbol_count);
 			symbol_count++;
+			String from_symbol = from_base;
+			String to_symbol = to_base;
+			String step_symbol = step_base;
+			String counter = counter_base;
 			line("{");
 			indentation++;
-			line("const int64_t " + from_symbol + " = " + from + ";");
-			line("const int64_t " + to_symbol + " = " + to + ";");
-			line("const int64_t " + step_symbol + " = " + step + ";");
-			line("for (int64_t " + counter + " = " + from_symbol + "; " + step_symbol + " != 0 && (" + step_symbol + " > 0 ? " + counter + " < " + to_symbol + " : " + counter + " > " + to_symbol + "); " + counter + " += " + step_symbol + ") {");
+			if (coroutine) {
+				// Inside a coroutine the loop state has to survive an await, so
+				// it lives in the state object and the loop header only runs
+				// assignments (a resumption jumps straight into the body).
+				add_state_field("int64_t", from_base, "0");
+				add_state_field("int64_t", to_base, "0");
+				add_state_field("int64_t", step_base, "0");
+				add_state_field("int64_t", counter_base, "0");
+				from_symbol = state_reference(from_base);
+				to_symbol = state_reference(to_base);
+				step_symbol = state_reference(step_base);
+				counter = state_reference(counter_base);
+				line(from_symbol + " = " + from + ";");
+				line(to_symbol + " = " + to + ";");
+				line(step_symbol + " = " + step + ";");
+				line("for (" + counter + " = " + from_symbol + "; " + step_symbol + " != 0 && (" + step_symbol + " > 0 ? " + counter + " < " + to_symbol + " : " + counter + " > " + to_symbol + "); " + counter + " += " + step_symbol + ") {");
+			} else {
+				line("const int64_t " + from_symbol + " = " + from + ";");
+				line("const int64_t " + to_symbol + " = " + to + ";");
+				line("const int64_t " + step_symbol + " = " + step + ";");
+				line("for (int64_t " + counter + " = " + from_symbol + "; " + step_symbol + " != 0 && (" + step_symbol + " > 0 ? " + counter + " < " + to_symbol + " : " + counter + " > " + to_symbol + "); " + counter + " += " + step_symbol + ") {");
+			}
 			indentation++;
 			line(lvalue(p_statement.target) + " = " + convert(counter, Variant::INT, storage_of(p_statement.target)) + ";");
 			if (!write_block(p_statement.blocks[0])) {
@@ -1044,25 +1127,57 @@ bool GritGdxEmitter::write_control(const GritStatement &p_statement) {
 		case GritOpcode::FOR_EACH: {
 			const GritOperand &container = p_statement.operands[0];
 			const Variant::Type container_storage = storage_of(container);
-			const String container_symbol = "foreach_container_" + itos(symbol_count);
-			const String index_symbol = "foreach_index_" + itos(symbol_count);
+			const String container_base = "foreach_container_" + itos(symbol_count);
+			const String index_base = "foreach_index_" + itos(symbol_count);
 			symbol_count++;
-			line("{");
-			indentation++;
+			String container_type;
+			String container_value;
 			if (container_storage == Variant::STRING) {
-				line("const String " + container_symbol + " = " + read(container) + ";");
+				container_type = "String";
+				container_value = read(container);
 			} else if (container_storage == Variant::ARRAY) {
-				line("const Array " + container_symbol + " = " + read(container) + ";");
-			} else if (container_storage == Variant::NIL) {
-				line("const Array " + container_symbol + " = grit_gdx::iterate(" + read_any(container) + ");");
+				container_type = "Array";
+				container_value = read(container);
+			} else if (container_storage == Variant::INT) {
+				// `for i in 3` iterates a count, not a range.
+				container_type = "int64_t";
+				container_value = read_as(container, Variant::INT);
+			} else if (container_storage == Variant::NIL || container_storage == Variant::DICTIONARY) {
+				container_type = "Array";
+				container_value = "grit_gdx::iterate(" + read_any(container) + ")";
 			} else {
-				reject("for over this container type");
+				reject(vformat("for over this container type (%s)", Variant::get_type_name(container_storage)));
 				return false;
 			}
-			const String size_expression = container_storage == Variant::STRING ? container_symbol + ".length()" : container_symbol + ".size()";
-			line("for (int64_t " + index_symbol + " = 0; " + index_symbol + " < " + size_expression + "; " + index_symbol + "++) {");
+			String container_symbol = container_base;
+			String index_symbol = index_base;
+			line("{");
 			indentation++;
-			line(lvalue(p_statement.target) + " = " + convert(container_symbol + "[" + index_symbol + "]", Variant::NIL, storage_of(p_statement.target)) + ";");
+			if (coroutine) {
+				add_state_field(container_type, container_base, container_type + "()");
+				add_state_field("int64_t", index_base, "0");
+				container_symbol = state_reference(container_base);
+				index_symbol = state_reference(index_base);
+				line(container_symbol + " = " + container_value + ";");
+			} else {
+				line("const " + container_type + " " + container_symbol + " = " + container_value + ";");
+			}
+			// An int container is its own upper bound; arrays, strings and
+			// dictionary keys all expose a size.
+			String size_expression = container_symbol;
+			if (container_storage == Variant::STRING) {
+				size_expression = container_symbol + ".length()";
+			} else if (container_storage != Variant::INT) {
+				size_expression = container_symbol + ".size()";
+			}
+			if (coroutine) {
+				line("for (" + index_symbol + " = 0; " + index_symbol + " < " + size_expression + "; " + index_symbol + "++) {");
+			} else {
+				line("for (int64_t " + index_symbol + " = 0; " + index_symbol + " < " + size_expression + "; " + index_symbol + "++) {");
+			}
+			indentation++;
+			const String element = container_storage == Variant::INT ? index_symbol : container_symbol + "[" + index_symbol + "]";
+			line(lvalue(p_statement.target) + " = " + convert(element, Variant::NIL, storage_of(p_statement.target)) + ";");
 			if (!write_block(p_statement.blocks[0])) {
 				return false;
 			}
@@ -1084,6 +1199,65 @@ bool GritGdxEmitter::write_control(const GritStatement &p_statement) {
 			reject("unsupported control opcode");
 			return false;
 	}
+}
+
+bool GritGdxEmitter::write_await(const GritStatement &p_statement) {
+	if (!coroutine) {
+		reject("await outside a coroutine");
+		return false;
+	}
+	if (p_statement.operands.is_empty()) {
+		reject("await without an operand");
+		return false;
+	}
+	const int resume_point = p_statement.index + 1;
+	const auto assign_target = [&](const String &p_value) {
+		if (p_statement.target.kind == GritOperand::Kind::NIL) {
+			return;
+		}
+		const Variant::Type storage = storage_of(p_statement.target);
+		line(lvalue(p_statement.target) + " = " + convert(p_value, Variant::NIL, storage) + ";");
+	};
+
+	line("{");
+	indentation++;
+	line("Variant await_operand = " + read_any(p_statement.operands[0]) + ";");
+	line("Signal await_signal;");
+	line("Variant await_value;");
+	line("const int await_action = grit_gdx::await_prepare(await_operand, await_signal, await_value);");
+	line("if (await_action < 0) {");
+	indentation++;
+	line("p_state->ip = 0;");
+	line("return Variant();");
+	indentation--;
+	line("}");
+	line("if (await_action == 0) {");
+	indentation++;
+	// Not a signal (a coroutine that already completed, a plain value, …):
+	// GDScript continues immediately with that value.
+	assign_target("await_value");
+	indentation--;
+	line("} else {");
+	indentation++;
+	line("p_state->awaited = Variant();");
+	line("p_state->ip = " + itos(resume_point) + ";");
+	line(state_map_name + "[p_state->handle] = p_state;");
+	line("const Callable await_callback(memnew(grit_gdx::AwaitCallback(this, p_state->handle, StringName(" + escaped_string(state_resume_method) + "))));");
+	line("if (await_signal.connect(await_callback, Object::CONNECT_ONE_SHOT) != 0) {");
+	indentation++;
+	line("UtilityFunctions::push_error(\"Grit: could not connect to the awaited signal.\");");
+	line("p_state->ip = 0;");
+	line("return Variant();");
+	indentation--;
+	line("}");
+	line("return Variant();");
+	indentation--;
+	line("}");
+	indentation--;
+	line("}");
+	line("await_resume_" + itos(resume_point) + ":;");
+	assign_target("p_state->awaited");
+	return true;
 }
 
 bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
@@ -1127,8 +1301,7 @@ bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 		case GritOpcode::CREATE_LAMBDA:
 			return write_call(p_statement);
 		case GritOpcode::AWAIT:
-			reject("await");
-			return false;
+			return write_await(p_statement);
 		case GritOpcode::TYPE_TEST:
 			reject("type test");
 			return false;
@@ -1194,6 +1367,11 @@ String GritGdxEmitter::function_return_cpp(const GritFunction &p_function) {
 	return "Object *";
 }
 
+String GritGdxEmitter::return_type_of(const GritFunction &p_function) const {
+	const VirtualInfo *info = is_virtual_name(String(p_function.name)) ? find_virtual(String(p_function.name)) : nullptr;
+	return info ? String(info->return_type) : function_return_cpp(p_function);
+}
+
 String GritGdxEmitter::function_parameter_cpp(const GritVariable &p_variable, const String &p_name) {
 	if (p_variable.storage == Variant::NIL) {
 		return "const Variant &" + p_name;
@@ -1207,6 +1385,12 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	body = StringBuilder();
 	indentation = 1;
 	symbol_count = 0;
+	coroutine = p_function.await_count > 0;
+	state_fields.clear();
+	state_struct_name = await_struct_name(String(p_function.name));
+	state_step_method = await_step_method(String(p_function.name));
+	state_resume_method = await_resume_method(String(p_function.name));
+	state_map_name = await_map_name(String(p_function.name));
 
 	if (String(p_function.signature).begins_with("static ")) {
 		reject("static functions are not supported");
@@ -1214,10 +1398,6 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 	if (String(p_function.signature).contains(" optional ")) {
 		reject("optional parameters are not supported");
-		return false;
-	}
-	if (p_function.await_count > 0) {
-		reject("await is not supported");
 		return false;
 	}
 	if (p_function.rest_variable >= 0) {
@@ -1239,6 +1419,7 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 
 	String signature_parameters;
 	LocalVector<String> aliases;
+	LocalVector<String> parameter_copies;
 	if (virtual_info) {
 		for (int i = 0; i < virtual_info->param_count; i++) {
 			if (i > 0) {
@@ -1246,7 +1427,12 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			}
 			signature_parameters += String(virtual_info->params[i].type) + " " + String(virtual_info->params[i].name);
 			const GritVariable &variable = p_function.variables[parameter_variables[i]];
-			aliases.push_back(cpp_storage(variable.storage) + " " + variable_name(parameter_variables[i]) + " = " + String(virtual_info->params[i].name) + ";");
+			const String reference = variable_name(parameter_variables[i]);
+			if (coroutine) {
+				parameter_copies.push_back("grit_state->" + variable_base_name(parameter_variables[i]) + " = " + String(virtual_info->params[i].name) + ";");
+			} else {
+				aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + String(virtual_info->params[i].name) + ";");
+			}
 		}
 	} else {
 		for (uint32_t i = 0; i < parameter_variables.size(); i++) {
@@ -1256,7 +1442,22 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 			const GritVariable &variable = p_function.variables[parameter_variables[i]];
 			const String parameter_name = "p_" + sanitize(variable.name);
 			signature_parameters += function_parameter_cpp(variable, parameter_name);
-			aliases.push_back(cpp_storage(variable.storage) + " " + variable_name(parameter_variables[i]) + " = " + parameter_name + ";");
+			const String reference = variable_name(parameter_variables[i]);
+			if (coroutine) {
+				parameter_copies.push_back("grit_state->" + variable_base_name(parameter_variables[i]) + " = " + parameter_name + ";");
+			} else {
+				aliases.push_back(cpp_storage(variable.storage) + " " + reference + " = " + parameter_name + ";");
+			}
+		}
+	}
+
+	// A coroutine keeps every local (including loop state) in the heap object
+	// that survives the suspension, so the state fields are collected before
+	// the body decides to add more of them.
+	if (coroutine) {
+		for (uint32_t i = 0; i < p_function.variables.size(); i++) {
+			const GritVariable &variable = p_function.variables[i];
+			add_state_field(cpp_storage(variable.storage), variable_base_name(i), default_storage_value(variable.storage));
 		}
 	}
 
@@ -1278,18 +1479,46 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 
 	const String return_cpp = virtual_info ? String(virtual_info->return_type) : function_return_cpp(p_function);
-	r_output.append(return_cpp + " " + klass.class_name + "::" + sanitize(String(p_function.name)) + "(" + signature_parameters + ") {\n");
-	for (const String &alias : aliases) {
-		r_output.append("\t" + alias + "\n");
-	}
-	for (uint32_t i = 0; i < p_function.variables.size(); i++) {
-		const GritVariable &variable = p_function.variables[i];
-		if (variable.role == GritVariable::Role::PARAMETER) {
-			continue;
+	const String qualified_name = klass.class_name + "::" + sanitize(String(p_function.name));
+
+	if (!coroutine) {
+		r_output.append(return_cpp + " " + qualified_name + "(" + signature_parameters + ") {\n");
+		for (const String &alias : aliases) {
+			r_output.append("\t" + alias + "\n");
 		}
-		r_output.append("\t" + cpp_storage(variable.storage) + " " + variable_name(i) + " = " + default_storage_value(variable.storage) + ";\n");
+		for (uint32_t i = 0; i < p_function.variables.size(); i++) {
+			const GritVariable &variable = p_function.variables[i];
+			if (variable.role == GritVariable::Role::PARAMETER) {
+				continue;
+			}
+			r_output.append("\t" + cpp_storage(variable.storage) + " " + variable_name(i) + " = " + default_storage_value(variable.storage) + ";\n");
+		}
+		r_output.append(body.as_string());
+		if (return_cpp == "Variant") {
+			r_output.append("\treturn Variant();\n");
+		} else if (return_cpp == "Object *") {
+			r_output.append("\treturn nullptr;\n");
+		} else if (return_cpp != "void") {
+			const GritType &type = p_function.types[p_function.return_type];
+			r_output.append("\treturn " + default_storage_value(type.kind == GritType::Kind::BUILTIN ? type.builtin_type : Variant::NIL) + ";\n");
+		}
+		r_output.append("}\n\n");
+		await_state_fields.insert(p_function.name, state_fields);
+		function = nullptr;
+		return true;
 	}
-	r_output.append(body.as_string());
+
+	// Entry point: allocate the state, copy the arguments in and run until the
+	// first suspension. The caller sees a plain method call that returns at
+	// once, the way a GDScript coroutine returns its function state.
+	r_output.append(return_cpp + " " + qualified_name + "(" + signature_parameters + ") {\n");
+	r_output.append("\t" + state_struct_name + " *grit_state = memnew(" + state_struct_name + ");\n");
+	r_output.append("\tgrit_state->handle = ++grit_await_next;\n");
+	for (const String &copy : parameter_copies) {
+		r_output.append("\t" + copy + "\n");
+	}
+	r_output.append("\t" + state_step_method + "(grit_state);\n");
+	r_output.append("\tif (grit_state->ip == 0) {\n\t\tmemdelete(grit_state);\n\t}\n");
 	if (return_cpp == "Variant") {
 		r_output.append("\treturn Variant();\n");
 	} else if (return_cpp == "Object *") {
@@ -1299,6 +1528,51 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 		r_output.append("\treturn " + default_storage_value(type.kind == GritType::Kind::BUILTIN ? type.builtin_type : Variant::NIL) + ";\n");
 	}
 	r_output.append("}\n\n");
+
+	// Step: jump to the suspension point that was recorded, then run until the
+	// next await or the end. Every label lives in the same function body.
+	r_output.append("Variant " + klass.class_name + "::" + state_step_method + "(" + state_struct_name + " *p_state) {\n");
+	r_output.append("\tif (p_state->ip != 0) {\n");
+	r_output.append("\t\tconst int64_t resume_point = p_state->ip;\n");
+	r_output.append("\t\tp_state->ip = 0;\n");
+	r_output.append("\t\tswitch (resume_point) {\n");
+	for (int i = 1; i <= p_function.await_count; i++) {
+		r_output.append("\t\t\tcase " + itos(i) + ": goto await_resume_" + itos(i) + ";\n");
+	}
+	r_output.append("\t\t\tdefault: return Variant();\n");
+	r_output.append("\t\t}\n\t}\n");
+	r_output.append(body.as_string());
+	r_output.append("\treturn Variant();\n");
+	r_output.append("}\n\n");
+
+	// Resume: the awaited signal fired; hand its argument to the suspended step.
+	r_output.append("void " + klass.class_name + "::" + state_resume_method + "(const Variant **p_args, GDExtensionInt p_argcount, GDExtensionCallError &r_error) {\n");
+	r_output.append("\tr_error.error = GDEXTENSION_CALL_OK;\n");
+	r_output.append("\tif (p_argcount < 1) {\n\t\tr_error.error = GDEXTENSION_CALL_ERROR_TOO_FEW_ARGUMENTS;\n\t\treturn;\n\t}\n");
+	// AwaitCallback appends the state handle after the signal's own arguments,
+	// so the awaited value is whatever the signal sent.
+	r_output.append("\tconst GDExtensionInt value_count = p_argcount - 1;\n");
+	r_output.append("\tconst int64_t handle = *p_args[value_count];\n");
+	r_output.append("\t" + state_struct_name + " **entry = " + state_map_name + ".getptr(handle);\n");
+	r_output.append("\tif (!entry) {\n\t\treturn;\n\t}\n");
+	r_output.append("\t" + state_struct_name + " *state = *entry;\n");
+	r_output.append("\t" + state_map_name + ".erase(handle);\n");
+	r_output.append("\tif (value_count == 1) {\n");
+	r_output.append("\t\tstate->awaited = *p_args[0];\n");
+	r_output.append("\t} else if (value_count > 1) {\n");
+	r_output.append("\t\tArray values;\n");
+	r_output.append("\t\tfor (GDExtensionInt i = 0; i < value_count; i++) {\n");
+	r_output.append("\t\t\tvalues.push_back(*p_args[i]);\n");
+	r_output.append("\t\t}\n");
+	r_output.append("\t\tstate->awaited = values;\n");
+	r_output.append("\t} else {\n");
+	r_output.append("\t\tstate->awaited = Variant();\n");
+	r_output.append("\t}\n");
+	r_output.append("\t" + state_step_method + "(state);\n");
+	r_output.append("\tif (state->ip == 0) {\n\t\tmemdelete(state);\n\t}\n");
+	r_output.append("}\n\n");
+
+	await_state_fields.insert(p_function.name, state_fields);
 	function = nullptr;
 	return true;
 }
@@ -1312,6 +1586,7 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	out.append("#pragma once\n\n");
 	out.append("#include <godot_cpp/classes/" + snake_case(String(p_class.base_type)) + ".hpp>\n");
 	out.append("#include <godot_cpp/core/class_db.hpp>\n");
+	out.append("#include <godot_cpp/templates/hash_map.hpp>\n");
 	out.append("#include <godot_cpp/variant/variant.hpp>\n");
 	out.append("#include <godot_cpp/variant/string.hpp>\n");
 	out.append("#include <godot_cpp/variant/string_name.hpp>\n");
@@ -1319,12 +1594,25 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	out.append("#include <godot_cpp/variant/array.hpp>\n");
 	out.append("#include <godot_cpp/variant/dictionary.hpp>\n");
 	out.append("#include <godot_cpp/variant/color.hpp>\n");
+	out.append("#include <godot_cpp/variant/callable.hpp>\n");
+	out.append("#include <godot_cpp/variant/signal.hpp>\n");
 	out.append("#include <godot_cpp/variant/vector2.hpp>\n");
 	out.append("#include <godot_cpp/variant/vector3.hpp>\n");
 	out.append("#include <godot_cpp/variant/transform2d.hpp>\n");
 	out.append("#include <godot_cpp/variant/transform3d.hpp>\n\n");
 	out.append("#include \"grit_gdx_helpers.h\"\n\n");
 	out.append("namespace godot {\n\n");
+
+	GritGdxEmitter emitter(p_class);
+	emitter.prepare();
+	bool has_coroutines = false;
+	for (const GritFunction &p_function : p_class.functions) {
+		if (p_function.await_count > 0 && emitter.is_supported(String(p_function.name))) {
+			has_coroutines = true;
+			break;
+		}
+	}
+
 	out.append("class " + p_class.class_name + " : public " + String(p_class.base_type) + " {\n");
 	out.append("\tGDCLASS(" + p_class.class_name + ", " + String(p_class.base_type) + ")\n\n");
 
@@ -1344,6 +1632,9 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	}
 
 	out.append("\npublic:\n\tstatic void _bind_methods();\n\n");
+	if (has_coroutines) {
+		out.append("\t~" + p_class.class_name + "();\n\n");
+	}
 	for (const GritGdxProperty &property : p_class.properties) {
 		const String type = cpp_storage(property.storage);
 		out.append("\t" + type + " " + property.getter + "() const;\n");
@@ -1351,8 +1642,6 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	}
 	out.append("\n");
 
-	GritGdxEmitter emitter(p_class);
-	emitter.prepare();
 	bool has_ready = emitter.is_supported("_ready");
 	for (const GritFunction &p_function : p_class.functions) {
 		const bool is_virtual = is_virtual_name(String(p_function.name));
@@ -1387,6 +1676,35 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 	if (needs_process && !has_ready) {
 		out.append("\tvoid _ready() override;\n");
 	}
+
+	if (has_coroutines) {
+		// Each awaiting method gets a heap state object: every local and loop
+		// counter lives there so the step method can resume mid-body.
+		out.append("\nprivate:\n");
+		for (const GritFunction &p_function : p_class.functions) {
+			if (p_function.await_count == 0 || !emitter.is_supported(String(p_function.name))) {
+				continue;
+			}
+			const String name = String(p_function.name);
+			const String struct_name = await_struct_name(name);
+			out.append("\tstruct " + struct_name + " {\n");
+			out.append("\t\tint64_t ip = 0;\n");
+			out.append("\t\tint64_t handle = 0;\n");
+			out.append("\t\tVariant awaited;\n");
+			const LocalVector<StateField> *fields = emitter.await_state_fields.getptr(p_function.name);
+			if (fields) {
+				for (const StateField &field : *fields) {
+					out.append("\t\t" + field.type + " " + field.name + " = " + field.initializer + ";\n");
+				}
+			}
+			out.append("\t};\n");
+			out.append("\tVariant " + await_step_method(name) + "(" + struct_name + " *p_state);\n");
+			out.append("\tvoid " + await_resume_method(name) + "(const Variant **p_args, GDExtensionInt p_argcount, GDExtensionCallError &r_error);\n");
+			out.append("\tHashMap<int64_t, " + struct_name + " *> " + await_map_name(name) + ";\n\n");
+		}
+		out.append("\tint64_t grit_await_next = 0;\n");
+	}
+
 	out.append("};\n\n} // namespace godot\n");
 	return out.as_string();
 }
@@ -1395,8 +1713,11 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 	StringBuilder out;
 	out.append("#include \"" + header_file_name(p_class) + "\"\n\n");
 	out.append("#include <godot_cpp/core/class_db.hpp>\n");
+	out.append("#include <godot_cpp/core/memory.hpp>\n");
 	out.append("#include <godot_cpp/core/object.hpp>\n");
 	out.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
+	out.append("#include <godot_cpp/templates/hash_map.hpp>\n");
+	out.append("#include <godot_cpp/templates/pair.hpp>\n");
 	// Singleton constants (Time, Engine, Input, …) are emitted as
 	// <Class>::get_singleton(), which needs the class header.
 	HashSet<String> singleton_includes;
@@ -1437,6 +1758,7 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 
 	bool has_ready = emitter.is_supported("_ready");
 	bool needs_process = false;
+	bool has_coroutines = false;
 	for (const GritFunction &p_function : p_class.functions) {
 		if (!emitter.is_supported(String(p_function.name))) {
 			continue;
@@ -1444,6 +1766,24 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		if (p_function.name == StringName("_process") || p_function.name == StringName("_physics_process")) {
 			needs_process = true;
 		}
+		if (p_function.await_count > 0) {
+			has_coroutines = true;
+		}
+	}
+
+	// A node can be freed with awaits pending; those states hold Variants, so
+	// they are released with the class instance.
+	if (has_coroutines) {
+		out.append(p_class.class_name + "::~" + p_class.class_name + "() {\n");
+		for (const GritFunction &p_function : p_class.functions) {
+			if (p_function.await_count == 0 || !emitter.is_supported(String(p_function.name))) {
+				continue;
+			}
+			out.append("\tfor (const KeyValue<int64_t, " + await_struct_name(String(p_function.name)) + " *> &entry : " + await_map_name(String(p_function.name)) + ") {\n");
+			out.append("\t\tmemdelete(entry.value);\n");
+			out.append("\t}\n");
+		}
+		out.append("}\n\n");
 	}
 
 	for (const GritFunction &p_function : p_class.functions) {
@@ -1508,6 +1848,19 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		}
 		out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + ");\n");
 	}
+	for (const GritFunction &p_function : p_class.functions) {
+		if (p_function.await_count == 0 || !emitter.is_supported(String(p_function.name))) {
+			continue;
+		}
+		// The awaited signal carries an arbitrary argument list, so the resume
+		// entry point has to be a vararg method (bound handle + signal args).
+		const String resume = await_resume_method(String(p_function.name));
+		out.append("\t{\n");
+		out.append("\t\tMethodInfo resume_info;\n");
+		out.append("\t\tresume_info.name = " + escaped_string(resume) + ";\n");
+		out.append("\t\tClassDB::bind_vararg_method(METHOD_FLAGS_DEFAULT, " + escaped_string(resume) + ", &" + p_class.class_name + "::" + resume + ", resume_info);\n");
+		out.append("\t}\n");
+	}
 	for (const GritGdxProperty &property : p_class.properties) {
 		// Every script variable is a property so `object.name` keeps working;
 		// only @export-ed ones are shown in the inspector.
@@ -1550,6 +1903,10 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("#include <godot_cpp/variant/array.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/dictionary.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/string.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/signal.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/callable.hpp>\n");
+	helpers.append("#include <godot_cpp/variant/callable_custom.hpp>\n");
+	helpers.append("#include <godot_cpp/core/object_id.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
 	helpers.append("#include <godot_cpp/core/object.hpp>\n\n");
 	helpers.append("#include <initializer_list>\n\n");
@@ -1569,6 +1926,29 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("}\n\n");
 	helpers.append("inline Variant get_named(const Variant &p_object, const StringName &p_name) {\n");
 	helpers.append("\treturn object_of(p_object)->get(p_name);\n");
+	helpers.append("}\n\n");
+	// await: either wait on the signal carried by the operand, or take the
+	// value and continue (GDScript returns non-signal operands immediately).
+	// Returns 1 to suspend, 0 to continue, -1 after a reported error.
+	helpers.append("inline int await_prepare(const Variant &p_operand, Signal &r_signal, Variant &r_value) {\n");
+	helpers.append("\tVariant result = p_operand;\n");
+	helpers.append("\tif (p_operand.get_type() == Variant::OBJECT) {\n");
+	helpers.append("\t\tObject *object = p_operand;\n");
+	helpers.append("\t\tif (object == nullptr) {\n");
+	helpers.append("\t\t\tUtilityFunctions::push_error(\"Grit: trying to await on a freed object.\");\n");
+	helpers.append("\t\t\treturn -1;\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t\tif (object->is_class(StringName(\"GDScriptFunctionState\"))) {\n");
+	helpers.append("\t\t\t// A GDScript coroutine: wait for its completion signal.\n");
+	helpers.append("\t\t\tresult = Variant(Signal(object, StringName(\"completed\")));\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t}\n");
+	helpers.append("\tif (result.get_type() != Variant::SIGNAL) {\n");
+	helpers.append("\t\tr_value = result;\n");
+	helpers.append("\t\treturn 0;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tr_signal = static_cast<Signal>(result);\n");
+	helpers.append("\treturn 1;\n");
 	helpers.append("}\n\n");
 	helpers.append("inline void set_named(const Variant &p_object, const StringName &p_name, const Variant &p_value) {\n");
 	helpers.append("\tobject_of(p_object)->set(p_name, p_value);\n");
@@ -1624,6 +2004,54 @@ helpers.append("}\n\n");
 	helpers.append("\t}\n");
 	helpers.append("\treturn result;\n");
 	helpers.append("}\n\n");
+	// Godot compares connected callables by their base method, ignoring bound
+	// arguments, so a single bound resume method could only ever carry one
+	// pending await. Every suspension therefore connects an instance of this
+	// callable: distinct instances never compare equal, and get_object() ties
+	// the connection to the node so the engine drops it if the node dies.
+	helpers.append("class AwaitCallback : public CallableCustom {\n");
+	helpers.append("public:\n");
+	helpers.append("\tAwaitCallback(Object *p_owner, int64_t p_handle, const StringName &p_method) :\n");
+	helpers.append("\t\t\towner(p_owner), owner_id(p_owner->get_instance_id()), handle(p_handle), method(p_method) {}\n");
+	helpers.append("\n");
+	helpers.append("\tuint32_t hash() const override {\n");
+	helpers.append("\t\treturn static_cast<uint32_t>(static_cast<uint64_t>(owner_id)) ^ static_cast<uint32_t>(handle);\n");
+	helpers.append("\t}\n");
+	helpers.append("\tString get_as_text() const override {\n");
+	helpers.append("\t\treturn \"Grit await\";\n");
+	helpers.append("\t}\n");
+	helpers.append("\tstatic bool compare_equal(const CallableCustom *p_a, const CallableCustom *p_b) {\n");
+	helpers.append("\t\treturn p_a == p_b;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tstatic bool compare_less(const CallableCustom *p_a, const CallableCustom *p_b) {\n");
+	helpers.append("\t\treturn p_a < p_b;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tCompareEqualFunc get_compare_equal_func() const override {\n");
+	helpers.append("\t\treturn &compare_equal;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tCompareLessFunc get_compare_less_func() const override {\n");
+	helpers.append("\t\treturn &compare_less;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tObjectID get_object() const override {\n");
+	helpers.append("\t\treturn owner_id;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tvoid call(const Variant **p_arguments, int p_argcount, Variant &r_return_value, GDExtensionCallError &r_call_error) const override {\n");
+	helpers.append("\t\tArray arguments;\n");
+	helpers.append("\t\tfor (int i = 0; i < p_argcount; i++) {\n");
+	helpers.append("\t\t\targuments.push_back(*p_arguments[i]);\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t\targuments.push_back(Variant(handle));\n");
+	helpers.append("\t\towner->callv(method, arguments);\n");
+	helpers.append("\t\tr_return_value = Variant();\n");
+	helpers.append("\t\tr_call_error.error = GDEXTENSION_CALL_OK;\n");
+	helpers.append("\t}\n");
+	helpers.append("\n");
+	helpers.append("private:\n");
+	helpers.append("\tObject *owner;\n");
+	helpers.append("\tObjectID owner_id;\n");
+	helpers.append("\tint64_t handle;\n");
+	helpers.append("\tStringName method;\n");
+	helpers.append("};\n\n");
 	helpers.append("} // namespace grit_gdx\n\n");
 	return helpers.as_string();
 }

@@ -23,6 +23,13 @@ public:
 	static String helpers_file_name();
 
 private:
+	// One field of a generated coroutine state object.
+	struct StateField {
+		String type;
+		String name;
+		String initializer;
+	};
+
 	explicit GritGdxEmitter(const GritGdxClass &p_class);
 
 	const GritGdxClass &klass;
@@ -35,6 +42,17 @@ private:
 	HashMap<String, bool> supported_methods;
 	String reject_reason;
 
+	// Coroutine (await) lowering: a function that awaits becomes an entry
+	// method that allocates a state object, a step method that runs until the
+	// next suspension, and a vararg resume method driven by the signal.
+	bool coroutine = false;
+	String state_struct_name;
+	String state_step_method;
+	String state_resume_method;
+	String state_map_name;
+	LocalVector<StateField> state_fields;
+	HashMap<StringName, LocalVector<StateField>> await_state_fields;
+
 	// Trial-emits every function once so header, bindings and call sites agree
 	// on which methods actually exist in the generated class.
 	void prepare();
@@ -43,6 +61,7 @@ private:
 	static bool is_virtual_name(const String &p_name);
 	static String virtual_signature_of(const GritFunction &p_function);
 	static String function_return_cpp(const GritFunction &p_function);
+	String return_type_of(const GritFunction &p_function) const;
 	static String function_parameter_cpp(const GritVariable &p_variable, const String &p_name);
 
 	void line(const String &p_text);
@@ -57,6 +76,13 @@ private:
 	static String default_literal(const Variant &p_value, Variant::Type p_storage);
 
 	String variable_name(int p_variable) const;
+	String variable_base_name(int p_variable) const;
+	String state_reference(const String &p_name) const;
+	void add_state_field(const String &p_type, const String &p_name, const String &p_initializer);
+	static String await_struct_name(const String &p_function);
+	static String await_step_method(const String &p_function);
+	static String await_resume_method(const String &p_function);
+	static String await_map_name(const String &p_function);
 	const GritGdxProperty *property_of(int p_member) const;
 	const GritFunction *method_named(const String &p_name) const;
 	Variant::Type storage_of(const GritOperand &p_operand) const;
@@ -71,6 +97,7 @@ private:
 
 	bool write_block(int p_block);
 	bool write_statement(const GritStatement &p_statement);
+	bool write_await(const GritStatement &p_statement);
 	bool write_operator(const GritStatement &p_statement);
 	bool write_access(const GritStatement &p_statement);
 	bool write_call(const GritStatement &p_statement);
