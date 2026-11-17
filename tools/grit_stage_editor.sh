@@ -51,7 +51,9 @@ if [ -d "$BIN.dSYM" ]; then
 	cp -R "$BIN.dSYM" "$APP/Contents/MacOS/Godot.dSYM"
 	echo "Grit: staged debug symbols ($(du -sh "$APP/Contents/MacOS/Godot.dSYM" | cut -f1)) at $APP/Contents/MacOS/Godot.dSYM"
 else
-	echo "Grit: no dSYM beside $BIN; the staged editor carries no debug symbols (build with separate_debug_symbols=yes)" >&2
+	# The plain build (debug_symbols=yes, no separate_debug_symbols) keeps its
+	# symbol table in the binary: lldb names functions but has no line info.
+	echo "Grit: no dSYM to stage (the binary keeps its symbols; rebuild with separate_debug_symbols=yes for line info)"
 fi
 # Ad-hoc sign: an unsigned bundle still runs locally, but LaunchServices is
 # happier with a signature and it costs a second.
