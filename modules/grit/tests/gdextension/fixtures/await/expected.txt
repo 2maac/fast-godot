@@ -1,0 +1,23 @@
+T1 timer
+T1 ticks: 3
+T2 nested loops
+T2 total: 9
+T3 while break/continue
+T3 n: 7
+T4 concurrent
+concurrent B
+concurrent A
+T4 joined
+T5 own signal value
+T5 value: 42
+T6 multi-arg signal
+T6 array: [3, 4] size: 2
+T7 returned (generated coroutines resume immediately)
+T8 direct: 99
+T9 doubled: 42
+T11 two waiters on one signal
+pinged A: 9
+pinged B: 9
+T11 waiters done
+T10 sum: 5
+ALL DONE
