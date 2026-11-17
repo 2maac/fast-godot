@@ -49,3 +49,7 @@ than as a stub.
   checkout the process may write to.
 - The fixtures are copied to a temp directory because converting rewrites the
   scene, archives the script as `.gde` and writes `gdext/`.
+- Converting on one host writes only that host's library entries into the
+  descriptor. To run the same converted project on another platform, add the
+  matching `platform.debug`/`platform.release` lines and build the generated
+  sources where that toolchain lives (the sources themselves are portable).
