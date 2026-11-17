@@ -28,6 +28,11 @@ two args: ab?
 float default: 6.0
 float given: 1.0
 script-caller default: xy!xy!
+script types start
+helper is HelperScript: true
+helper is OtherScript: false
+helper as HelperScript: true
+helper as OtherScript is null: true
 colour: (0.0, 1.0, 1.0, 1.0)
 direction: (-0.0, 1.0)
 super parent set: true

@@ -1467,8 +1467,14 @@ bool GritGdxEmitter::write_type_test(const GritStatement &p_statement) {
 			expression = "grit_gdx::is_native(" + value + ", StringName(" + escaped_string(String(type.native_type)) + "))";
 			break;
 		case GritType::Kind::SCRIPT:
-			reject("'is' with a script type");
-			return false;
+			// Only a file-level script can be named precisely: an inner class path
+			// ("res://x.gd::Inner") cannot be compared with an object's script.
+			if (type.script.is_empty() || type.script.contains("::")) {
+				reject("'is' with an inner-class script type");
+				return false;
+			}
+			expression = "grit_gdx::is_script(" + value + ", String(" + escaped_string(type.script) + "))";
+			break;
 		case GritType::Kind::VARIANT:
 			expression = "false";
 			break;
@@ -1513,8 +1519,12 @@ bool GritGdxEmitter::write_cast(const GritStatement &p_statement) {
 			expression = "grit_gdx::cast_native(" + value + ", StringName(" + escaped_string(String(type.native_type)) + "))";
 			break;
 		case GritType::Kind::SCRIPT:
-			reject("'as' with a script type");
-			return false;
+			if (type.script.is_empty() || type.script.contains("::")) {
+				reject("'as' with an inner-class script type");
+				return false;
+			}
+			expression = "grit_gdx::cast_script(" + value + ", String(" + escaped_string(type.script) + "))";
+			break;
 		case GritType::Kind::VARIANT:
 			expression = value;
 			break;
@@ -2300,6 +2310,7 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("#include <godot_cpp/variant/signal.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/callable.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/callable_custom.hpp>\n");
+	helpers.append("#include <godot_cpp/classes/script.hpp>\n");
 	helpers.append("#include <godot_cpp/core/object_id.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
 	helpers.append("#include <godot_cpp/core/object.hpp>\n\n");
@@ -2397,6 +2408,31 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: cannot convert a non-dictionary value to a typed dictionary.\");\n");
 	helpers.append("\t}\n");
 	helpers.append("\treturn result;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline bool is_script(const Variant &p_value, const String &p_path) {\n");
+	helpers.append("\tif (p_value.get_type() != Variant::OBJECT) {\n");
+	helpers.append("\t\treturn false;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tObject *object = p_value;\n");
+	helpers.append("\tif (object == nullptr) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: the left operand of 'is' is a previously freed instance.\");\n");
+	helpers.append("\t\treturn false;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tRef<Script> script = object->get_script();\n");
+	helpers.append("\twhile (script.is_valid()) {\n");
+	helpers.append("\t\tif (script->get_path() == p_path) {\n");
+	helpers.append("\t\t\treturn true;\n");
+	helpers.append("\t\t}\n");
+	helpers.append("\t\tscript = script->get_base_script();\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn false;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Variant cast_script(const Variant &p_value, const String &p_path) {\n");
+	helpers.append("\tif (p_value.get_type() != Variant::OBJECT && p_value.get_type() != Variant::NIL) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: cannot convert a non-object value to a script type.\");\n");
+	helpers.append("\t\treturn Variant();\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn is_script(p_value, p_path) ? p_value : Variant();\n");
 	helpers.append("}\n\n");
 	helpers.append("inline bool is_typed_array(const Variant &p_value, int64_t p_builtin_type, const StringName &p_native_type) {\n");
 	helpers.append("\tif (p_value.get_type() != Variant::ARRAY) {\n");

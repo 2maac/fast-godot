@@ -1,5 +1,8 @@
 extends Node2D
 
+const HelperScript = preload("res://helper.gd")
+const OtherScript = preload("res://other.gd")
+
 var scores: Array[int] = [1]
 
 func _ready() -> void:
@@ -48,6 +51,11 @@ func _ready() -> void:
 	print("float default: ", _scale(2.0))
 	print("float given: ", _scale(2.0, 0.5))
 	print("script-caller default: ", get_node("Helper").call_repeat(self))
+	print("script types start")
+	print("helper is HelperScript: ", helper is HelperScript)
+	print("helper is OtherScript: ", helper is OtherScript)
+	print("helper as HelperScript: ", (helper as HelperScript) == helper)
+	print("helper as OtherScript is null: ", (helper as OtherScript) == null)
 	print("colour: ", Color.from_hsv(0.5, 1.0, 1.0))
 	print("direction: ", Vector2.from_angle(1.5707964))
 	var parent = super.get_parent()
