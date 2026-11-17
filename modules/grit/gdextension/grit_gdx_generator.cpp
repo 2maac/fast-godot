@@ -172,6 +172,14 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 		r_error = vformat("\"%s\" is not a native class", r_class.base_type);
 		return ERR_INVALID_PARAMETER;
 	}
+	// A script whose parent is another script would lose the parent's methods:
+	// the generated class derives from the native base, not from the parent.
+	const Ref<Script> base_script = script->get_base_script();
+	if (base_script.is_valid()) {
+		r_error = vformat("\"%s\" extends the script \"%s\"; a generated class can only derive from a native class, so convert a script whose parent is native (or fold the parent's methods into it)", path, base_script->get_path());
+		return ERR_INVALID_PARAMETER;
+	}
+
 	// A script already extending a generated class is the migration story, not a
 	// new class: attaching it to a node of that class keeps the native code.
 	const ClassDB::APIType base_api = ClassDB::get_api_type(r_class.base_type);

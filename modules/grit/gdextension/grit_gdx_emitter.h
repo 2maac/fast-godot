@@ -101,6 +101,11 @@ private:
 	bool write_block(int p_block);
 	bool write_statement(const GritStatement &p_statement);
 	bool write_await(const GritStatement &p_statement);
+	bool write_assert(const GritStatement &p_statement);
+	void write_abort_return();
+	bool write_type_test(const GritStatement &p_statement);
+	bool write_cast(const GritStatement &p_statement);
+	bool container_type_test(const GritType &p_type, const String &p_value, String &r_expression);
 	bool write_operator(const GritStatement &p_statement);
 	bool write_access(const GritStatement &p_statement);
 	bool write_call(const GritStatement &p_statement);

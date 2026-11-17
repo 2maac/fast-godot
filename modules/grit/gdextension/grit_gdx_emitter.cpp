@@ -669,6 +669,17 @@ String GritGdxEmitter::call_arguments(const GritStatement &p_statement, int p_fi
 bool GritGdxEmitter::write_operator(const GritStatement &p_statement) {
 	const GritOperand &target = p_statement.target;
 
+	// TEST is the truthiness conversion GDScript uses for `and`/`or` and
+	// conditions; like UNARY it carries a single operand.
+	if (p_statement.opcode == GritOpcode::TEST) {
+		const GritOperand &operand_operand = p_statement.operands[0];
+		const String operand = read(operand_operand);
+		const Variant::Type storage = storage_of(operand_operand);
+		const String truth = storage == Variant::BOOL ? operand : "Variant(" + operand + ").booleanize()";
+		line(lvalue(target) + " = " + convert(truth, Variant::BOOL, storage_of(target)) + ";");
+		return true;
+	}
+
 	if (p_statement.opcode == GritOpcode::UNARY) {
 		const GritOperand &operand_operand = p_statement.operands[0];
 		const String operand = read(operand_operand);
@@ -1027,8 +1038,45 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 			}
 			return true;
 		}
-		case GritOpcode::CALL_SUPER:
-		case GritOpcode::CALL_BUILTIN_STATIC:
+		case GritOpcode::CALL_SUPER: {
+			// The generated class derives from a native class (a script parent is
+			// refused at generation time), so super reaches the native base.
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				arguments += read_any(p_statement.operands[i]);
+			}
+			const String expression = String(klass.base_type) + "::" + name + "(" + arguments + ")";
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
+		case GritOpcode::CALL_BUILTIN_STATIC: {
+			// Static methods of built-in types (`Color.from_hsv(…)`).
+			const Variant::Type builtin = p_statement.builtin_type;
+			const String type = cpp_storage(builtin);
+			const bool vararg = Variant::is_builtin_method_vararg(builtin, name);
+			String arguments;
+			for (uint32_t i = 0; i < p_statement.operands.size(); i++) {
+				if (i > 0) {
+					arguments += ", ";
+				}
+				const Variant::Type wanted = vararg ? Variant::NIL : Variant::get_builtin_method_argument_type(builtin, name, i);
+				arguments += read_as(p_statement.operands[i], wanted);
+			}
+			const String expression = type + "::" + name + "(" + arguments + ")";
+			if (target.kind == GritOperand::Kind::NIL) {
+				line(expression + ";");
+			} else {
+				line(lvalue(target) + " = " + convert(expression, Variant::NIL, storage_of(target)) + ";");
+			}
+			return true;
+		}
 		case GritOpcode::CREATE_LAMBDA:
 			reject(vformat("unsupported call form: %s", name));
 			return false;
@@ -1260,6 +1308,143 @@ bool GritGdxEmitter::write_await(const GritStatement &p_statement) {
 	return true;
 }
 
+// `assert`: GDScript compiles asserts only in debug builds and aborts the
+// function when one fails, so the generated code does the same and is empty in
+// release builds. The block that was split off by the front end evaluates the
+// message before the test.
+bool GritGdxEmitter::write_assert(const GritStatement &p_statement) {
+	line("#ifdef DEBUG_ENABLED");
+	indentation++;
+	if (p_statement.blocks[0] >= 0) {
+		if (!write_block(p_statement.blocks[0])) {
+			return false;
+		}
+	}
+	const Variant::Type condition_storage = storage_of(p_statement.operands[0]);
+	const String condition = condition_storage == Variant::BOOL ? read(p_statement.operands[0]) : read_any(p_statement.operands[0]) + ".booleanize()";
+	line("if (!(" + condition + ")) {");
+	indentation++;
+	if (p_statement.validated) {
+		line("UtilityFunctions::push_error(String(\"Grit: Assertion failed: \") + String(" + read_any(p_statement.operands[1]) + "));");
+	} else {
+		line("UtilityFunctions::push_error(\"Grit: Assertion failed.\");");
+	}
+	write_abort_return();
+	indentation--;
+	line("}");
+	indentation--;
+	line("#endif");
+	return true;
+}
+
+// Leaves the current function with its default value, the way a failed assert
+// (or a returned void) does. Coroutines also clear their resume point.
+void GritGdxEmitter::write_abort_return() {
+	const String return_cpp = return_type_of(*function);
+	if (coroutine) {
+		line("p_state->ip = 0;");
+		line("return Variant();");
+		return;
+	}
+	if (return_cpp == "Variant") {
+		line("return Variant();");
+	} else if (return_cpp == "Object *") {
+		line("return nullptr;");
+	} else if (return_cpp == "void") {
+		line("return;");
+	} else {
+		const GritType &type = function->types[function->return_type];
+		line("return " + default_storage_value(type.kind == GritType::Kind::BUILTIN ? type.builtin_type : Variant::NIL) + ";");
+	}
+}
+
+// `is`: a builtin type compares the Variant type, a native type asks the object
+// for its class chain. Script types are still refused: the IR only carries the
+// class-path string, so the check could not tell two inner classes apart.
+bool GritGdxEmitter::write_type_test(const GritStatement &p_statement) {
+	const GritType &type = function->types[p_statement.type];
+	const String value = read_any(p_statement.operands[0]);
+	String expression;
+	switch (type.kind) {
+		case GritType::Kind::BUILTIN: {
+			if (type.has_elements() && (type.builtin_type == Variant::ARRAY || type.builtin_type == Variant::DICTIONARY)) {
+				if (!container_type_test(type, value, expression)) {
+					return false;
+				}
+			} else {
+				expression = "(" + value + ".get_type() == Variant::" + variant_enum(type.builtin_type) + ")";
+			}
+		} break;
+		case GritType::Kind::NATIVE:
+			expression = "grit_gdx::is_native(" + value + ", StringName(" + escaped_string(String(type.native_type)) + "))";
+			break;
+		case GritType::Kind::SCRIPT:
+			reject("'is' with a script type");
+			return false;
+		case GritType::Kind::VARIANT:
+			expression = "false";
+			break;
+	}
+	line(lvalue(p_statement.target) + " = " + convert(expression, Variant::BOOL, storage_of(p_statement.target)) + ";");
+	return true;
+}
+
+bool GritGdxEmitter::container_type_test(const GritType &p_type, const String &p_value, String &r_expression) {
+	const auto element_argument = [&](const GritType &p_element, String &r_builtin, String &r_native) {
+		if (p_element.kind == GritType::Kind::SCRIPT) {
+			reject("'is' with a script-typed container element");
+			return false;
+		}
+		const Variant::Type builtin = p_element.kind == GritType::Kind::NATIVE ? Variant::OBJECT : p_element.builtin_type;
+		r_builtin = "Variant::" + variant_enum(builtin);
+		r_native = "StringName(" + escaped_string(p_element.kind == GritType::Kind::NATIVE ? String(p_element.native_type) : String()) + ")";
+		return true;
+	};
+	if (p_type.builtin_type == Variant::ARRAY) {
+		String builtin;
+		String native;
+		if (!element_argument(p_type.elements[0], builtin, native)) {
+			return false;
+		}
+		r_expression = "grit_gdx::is_typed_array(" + p_value + ", " + builtin + ", " + native + ")";
+		return true;
+	}
+	String key_builtin;
+	String key_native;
+	String value_builtin;
+	String value_native;
+	if (!element_argument(p_type.elements[0], key_builtin, key_native) || !element_argument(p_type.elements[1], value_builtin, value_native)) {
+		return false;
+	}
+	r_expression = "grit_gdx::is_typed_dictionary(" + p_value + ", " + key_builtin + ", " + key_native + ", " + value_builtin + ", " + value_native + ")";
+	return true;
+}
+
+// `as`: a builtin cast converts through the engine's own conversion (so a bad
+// value keeps the GDScript result), an object cast yields null when the object
+// is not of that class.
+bool GritGdxEmitter::write_cast(const GritStatement &p_statement) {
+	const GritType &type = function->types[p_statement.type];
+	const String value = read_any(p_statement.operands[0]);
+	String expression;
+	switch (type.kind) {
+		case GritType::Kind::BUILTIN:
+			expression = "grit_gdx::cast_builtin(" + value + ", " + "Variant::" + variant_enum(type.builtin_type) + ")";
+			break;
+		case GritType::Kind::NATIVE:
+			expression = "grit_gdx::cast_native(" + value + ", StringName(" + escaped_string(String(type.native_type)) + "))";
+			break;
+		case GritType::Kind::SCRIPT:
+			reject("'as' with a script type");
+			return false;
+		case GritType::Kind::VARIANT:
+			expression = value;
+			break;
+	}
+	line(lvalue(p_statement.target) + " = " + convert(expression, Variant::NIL, storage_of(p_statement.target)) + ";");
+	return true;
+}
+
 bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 	switch (p_statement.opcode) {
 		case GritOpcode::ASSIGN:
@@ -1303,11 +1488,9 @@ bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 		case GritOpcode::AWAIT:
 			return write_await(p_statement);
 		case GritOpcode::TYPE_TEST:
-			reject("type test");
-			return false;
+			return write_type_test(p_statement);
 		case GritOpcode::CAST:
-			reject("cast");
-			return false;
+			return write_cast(p_statement);
 		case GritOpcode::GET_STATIC:
 		case GritOpcode::SET_STATIC:
 		case GritOpcode::GET_GLOBAL:
@@ -1315,8 +1498,7 @@ bool GritGdxEmitter::write_statement(const GritStatement &p_statement) {
 			reject("static or global access");
 			return false;
 		case GritOpcode::ASSERT:
-			reject("assert");
-			return false;
+			return write_assert(p_statement);
 		case GritOpcode::IF_NOT_SHARED:
 			reject("shared value branch");
 			return false;
@@ -1989,6 +2171,51 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("\t}\n");
 	helpers.append("\tr_signal = static_cast<Signal>(result);\n");
 	helpers.append("\treturn 1;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline bool is_native(const Variant &p_value, const StringName &p_class) {\n");
+	helpers.append("\tif (p_value.get_type() != Variant::OBJECT) {\n");
+	helpers.append("\t\treturn false;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tObject *object = p_value;\n");
+	helpers.append("\tif (object == nullptr) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: the left operand of 'is' is a previously freed instance.\");\n");
+	helpers.append("\t\treturn false;\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn object->is_class(p_class);\n");
+	helpers.append("}\n\n");
+	helpers.append("inline bool is_typed_array(const Variant &p_value, int64_t p_builtin_type, const StringName &p_native_type) {\n");
+	helpers.append("\tif (p_value.get_type() != Variant::ARRAY) {\n");
+	helpers.append("\t\treturn false;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tArray array = p_value;\n");
+	helpers.append("\t// A typed array with a script element type reports it as an object; script\n");
+	helpers.append("\t// element types are not converted, so only the engine's null counts.\n");
+	helpers.append("\tObject *script = array.get_typed_script();\n");
+	helpers.append("\treturn array.get_typed_builtin() == p_builtin_type && array.get_typed_class_name() == p_native_type && script == nullptr;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline bool is_typed_dictionary(const Variant &p_value, int64_t p_key_builtin, const StringName &p_key_native, int64_t p_value_builtin, const StringName &p_value_native) {\n");
+	helpers.append("\tif (p_value.get_type() != Variant::DICTIONARY) {\n");
+	helpers.append("\t\treturn false;\n");
+	helpers.append("\t}\n");
+	helpers.append("\tDictionary dictionary = p_value;\n");
+	helpers.append("\tObject *key_script = dictionary.get_typed_key_script();\n");
+	helpers.append("\tObject *value_script = dictionary.get_typed_value_script();\n");
+	helpers.append("\treturn dictionary.get_typed_key_builtin() == p_key_builtin && dictionary.get_typed_key_class_name() == p_key_native && key_script == nullptr &&\n");
+	helpers.append("\t\t\tdictionary.get_typed_value_builtin() == p_value_builtin && dictionary.get_typed_value_class_name() == p_value_native && value_script == nullptr;\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Variant cast_builtin(const Variant &p_value, int64_t p_type) {\n");
+	helpers.append("\treturn UtilityFunctions::type_convert(p_value, p_type);\n");
+	helpers.append("}\n\n");
+	helpers.append("inline Variant cast_native(const Variant &p_value, const StringName &p_class) {\n");
+	helpers.append("\tif (p_value.get_type() != Variant::OBJECT && p_value.get_type() != Variant::NIL) {\n");
+	helpers.append("\t\tUtilityFunctions::push_error(\"Grit: cannot convert a non-object value to an object type.\");\n");
+	helpers.append("\t\treturn Variant();\n");
+	helpers.append("\t}\n");
+	helpers.append("\tObject *object = p_value;\n");
+	helpers.append("\tif (object == nullptr) {\n");
+	helpers.append("\t\treturn Variant();\n");
+	helpers.append("\t}\n");
+	helpers.append("\treturn object->is_class(p_class) ? p_value : Variant();\n");
 	helpers.append("}\n\n");
 	helpers.append("inline void set_named(const Variant &p_object, const StringName &p_name, const Variant &p_value) {\n");
 	helpers.append("\tobject_of(p_object)->set(p_name, p_value);\n");
