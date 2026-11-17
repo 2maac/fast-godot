@@ -17,6 +17,9 @@ public:
 	// them, so the worker thread never reads editor settings.
 	static void resolve_paths();
 	// Cached extension_api.json for this engine build; generated on first use.
+	// Falls back to the API file the pinned godot-cpp ships when the editor's
+	// data directory is not writable, and returns a path that may not exist so
+	// build() can report it.
 	static String api_json_path();
 	// Makes sure godot-cpp is present and has a static library for `p_target`.
 	static bool ensure_godot_cpp(const String &p_target, String &r_error);

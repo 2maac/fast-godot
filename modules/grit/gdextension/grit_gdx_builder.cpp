@@ -1,3 +1,4 @@
+#include "core/version.h"
 #include "grit_gdx_builder.h"
 
 #include "grit_gdx_platform.h"
@@ -66,8 +67,24 @@ String GritGdxBuilder::api_json_path() {
 		print_line(vformat("Grit: dumping the extension API to \"%s\".", path));
 		GDExtensionAPIDump::generate_extension_json_file(path);
 	}
+	cached_api = path;
+	if (FileAccess::exists(path)) {
+		return path;
+	}
+	// A read-only data directory (sandboxed editor, CI) cannot take the dump.
+	// godot-cpp ships the API it was generated from; it matches this engine's
+	// version, so the build can proceed with it instead of failing inside scons.
+	const String fallback = godot_cpp_root().path_join("gdextension").path_join(vformat("extension_api-%d-%d.json", VERSION_MAJOR, VERSION_MINOR));
+	if (FileAccess::exists(fallback)) {
+		print_line(vformat("Grit: cannot write \"%s\"; using \"%s\" instead.", path, fallback));
+		cached_api = fallback;
+		return fallback;
+	}
+	print_line(vformat("Grit: could not write the extension API to \"%s\".", path));
 	return path;
 }
+
+
 
 String GritGdxBuilder::static_library_path(const String &p_target) {
 	return godot_cpp_root().path_join("bin").path_join(vformat("libgodot-cpp.%s.%s.%s.a", grit_gdx_platform_key(), p_target, grit_gdx_arch_key()));
@@ -256,11 +273,16 @@ bool GritGdxBuilder::build(const String &p_project_directory, const String &p_li
 	if (!ensure_godot_cpp(p_target, r_error)) {
 		return false;
 	}
+	const String api = api_json_path();
+	if (!FileAccess::exists(api)) {
+		r_error = vformat("the extension API dump is missing (\"%s\" could not be written and no godot-cpp copy is available); the editor needs a writable data directory to build an extension", api);
+		return false;
+	}
 	List<String> arguments;
 	arguments.push_back("platform=" + grit_gdx_platform_key());
 	arguments.push_back("target=" + p_target);
 	arguments.push_back("arch=" + grit_gdx_arch_key());
-	arguments.push_back("custom_api_file=" + api_json_path());
+	arguments.push_back("custom_api_file=" + api);
 	arguments.push_back("godot_cpp=" + godot_cpp_root());
 	// Instances must be re-creatable for GDExtensionManager::reload_extension(),
 	// which the editor uses after a rebuild (adding a class to an extension).
