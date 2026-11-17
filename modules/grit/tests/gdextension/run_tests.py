@@ -99,17 +99,19 @@ def find_library(work):
     return ""
 
 
-def run_fixture(name, args, env_with_paths):
+def run_fixture(name, args, env_with_paths, session):
+    """Converts and runs one fixture inside the shared session directory."""
     directory = os.path.join(FIXTURES, name)
     with open(os.path.join(directory, "fixture.json"), "r", encoding="utf-8") as handle:
         fixture = json.load(handle)
     expected = read_lines(os.path.join(directory, "expected.txt"))
     forbidden = read_lines(os.path.join(directory, "forbidden.txt"))
 
-    temp = tempfile.mkdtemp(prefix="grit-gdx-%s-" % name)
-    work = os.path.join(temp, "project")
-    home = os.path.join(temp, "home")
+    work = os.path.join(session, name, "project")
     shutil.copytree(directory, work)
+    # One HOME for the whole session keeps the editor's API dump at a stable
+    # path, so godot-cpp is built once instead of once per fixture.
+    home = os.path.join(session, "home")
     os.makedirs(home, exist_ok=True)
     # The source project files are the fixture; expected/forbidden/fixture.json
     # are not part of it.
@@ -159,8 +161,6 @@ def run_fixture(name, args, env_with_paths):
 
     if args.keep:
         print("       work directory: %s" % work)
-    else:
-        shutil.rmtree(temp, ignore_errors=True)
     return not failures
 
 
@@ -191,10 +191,15 @@ def main():
         if not names:
             parser.error("unknown fixture: %s" % args.only)
 
+    session = tempfile.mkdtemp(prefix="grit-gdx-fixtures-")
     passed = 0
     for name in names:
-        if run_fixture(name, args, paths):
+        if run_fixture(name, args, paths, session):
             passed += 1
+    if args.keep:
+        print("session directory: %s" % session)
+    else:
+        shutil.rmtree(session, ignore_errors=True)
     print("%d/%d fixtures passed" % (passed, len(names)))
     return 0 if passed == len(names) else 1
 
