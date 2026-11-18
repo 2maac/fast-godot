@@ -362,6 +362,14 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// fields, and stock templates are never touched.
 	const String out_dir = ProjectSettings::get_singleton()->globalize_path("res://exports");
 	DirAccess::make_dir_recursive_absolute(out_dir);
+	// The compiled template is a per-project build artifact: hide the cache from the
+	// editor's filesystem (and therefore from the exported pack).
+	if (!FileAccess::exists(out_dir.path_join(".gdignore"))) {
+		Ref<FileAccess> ignore = FileAccess::open(out_dir.path_join(".gdignore"), FileAccess::WRITE);
+		if (ignore.is_valid()) {
+			ignore->store_string("");
+		}
+	}
 	const String final_path = _compiled_template_path(p_debug);
 	{
 		const Ref<EditorExportPreset> out_preset = get_export_preset();

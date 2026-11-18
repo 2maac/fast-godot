@@ -64,8 +64,10 @@ also what the descriptor exposes to GDScript.
 
 The export plugin keeps each project's compiled template in
 `res://exports/` (for example `exports/macos_fast.zip`), separate from the
-export destination; deleting it only forces the template to be rebuilt on the
-next export.
+export destination. It is a generated, per-project cache: deleting it only
+forces the template to be rebuilt on the next export (a few minutes). The plugin
+adds a `.gdignore` there so the editor and the exported pack skip it; add
+`exports/` to your project's `.gitignore` too.
 
 Projects converted by an older build have one extension per source. The next
 successful build copies every class into the project extension, removes the old
