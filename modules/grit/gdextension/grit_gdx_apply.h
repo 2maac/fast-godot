@@ -89,6 +89,14 @@ public:
 	// ...} when the class's archive changed since the library was built.
 	static Variant class_stale_badge(const StringName &p_class);
 
+	// A `class_name` to offer for a script that has none: the sanitized PascalCase
+	// file stem, de-collided against native classes and global script classes.
+	static String suggested_class_name(const String &p_script_path);
+	// Inserts `class_name <suggested>` at the top level (after comments and
+	// annotations, before the first statement). Returns the used name; a script
+	// that already has one is left untouched.
+	static Error add_class_name(const String &p_script_path, String &r_class_name, String &r_error);
+
 	// Scenes that instantiate a generated class (used to gate revert and the
 	// context menu).
 	static Vector<String> class_users(const String &p_class_name);

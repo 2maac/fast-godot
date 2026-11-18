@@ -620,6 +620,7 @@ void GritGdxGenerator::run_from_command_line() {
 	bool rebuild = false;
 	bool replace_script = false;
 	bool migrate = false;
+	bool add_class_name_flag = false;
 	bool build = false;
 	bool allow_partial = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
@@ -644,6 +645,8 @@ void GritGdxGenerator::run_from_command_line() {
 			replace_script = true;
 		} else if (argument == "--grit-gdx-migrate") {
 			migrate = true;
+		} else if (argument == "--grit-gdx-add-class-name") {
+			add_class_name_flag = true;
 		} else if (argument == "--grit-gdx-class") {
 			revert_class = next_value();
 		} else if (argument == "--grit-gdx-extension") {
@@ -704,8 +707,19 @@ void GritGdxGenerator::run_from_command_line() {
 			report = "Grit: adding a class needs --grit-gdx-extension.";
 			error = ERR_INVALID_PARAMETER;
 		} else {
-			GritGdxApply::Result result;
-			error = GritGdxApply::run(add_script, extension, scene, node_path, build, allow_partial, result, report);
+			if (add_class_name_flag) {
+				String class_name;
+				String add_error;
+				const Error add_status = GritGdxApply::add_class_name(add_script, class_name, add_error);
+				if (add_status != OK) {
+					report = "Grit: " + add_error;
+					error = add_status;
+				}
+			}
+			if (error == OK) {
+				GritGdxApply::Result result;
+				error = GritGdxApply::run(add_script, extension, scene, node_path, build, allow_partial, result, report);
+			}
 		}
 	} else {
 		return;

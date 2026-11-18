@@ -750,6 +750,70 @@ Error GritGdxApply::run(const String &p_script_path, const String &p_extension_d
 }
 
 // ---------------------------------------------------------------------------
+// class_name insertion
+// ---------------------------------------------------------------------------
+
+String GritGdxApply::suggested_class_name(const String &p_script_path) {
+	const String base = GritGdxGenerator::suggested_class_name(p_script_path);
+	String candidate = base;
+	int suffix = 2;
+	while (ClassDB::class_exists(candidate) || ScriptServer::is_global_class(candidate)) {
+		candidate = base + itos(suffix);
+		suffix++;
+	}
+	return candidate;
+}
+
+Error GritGdxApply::add_class_name(const String &p_script_path, String &r_class_name, String &r_error) {
+	Error error = OK;
+	const String text = FileAccess::get_file_as_string(p_script_path, &error);
+	if (error != OK) {
+		r_error = vformat("could not read \"%s\"", p_script_path);
+		return error;
+	}
+	PackedStringArray lines = text.split("\n");
+	// A top-level `class_name` already present: nothing to do, report its name.
+	for (const String &line : lines) {
+		const String stripped = line.strip_edges();
+		if (stripped.begins_with("class_name ")) {
+			r_class_name = stripped.substr(11).strip_edges();
+			return OK;
+		}
+	}
+	// Insert after the leading comments and annotations, before the first
+	// statement (usually `extends`, which has to come after `class_name`).
+	int insert_at = lines.size();
+	for (int i = 0; i < lines.size(); i++) {
+		const String stripped = lines[i].strip_edges();
+		if (stripped.is_empty() || stripped.begins_with("#") || stripped.begins_with("@")) {
+			continue;
+		}
+		insert_at = i;
+		break;
+	}
+	const String class_name = GritGdxApply::suggested_class_name(p_script_path);
+	lines.insert(insert_at, "class_name " + class_name);
+	StringBuilder output;
+	for (int i = 0; i < lines.size(); i++) {
+		if (i > 0) {
+			output.append("\n");
+		}
+		output.append(lines[i]);
+	}
+	DirAccess::make_dir_recursive_absolute(p_script_path.get_base_dir());
+	Ref<FileAccess> file = FileAccess::open(p_script_path, FileAccess::WRITE);
+	if (file.is_null()) {
+		r_error = vformat("could not write \"%s\"", p_script_path);
+		return ERR_CANT_CREATE;
+	}
+	file->store_string(output.as_string());
+	// The cached compiled script predates the new class_name.
+	GDScriptCache::clear();
+	r_class_name = class_name;
+	return OK;
+}
+
+// ---------------------------------------------------------------------------
 // legacy (.gde) archive migration
 // ---------------------------------------------------------------------------
 

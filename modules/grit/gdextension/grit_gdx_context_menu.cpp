@@ -258,7 +258,11 @@ void GritGdxContextMenuPlugin::_make_gdextension(const Array &p_selection) {
 		return;
 	}
 	const Ref<GDScript> script = node->get_script();
-	const String default_name = GritGdxGenerator::snake_case(String(script->get_global_name()).is_empty() ? script->get_path().get_file().get_basename() : String(script->get_global_name()));
+	if (script->get_global_name().is_empty()) {
+		_confirm_add_class_name(script->get_path(), scene, path, GritGdxApply::suggested_class_name(script->get_path()));
+		return;
+	}
+	const String default_name = GritGdxGenerator::snake_case(String(script->get_global_name()));
 	_prompt_extension_name(script->get_path(), scene, path, default_name);
 }
 
@@ -405,6 +409,42 @@ void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const S
 	job.instantiate();
 	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path, p_replace_script);
 	_start_job();
+}
+
+void GritGdxContextMenuPlugin::_confirm_add_class_name(const String &p_script_path, const String &p_scene_path, const String &p_node_path, const String &p_class_name) {
+	if (confirm_dialog) {
+		confirm_dialog->queue_free();
+		confirm_dialog = nullptr;
+	}
+	confirm_dialog = memnew(ConfirmationDialog);
+	confirm_dialog->set_title("Make GDExtension");
+	confirm_dialog->set_ok_button_text("Add and Continue");
+	confirm_dialog->set_min_size(Vector2i(520, 0));
+
+	VBoxContainer *box = memnew(VBoxContainer);
+	confirm_dialog->add_child(box);
+	Label *label = memnew(Label);
+	label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	label->set_custom_minimum_size(Vector2i(500, 0));
+	label->set_text(vformat("\"%s\" has no class_name, and conversion turns it into one. Add `class_name %s` to the script and continue?", p_script_path, p_class_name));
+	box->add_child(label);
+
+	EditorNode::get_singleton()->get_gui_base()->add_child(confirm_dialog);
+	confirm_dialog->popup_centered();
+	confirm_dialog->connect(SceneStringName(confirmed), callable_mp(this, &GritGdxContextMenuPlugin::_add_class_name_and_continue).bind(p_script_path, p_scene_path, p_node_path));
+}
+
+void GritGdxContextMenuPlugin::_add_class_name_and_continue(const String &p_script_path, const String &p_scene_path, const String &p_node_path) {
+	String class_name;
+	String add_error;
+	if (GritGdxApply::add_class_name(p_script_path, class_name, add_error) != OK) {
+		_show_message("Grit: " + add_error);
+		return;
+	}
+	if (EditorFileSystem::get_singleton()) {
+		EditorFileSystem::get_singleton()->scan_changes();
+	}
+	_prompt_extension_name(p_script_path, p_scene_path, p_node_path, GritGdxGenerator::snake_case(class_name));
 }
 
 void GritGdxContextMenuPlugin::_confirm_replace(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, const String &p_script_path, const String &p_archive_path) {
