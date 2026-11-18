@@ -549,6 +549,10 @@ void GritGdxContextMenuPlugin::_convert_back(const Array &p_selection) {
 		print_line("Grit: could not find the extension that owns \"" + class_name + "\".");
 		return;
 	}
+	// Main thread: the revert itself runs on a worker and must not touch the
+	// script editor's control tree.
+	GritGdxApply::close_editor_script_tabs(target.archived_script);
+	GritGdxApply::close_editor_script_tabs(target.script_path);
 	_start_revert(class_name, extension, scene, path);
 }
 

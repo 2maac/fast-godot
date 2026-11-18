@@ -91,6 +91,11 @@ public:
 	// prepare + build + finish, for the command line.
 	static Error run(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, bool p_allow_partial, Result &r_result, String &r_report);
 
+	// Main thread only. Closes the script editor tab for a path that a conversion
+	// or revert is about to rename. No-op outside the editor; must not be called
+	// from a worker thread (revert runs on one).
+	static void close_editor_script_tabs(const String &p_path);
+
 	// Rebuilding an already converted class from its `.gde` archive. The archive
 	// is temporarily written to the original `.gd` path so the recorder can
 	// compile it (the archive itself is intentionally never compiled); the live

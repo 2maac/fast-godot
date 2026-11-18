@@ -11,6 +11,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
+#include "core/os/thread.h"
 
 #include "editor/script/script_editor_plugin.h"
 #include "core/io/file_access.h"
@@ -154,9 +155,19 @@ static Error write_scene(const String &p_scene_path, const PackedStringArray &p_
 }
 
 // A file that is about to be renamed must not stay open in the script editor: the
-// editor would reload it mid-rename and report a missing script.
-static void close_script_tab(const String &p_path) {
+// editor would reload it mid-rename and report a missing script. The script
+// editor is a control tree, so this only works on the main thread; the revert
+// runs on a worker, which is why its caller closes the tabs before starting it.
+void GritGdxApply::close_editor_script_tabs(const String &p_path) {
 #ifdef TOOLS_ENABLED
+	// The script editor is a control tree: calling into it from a worker thread
+	// makes `get_tab_control()` fail at runtime. Revert runs on a worker, so its
+	// caller does this before starting it; the guard makes a regression loud
+	// instead of an error spam from inside the editor.
+	if (!Thread::is_main_thread()) {
+		ERR_PRINT("Grit: close_editor_script_tabs() must be called from the main thread.");
+		return;
+	}
 	if (ScriptEditor *editor = ScriptEditor::get_singleton()) {
 		editor->close_file(p_path);
 	}
@@ -681,7 +692,7 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	const int remaining = count_script_users(p_class.script_path);
 	const String archived = p_class.script_path.get_basename() + ".gde";
 	if (archived != p_class.script_path && FileAccess::exists(p_class.script_path)) {
-		close_script_tab(p_class.script_path);
+		close_editor_script_tabs(p_class.script_path);
 		if (FileAccess::exists(archived)) {
 			DirAccess::remove_absolute(archived);
 		}
@@ -967,8 +978,6 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 	// Restore the script from the archive when it was archived. Close the tabs
 	// first: both paths change meaning during the rename.
 	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && !FileAccess::exists(target.script_path)) {
-		close_script_tab(target.archived_script);
-		close_script_tab(target.script_path);
 		const Error rename_error = DirAccess::rename_absolute(target.archived_script, target.script_path);
 		if (rename_error != OK) {
 			r_report = vformat("Grit: could not restore \"%s\".", target.script_path);
