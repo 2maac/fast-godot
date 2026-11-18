@@ -1,4 +1,4 @@
-class_name PlainMain
+@gdextension_class_name("PlainMain")
 extends Node2D
 
 signal counted(value)

@@ -258,11 +258,15 @@ void GritGdxContextMenuPlugin::_make_gdextension(const Array &p_selection) {
 		return;
 	}
 	const Ref<GDScript> script = node->get_script();
-	if (script->get_global_name().is_empty()) {
+	if (!script->get_global_name().is_empty()) {
+		_show_message(vformat("Grit: \"%s\" declares class_name \"%s\".\n\nRemove it and name the generated class with @gdextension_class_name(\"Name\") instead.", script->get_path(), script->get_global_name()));
+		return;
+	}
+	if (script->get_gdextension_class_name().is_empty()) {
 		_confirm_add_class_name(script->get_path(), scene, path, GritGdxApply::suggested_class_name(script->get_path()));
 		return;
 	}
-	const String default_name = GritGdxGenerator::snake_case(String(script->get_global_name()));
+	const String default_name = GritGdxGenerator::snake_case(script->get_gdextension_class_name());
 	_prompt_extension_name(script->get_path(), scene, path, default_name);
 }
 
@@ -426,7 +430,7 @@ void GritGdxContextMenuPlugin::_confirm_add_class_name(const String &p_script_pa
 	Label *label = memnew(Label);
 	label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
 	label->set_custom_minimum_size(Vector2i(500, 0));
-	label->set_text(vformat("\"%s\" has no class_name, and conversion turns it into one. Add `class_name %s` to the script and continue?", p_script_path, p_class_name));
+	label->set_text(vformat("\"%s\" has no @gdextension_class_name annotation. Add @gdextension_class_name(\"%s\") to the script and continue?", p_script_path, p_class_name));
 	box->add_child(label);
 
 	EditorNode::get_singleton()->get_gui_base()->add_child(confirm_dialog);

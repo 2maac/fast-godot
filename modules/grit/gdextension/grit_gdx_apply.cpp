@@ -536,10 +536,6 @@ Error GritGdxApply::plan(const String &p_script_path, Plan &r_plan, String &r_er
 		r_error = vformat("could not load \"%s\"", script_path);
 		return load_error != OK ? load_error : ERR_CANT_OPEN;
 	}
-	if (script->get_global_name().is_empty()) {
-		r_error = vformat("\"%s\" has no class_name; add one before converting, for example `class_name %s`.", script_path, GritGdxGenerator::suggested_class_name(script_path));
-		return ERR_INVALID_PARAMETER;
-	}
 	GritGdxClass klass;
 	// No extension directory: class-name collisions inside the target extension
 	// are a naming detail, not a reason for a method to stay behind.
@@ -574,13 +570,6 @@ Error GritGdxApply::prepare(const String &p_script_path, const String &p_extensi
 	r_result.scene_path = p_scene_path;
 	r_result.node_path = p_node_path;
 
-	// A conversion is class-wide: the script's global class becomes the generated
-	// class, so the script must own one. Without it the generated name would be
-	// derived from the path and could not replace the script's type references.
-	if (script->get_global_name().is_empty()) {
-		r_report = vformat("Grit: \"%s\" has no class_name. Add one before converting, for example `class_name %s`.", script_path, GritGdxGenerator::suggested_class_name(script_path));
-		return ERR_INVALID_PARAMETER;
-	}
 
 	error = GritGdxGenerator::generate_class(directory, script_path, r_class, r_report);
 	if (error != OK) {
@@ -753,6 +742,98 @@ Error GritGdxApply::run(const String &p_script_path, const String &p_extension_d
 // class_name insertion
 // ---------------------------------------------------------------------------
 
+// The value of a `@gdextension_class_name("X")` annotation, empty when absent.
+static String gdextension_class_name_of(const String &p_text) {
+	for (const String &line : p_text.split("\n")) {
+		const String stripped = line.strip_edges();
+		if (!stripped.begins_with("@gdextension_class_name(")) {
+			continue;
+		}
+		const int open = stripped.find("(");
+		const int close = stripped.rfind(")");
+		if (open < 0 || close <= open) {
+			return String();
+		}
+		String argument = stripped.substr(open + 1, close - open - 1).strip_edges();
+		if (argument.length() >= 2 && ((argument.begins_with("\"") && argument.ends_with("\"")) || (argument.begins_with("'") && argument.ends_with("'")))) {
+			argument = argument.substr(1, argument.length() - 2);
+		}
+		return argument;
+	}
+	return String();
+}
+
+// Whether the source still declares the (now rejected) `class_name`.
+static bool has_class_name(const String &p_text) {
+	for (const String &line : p_text.split("\n")) {
+		if (line.strip_edges().begins_with("class_name ")) {
+			return true;
+		}
+	}
+	return false;
+}
+
+static String strip_class_name_line(const String &p_text) {
+	PackedStringArray lines = p_text.split("\n");
+	Vector<int> dropped;
+	for (int i = 0; i < lines.size(); i++) {
+		if (lines[i].strip_edges().begins_with("class_name ")) {
+			dropped.push_back(i);
+			break;
+		}
+	}
+	StringBuilder output;
+	bool first = true;
+	for (int i = 0; i < lines.size(); i++) {
+		if (dropped.has(i)) {
+			continue;
+		}
+		if (!first) {
+			output.append("\n");
+		}
+		output.append(lines[i]);
+		first = false;
+	}
+	return output.as_string();
+}
+
+// Inserts the annotation after leading comments/annotations and before the first
+// statement, unless the source already has one.
+static String insert_annotation(const String &p_text, const String &p_class_name) {
+	if (!gdextension_class_name_of(p_text).is_empty()) {
+		return p_text;
+	}
+	PackedStringArray lines = p_text.split("\n");
+	int insert_at = lines.size();
+	for (int i = 0; i < lines.size(); i++) {
+		const String stripped = lines[i].strip_edges();
+		if (stripped.is_empty() || stripped.begins_with("#") || stripped.begins_with("@")) {
+			continue;
+		}
+		insert_at = i;
+		break;
+	}
+	lines.insert(insert_at, "@gdextension_class_name(\"" + p_class_name + "\")");
+	StringBuilder output;
+	for (int i = 0; i < lines.size(); i++) {
+		if (i > 0) {
+			output.append("\n");
+		}
+		output.append(lines[i]);
+	}
+	return output.as_string();
+}
+
+static Error write_text_file(const String &p_path, const String &p_text) {
+	DirAccess::make_dir_recursive_absolute(p_path.get_base_dir());
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);
+	if (file.is_null()) {
+		return ERR_CANT_CREATE;
+	}
+	file->store_string(p_text);
+	return OK;
+}
+
 String GritGdxApply::suggested_class_name(const String &p_script_path) {
 	const String base = GritGdxGenerator::suggested_class_name(p_script_path);
 	String candidate = base;
@@ -771,43 +852,21 @@ Error GritGdxApply::add_class_name(const String &p_script_path, String &r_class_
 		r_error = vformat("could not read \"%s\"", p_script_path);
 		return error;
 	}
-	PackedStringArray lines = text.split("\n");
-	// A top-level `class_name` already present: nothing to do, report its name.
-	for (const String &line : lines) {
-		const String stripped = line.strip_edges();
-		if (stripped.begins_with("class_name ")) {
-			r_class_name = stripped.substr(11).strip_edges();
-			return OK;
-		}
+	if (has_class_name(text)) {
+		r_error = vformat("\"%s\" declares class_name; remove it and name the generated class with @gdextension_class_name(...).", p_script_path);
+		return ERR_INVALID_PARAMETER;
 	}
-	// Insert after the leading comments and annotations, before the first
-	// statement (usually `extends`, which has to come after `class_name`).
-	int insert_at = lines.size();
-	for (int i = 0; i < lines.size(); i++) {
-		const String stripped = lines[i].strip_edges();
-		if (stripped.is_empty() || stripped.begins_with("#") || stripped.begins_with("@")) {
-			continue;
-		}
-		insert_at = i;
-		break;
+	const String existing = gdextension_class_name_of(text);
+	if (!existing.is_empty()) {
+		r_class_name = existing;
+		return OK;
 	}
 	const String class_name = GritGdxApply::suggested_class_name(p_script_path);
-	lines.insert(insert_at, "class_name " + class_name);
-	StringBuilder output;
-	for (int i = 0; i < lines.size(); i++) {
-		if (i > 0) {
-			output.append("\n");
-		}
-		output.append(lines[i]);
-	}
-	DirAccess::make_dir_recursive_absolute(p_script_path.get_base_dir());
-	Ref<FileAccess> file = FileAccess::open(p_script_path, FileAccess::WRITE);
-	if (file.is_null()) {
+	if (write_text_file(p_script_path, insert_annotation(text, class_name)) != OK) {
 		r_error = vformat("could not write \"%s\"", p_script_path);
 		return ERR_CANT_CREATE;
 	}
-	file->store_string(output.as_string());
-	// The cached compiled script predates the new class_name.
+	// The cached compiled script predates the new annotation.
 	GDScriptCache::clear();
 	r_class_name = class_name;
 	return OK;
@@ -960,6 +1019,14 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 			}
 			if (FileAccess::exists(legacy + ".uid")) {
 				DirAccess::rename_absolute(legacy + ".uid", archived + ".uid");
+			}
+			// Archives used to keep the script's class_name; the converter now expects
+			// the @gdextension_class_name annotation instead.
+			Error read_error = OK;
+			const String text = FileAccess::get_file_as_string(archived, &read_error);
+			if (read_error == OK && gdextension_class_name_of(text).is_empty()) {
+				const String name = entry.class_name.is_empty() ? GritGdxApply::suggested_class_name(entry.script_path) : entry.class_name;
+				write_text_file(archived, insert_annotation(strip_class_name_line(text), name));
 			}
 
 			// The legacy archive was attached to the class's nodes; detach them.

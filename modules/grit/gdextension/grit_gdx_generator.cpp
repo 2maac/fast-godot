@@ -116,30 +116,9 @@ String GritGdxGenerator::suggested_class_name(const String &p_script_path) {
 }
 
 String GritGdxGenerator::class_name_for(const Ref<GDScript> &p_script) {
-	const StringName global_name = p_script->get_global_name();
-	String candidate = global_name.is_empty() ? pascal_case(p_script->get_path().get_file().get_basename()) : sanitize_identifier(String(global_name));
-	// Only classes the engine owns force a new name. A previously generated
-	// extension class (API_EXTENSION) must keep its name, otherwise converting
-	// twice in one editor session would produce `ControlNative2`.
-	const auto is_engine_class = [](const StringName &p_name) {
-		if (!ClassDB::class_exists(p_name)) {
-			return false;
-		}
-		const ClassDB::APIType api = ClassDB::get_api_type(p_name);
-		return api != ClassDB::API_EXTENSION && api != ClassDB::API_EDITOR_EXTENSION;
-	};
-	if (!is_engine_class(candidate)) {
-		return candidate;
-	}
-	// `control.gd` extending Control would otherwise generate
-	// `class Control : public Control`.
-	const String base = candidate;
-	int suffix = 1;
-	while (is_engine_class(candidate)) {
-		candidate = suffix == 1 ? base + "Native" : base + "Native" + itos(suffix);
-		suffix++;
-	}
-	return candidate;
+	// The annotation is validated in collect(): non-empty, a valid identifier and
+	// not hiding a native class.
+	return sanitize_identifier(p_script->get_gdextension_class_name());
 }
 
 Error GritGdxGenerator::write_file(const String &p_path, const String &p_content) {
@@ -158,6 +137,31 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 	if (error != OK || script.is_null()) {
 		r_error = vformat("could not load \"%s\"", path);
 		return error != OK ? error : ERR_CANT_OPEN;
+	}
+
+	// Grit conversions need an explicit name and no global class: the generated
+	// class is a native class, and a GDScript `class_name` with the same name
+	// would hide it (and a plain class_name would make the script a global type
+	// that the conversion is about to replace).
+	if (!script->get_global_name().is_empty()) {
+		r_error = vformat("\"%s\" declares class_name \"%s\"; remove it and name the generated class with @gdextension_class_name(\"%s\") instead.", path, script->get_global_name(), suggested_class_name(path));
+		return ERR_INVALID_PARAMETER;
+	}
+	const String annotation_name = script->get_gdextension_class_name();
+	if (annotation_name.is_empty()) {
+		r_error = vformat("\"%s\" has no @gdextension_class_name(\"Name\") annotation; add one before converting (for example @gdextension_class_name(\"%s\")).", path, suggested_class_name(path));
+		return ERR_INVALID_PARAMETER;
+	}
+	if (!annotation_name.is_valid_identifier()) {
+		r_error = vformat("@gdextension_class_name(\"%s\") in \"%s\" is not a valid identifier.", annotation_name, path);
+		return ERR_INVALID_PARAMETER;
+	}
+	if (ClassDB::class_exists(annotation_name)) {
+		const ClassDB::APIType api = ClassDB::get_api_type(annotation_name);
+		if (api != ClassDB::API_EXTENSION && api != ClassDB::API_EDITOR_EXTENSION) {
+			r_error = vformat("@gdextension_class_name(\"%s\") in \"%s\" hides the native class \"%s\"; choose another name.", annotation_name, path, annotation_name);
+			return ERR_INVALID_PARAMETER;
+		}
 	}
 
 	GritScriptRecording recording(script.ptr());

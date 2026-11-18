@@ -1,4 +1,4 @@
-class_name LambdaMain
+@gdextension_class_name("LambdaMain")
 extends Node2D
 
 signal hit(value)

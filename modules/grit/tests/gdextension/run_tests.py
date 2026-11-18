@@ -158,8 +158,9 @@ def script_class_name(directory, fixture):
         with open(os.path.join(directory, script[len("res://") :]), "r", encoding="utf-8") as handle:
             for line in handle:
                 stripped = line.strip()
-                if stripped.startswith("class_name "):
-                    return stripped.split()[1]
+                if stripped.startswith("@gdextension_class_name("):
+                    value = stripped[len("@gdextension_class_name(") :].rstrip(")")
+                    return value.strip().strip('"').strip("'")
     except OSError:
         return ""
     return ""
