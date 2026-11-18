@@ -1470,7 +1470,7 @@ void ScriptEditor::_notification(int p_what) {
 
 			help_search->set_button_icon(get_editor_theme_icon(SNAME("HelpSearch")));
 			site_search->set_button_icon(get_editor_theme_icon(SNAME("ExternalLink")));
-			build_gde->set_button_icon(get_editor_theme_icon(SNAME("GritBuildGDE")));
+			build_gde->set_button_icon(get_editor_theme_icon(SNAME("Tools")));
 
 			if (is_layout_rtl()) {
 				script_forward->set_button_icon(get_editor_theme_icon(SNAME("Back")));
