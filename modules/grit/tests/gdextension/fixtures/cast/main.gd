@@ -1,3 +1,4 @@
+class_name CastMain
 extends Node2D
 
 const HelperScript = preload("res://helper.gd")

@@ -1,3 +1,4 @@
+class_name LambdaMain
 extends Node2D
 
 signal hit(value)

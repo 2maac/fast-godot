@@ -554,6 +554,16 @@ String GritGdxApply::Plan::skipped_text() const {
 
 Error GritGdxApply::plan(const String &p_script_path, Plan &r_plan, String &r_error) {
 	const String script_path = p_script_path.begins_with("res://") ? p_script_path : ProjectSettings::get_singleton()->localize_path(p_script_path);
+	Error load_error = OK;
+	Ref<GDScript> script = GDScriptCache::get_full_script(script_path, load_error);
+	if (load_error != OK || script.is_null()) {
+		r_error = vformat("could not load \"%s\"", script_path);
+		return load_error != OK ? load_error : ERR_CANT_OPEN;
+	}
+	if (script->get_global_name().is_empty()) {
+		r_error = vformat("\"%s\" has no class_name; add one before converting, for example `class_name %s`.", script_path, GritGdxGenerator::suggested_class_name(script_path));
+		return ERR_INVALID_PARAMETER;
+	}
 	GritGdxClass klass;
 	// No extension directory: class-name collisions inside the target extension
 	// are a naming detail, not a reason for a method to stay behind.
@@ -588,11 +598,11 @@ Error GritGdxApply::prepare(const String &p_script_path, const String &p_extensi
 	r_result.scene_path = p_scene_path;
 	r_result.node_path = p_node_path;
 
-	// A script shared by several nodes keeps living as a script: if it declares a
-	// class name, that name would hide the generated class, so refuse.
-	const int users = count_script_users(script_path);
-	if (users > 1 && !script->get_global_name().is_empty()) {
-		r_report = vformat("Grit: \"%s\" is attached to %d nodes and declares class_name \"%s\"; remove the class_name or give each node its own script.", script_path, users, script->get_global_name());
+	// A conversion is class-wide: the script's global class becomes the generated
+	// class, so the script must own one. Without it the generated name would be
+	// derived from the path and could not replace the script's type references.
+	if (script->get_global_name().is_empty()) {
+		r_report = vformat("Grit: \"%s\" has no class_name. Add one before converting, for example `class_name %s`.", script_path, GritGdxGenerator::suggested_class_name(script_path));
 		return ERR_INVALID_PARAMETER;
 	}
 
@@ -658,32 +668,26 @@ Error GritGdxApply::build(const String &p_extension_directory, const String &p_t
 }
 
 Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_result, String &r_report) {
-	// Rewrite the node(s) that used the script.
-	if (!r_result.scene_path.is_empty()) {
-		bool rewritten = false;
+	// A conversion is class-wide: every node in every scene that uses the script
+	// switches to the generated class. The archive replaces the script for all of
+	// them, so converting just the clicked node would leave the others on a `.gd`
+	// that is about to be renamed.
+	bool rewritten = false;
+	for (const String &scene : collect_scenes("res://")) {
+		bool scene_rewritten = false;
 		String rewrite_error;
-		const Error rewrite_status = convert_node(r_result.scene_path, r_result.node_path, p_class.script_path, p_class.class_name, rewritten, rewrite_error);
+		const Error rewrite_status = convert_node(scene, String(), p_class.script_path, p_class.class_name, scene_rewritten, rewrite_error);
 		if (rewrite_status != OK || !rewrite_error.is_empty()) {
-			r_report = r_report + "\nGrit: " + (rewrite_error.is_empty() ? "could not rewrite the scene" : rewrite_error);
+			r_report = r_report + "\nGrit: " + (rewrite_error.is_empty() ? "could not rewrite a scene" : rewrite_error);
 			return rewrite_status == OK ? ERR_CANT_CREATE : rewrite_status;
 		}
-		r_result.node_rewritten = rewritten;
-		if (!rewritten) {
-			r_report = r_report + "\nGrit: the node was not rewritten (it may already be a generated class).";
-			return ERR_CANT_CREATE;
-		}
-	} else {
-		// Command line without a node: rewrite every node using the script.
-		for (const String &scene : collect_scenes("res://")) {
-			bool rewritten = false;
-			String rewrite_error;
-			const Error rewrite_status = convert_node(scene, String(), p_class.script_path, p_class.class_name, rewritten, rewrite_error);
-			if (rewrite_status != OK) {
-				r_report = r_report + "\nGrit: " + rewrite_error;
-				return rewrite_status;
-			}
-			r_result.node_rewritten = r_result.node_rewritten || rewritten;
-		}
+		rewritten = rewritten || scene_rewritten;
+	}
+	r_result.node_rewritten = rewritten;
+	if (!rewritten) {
+		// A class can be converted without being used by a scene node yet: the
+		// archive is the source and scripts refer to the class by name.
+		r_report = r_report + "\nGrit: no scene node uses this class; only the archive and the library were written.";
 	}
 
 	// The converted node now references the archive, so it has to exist. When no
@@ -995,16 +999,42 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 		DirAccess::remove_absolute(target.archived_script + ".uid");
 	}
 
-	// Put the node back on the script.
-	if (!p_scene_path.is_empty() && !p_node_path.is_empty()) {
-		String restore_error;
-		const Error restore_status = restore_node(p_scene_path, p_node_path, target.script_path, target.base_type, restore_error);
-		if (restore_status != OK) {
-			r_report = "Grit: " + restore_error;
-			return restore_status;
+	// A conversion is class-wide, so Convert Back restores every node of the class
+	// in every scene. Collect the paths first: restore_node() inserts an
+	// ExtResource line, which shifts later line numbers.
+	bool restored = false;
+	for (const String &scene : collect_scenes("res://")) {
+		Error read_error = OK;
+		const String text = FileAccess::get_file_as_string(scene, &read_error);
+		if (read_error != OK) {
+			continue;
 		}
-		r_result.node_rewritten = true;
+		const PackedStringArray lines = text.split("\n");
+		Vector<String> class_nodes;
+		for (const SceneNodeInfo &node : scene_nodes(lines)) {
+			const String line = lines[node.line];
+			const int type_position = line.find("type=\"");
+			if (type_position < 0) {
+				continue;
+			}
+			const int value_start = type_position + 6;
+			const int value_end = line.find("\"", value_start);
+			if (value_end < 0 || line.substr(value_start, value_end - value_start) != p_class_name) {
+				continue;
+			}
+			class_nodes.push_back(node_scene_path(node));
+		}
+		for (const String &node_path : class_nodes) {
+			String restore_error;
+			const Error restore_status = restore_node(scene, node_path, target.script_path, target.base_type, restore_error);
+			if (restore_status != OK) {
+				r_report = "Grit: " + restore_error;
+				return restore_status;
+			}
+			restored = true;
+		}
 	}
+	r_result.node_rewritten = restored;
 
 	// Named extension: drop the class only when nothing else instantiates it.
 	Vector<String> users = find_class_users(p_class_name);

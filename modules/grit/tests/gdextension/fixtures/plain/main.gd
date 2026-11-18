@@ -1,3 +1,4 @@
+class_name PlainMain
 extends Node2D
 
 signal counted(value)

@@ -32,7 +32,6 @@
 #include "editor/editor_data.h"
 #include "core/config/project_settings.h"
 #include "core/extension/gdextension_manager.h"
-#include "editor/file_system/editor_file_system.h"
 #include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "scene/main/timer.h"
@@ -475,6 +474,11 @@ void GritGdxContextMenuPlugin::_poll() {
 			if (status == GDExtensionManager::LOAD_STATUS_OK) {
 				_remember_descriptor(descriptor);
 			}
+		}
+		// The converted class replaces the script's global class name; rescan before
+		// the scene reload so the GDScript class cache drops the old `.gd`.
+		if (EditorFileSystem::get_singleton()) {
+			EditorFileSystem::get_singleton()->scan_changes();
 		}
 		if (!active_scene.is_empty() && EditorNode::get_singleton()) {
 			EditorData &data = EditorNode::get_editor_data();

@@ -24,6 +24,9 @@ public:
 	static void run_from_command_line();
 
 	static String class_name_for(const Ref<GDScript> &p_script);
+	// `class_name` to suggest for a script that has none (sanitized PascalCase of
+	// its file name).
+	static String suggested_class_name(const String &p_script_path);
 	static String snake_case(const String &p_name);
 	static String class_file_stem(const String &p_class_name);
 	static LocalVector<GritGdxSkipped> collect_skipped(const GritGdxClass &p_class);

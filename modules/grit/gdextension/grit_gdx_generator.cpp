@@ -107,6 +107,10 @@ String GritGdxGenerator::pascal_case(const String &p_text) {
 	return sanitize_identifier(out);
 }
 
+String GritGdxGenerator::suggested_class_name(const String &p_script_path) {
+	return sanitize_identifier(pascal_case(p_script_path.get_file().get_basename()));
+}
+
 String GritGdxGenerator::class_name_for(const Ref<GDScript> &p_script) {
 	const StringName global_name = p_script->get_global_name();
 	String candidate = global_name.is_empty() ? pascal_case(p_script->get_path().get_file().get_basename()) : sanitize_identifier(String(global_name));
