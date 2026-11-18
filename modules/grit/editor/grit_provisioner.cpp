@@ -137,6 +137,20 @@ static String _engine_root_dir() {
 	return parent.path_join("engine").path_join(commit.is_empty() ? String("unknown") : commit);
 }
 
+// The tree the editor was built from (a source checkout/staged build): use it
+// directly instead of fetching the same commit again, which is what made every
+// relaunch re-download the source for a staged editor.
+static String _local_engine_tree() {
+	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
+	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
+		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools").path_join("grit_build.py"))) {
+			return dir;
+		}
+		dir = dir.get_base_dir();
+	}
+	return String();
+}
+
 static bool _engine_present(const String &p_dir) {
 	return FileAccess::exists(p_dir.path_join("SConstruct")) &&
 			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
@@ -636,6 +650,11 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	const String configured = configured_source();
 	if (!configured.is_empty()) {
 		return configured;
+	}
+	const String local = _local_engine_tree();
+	if (!local.is_empty()) {
+		print_line("Grit: using the engine source next to the editor at " + local);
+		return local;
 	}
 	const String existing = _engine_tree_at(_engine_root_dir());
 	if (!existing.is_empty()) {
