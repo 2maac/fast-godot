@@ -240,6 +240,8 @@ public:
 private:
 	friend class EditorSceneTabs;
 
+	Vector<Callable> class_badge_providers;
+
 	enum {
 		MAX_INIT_CALLBACKS = 128,
 		MAX_BUILD_CALLBACKS = 128,
@@ -964,6 +966,11 @@ public:
 	StringName get_object_custom_type_name(const Object *p_object) const;
 	Ref<Texture2D> get_object_icon(const Object *p_object, const String &p_fallback = "");
 	Ref<Texture2D> get_class_icon(const String &p_class, const String &p_fallback = "");
+	// Plugins can decorate node classes in the scene tree. A provider receives the
+	// class name and returns a Dictionary with "icon" (theme icon name, drawn as an
+	// overlay on the node's icon) and optionally "tooltip". Empty = no badge.
+	void add_class_badge_provider(const Callable &p_provider);
+	Dictionary get_class_badge(const StringName &p_class) const;
 
 	bool is_object_of_custom_type(const Object *p_object, const StringName &p_class);
 

@@ -702,7 +702,8 @@ static String _autotest_state(Node *p_node) {
 		return "no node";
 	}
 	const Ref<Script> script = p_node->get_script();
-	return vformat("class=%s script=%s", p_node->get_class_name(), script.is_valid() ? script->get_path() : String("<none>"));
+	const Dictionary badge = EditorNode::get_singleton()->get_class_badge(p_node->get_class_name());
+	return vformat("class=%s script=%s badge=%s", p_node->get_class_name(), script.is_valid() ? script->get_path() : String("<none>"), badge.get("icon", StringName("<none>")));
 }
 
 void GritGdxContextMenuPlugin::run_autotest(const String &p_scene_path) {
@@ -793,6 +794,28 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 				return;
 			}
 			Node *live_child = reloaded->get_node_or_null(NodePath("Child"));
+			// Touch the archives so the class badge goes stale, and print what the
+			// scene tree would draw.
+			const auto make_stale = [](Node *p_node) {
+				GritGdxApply::RevertTarget target;
+				if (!p_node || !GritGdxApply::find_revert_target(p_node->get_class_name(), target) || !FileAccess::exists(target.archived_script)) {
+					return;
+				}
+				Error error = OK;
+				const String text = FileAccess::get_file_as_string(target.archived_script, &error);
+				if (error != OK) {
+					return;
+				}
+				Ref<FileAccess> file = FileAccess::open(target.archived_script, FileAccess::WRITE);
+				if (file.is_valid()) {
+					file->store_string(text + "# made stale by the autotest\n");
+				}
+			};
+			make_stale(reloaded);
+			make_stale(live_child);
+			const Dictionary root_badge = EditorNode::get_singleton()->get_class_badge(reloaded->get_class_name());
+			const Dictionary child_badge = live_child ? EditorNode::get_singleton()->get_class_badge(live_child->get_class_name()) : Dictionary();
+			print_line(vformat("Grit autotest [7b] stale badge: root=%s child=%s", root_badge.get("icon", StringName("<none>")), child_badge.get("icon", StringName("<none>"))));
 			selection->clear();
 			selection->add_node(live_child ? live_child : reloaded);
 			print_line("Grit autotest [8] converting the child back");

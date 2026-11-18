@@ -814,6 +814,52 @@ static int detach_archive_assignments(const String &p_scene_path, const String &
 	return detached;
 }
 
+Variant GritGdxApply::class_stale_badge(const StringName &p_class) {
+	struct CacheEntry {
+		uint64_t mtime = 0;
+		String built_hash;
+		bool stale = false;
+	};
+	static HashMap<StringName, CacheEntry> cache;
+
+	for (const String &directory : GritGdxManifest::list_extensions()) {
+		GritGdxManifest manifest;
+		if (manifest.load(directory) != OK) {
+			continue;
+		}
+		const GritGdxManifestEntry *entry = manifest.find_class(p_class);
+		if (!entry) {
+			continue;
+		}
+		if (entry->archived_script.is_empty() || entry->source_hash.is_empty() || !FileAccess::exists(entry->archived_script)) {
+			return Variant();
+		}
+		const uint64_t mtime = FileAccess::get_modified_time(entry->archived_script);
+		CacheEntry *cached = cache.getptr(p_class);
+		bool stale = false;
+		if (cached && cached->mtime == mtime && cached->built_hash == entry->source_hash) {
+			stale = cached->stale;
+		} else {
+			Error error = OK;
+			const String source = FileAccess::get_file_as_string(entry->archived_script, &error);
+			stale = error == OK && source.sha256_text() != entry->source_hash;
+			CacheEntry value;
+			value.mtime = mtime;
+			value.built_hash = entry->source_hash;
+			value.stale = stale;
+			cache[p_class] = value;
+		}
+		if (!stale) {
+			return Variant();
+		}
+		Dictionary badge;
+		badge["icon"] = StringName("GritGdxStaleBadge");
+		badge["tooltip"] = String("The archived source of this generated class changed since the extension was built. Rebuild it from the node menu.");
+		return badge;
+	}
+	return Variant();
+}
+
 bool GritGdxApply::has_legacy_archive(const String &p_class_name) {
 	GritGdxApply::RevertTarget target;
 	return GritGdxApply::find_revert_target(p_class_name, target) && target.archived_script.ends_with(".gde");

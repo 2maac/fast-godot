@@ -415,6 +415,17 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 
 	Ref<Texture2D> icon = EditorNode::get_singleton()->get_object_icon(p_node);
 	p_item->set_icon(0, icon);
+	{
+		// Class-level badge: a plugin can decorate a generated class (e.g. "its
+		// source changed, rebuild needed") with an overlay on the node's icon.
+		const Dictionary badge = EditorNode::get_singleton()->get_class_badge(p_node->get_class_name());
+		if (!badge.is_empty()) {
+			const StringName badge_icon = badge.get("icon", StringName());
+			if (!badge_icon.is_empty()) {
+				p_item->set_icon_overlay(0, get_editor_theme_icon(badge_icon));
+			}
+		}
+	}
 	p_item->set_metadata(0, p_node->get_path());
 
 	if (!p_node->is_connected("child_order_changed", callable_mp(this, &SceneTreeEditor::_node_child_order_changed))) {
@@ -703,6 +714,13 @@ void SceneTreeEditor::_update_node_tooltip(Node *p_node, TreeItem *p_item) {
 		}
 	}
 
+	{
+		const Dictionary badge = EditorNode::get_singleton()->get_class_badge(p_node->get_class_name());
+		const String badge_tooltip = badge.get("tooltip", String());
+		if (!badge_tooltip.is_empty()) {
+			tooltip += "\n" + badge_tooltip;
+		}
+	}
 	p_item->set_tooltip_text(0, tooltip);
 }
 

@@ -49,6 +49,8 @@ static void grit_editor_init() {
 	GritProvisioner::purge_obsolete_settings();
 	// Draws the source row (Fetch Source button + path entry) in Editor Settings.
 	EditorInspector::add_inspector_plugin(Ref<EditorInspectorPlugin>(memnew(GritSettingsPlugin)));
+	// Class badge: a stale generated class gets an overlay on its scene-tree icon.
+	EditorNode::get_singleton()->add_class_badge_provider(callable_mp_static(&GritGdxApply::class_stale_badge));
 	Ref<GritExportPlugin> export_plugin;
 	export_plugin.instantiate();
 	EditorExport *editor_export = EditorExport::get_singleton();

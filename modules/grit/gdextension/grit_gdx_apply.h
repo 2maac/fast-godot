@@ -85,6 +85,9 @@ public:
 	static Error migrate_legacy(Vector<String> &r_migrated, String &r_report);
 	// True when the class still uses a legacy `.gde` archive.
 	static bool has_legacy_archive(const String &p_class_name);
+	// Scene-tree badge provider: returns {"icon": "GritGdxStaleBadge", "tooltip":
+	// ...} when the class's archive changed since the library was built.
+	static Variant class_stale_badge(const StringName &p_class);
 
 	// Scenes that instantiate a generated class (used to gate revert and the
 	// context menu).
