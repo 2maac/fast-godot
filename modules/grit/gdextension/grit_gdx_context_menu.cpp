@@ -363,12 +363,35 @@ void GritGdxContextMenuPlugin::_rebuild(const Array &p_selection) {
 	}
 }
 
-void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path) {
+void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, bool p_replace_script) {
 	_close_dialog();
 	active_scene = p_scene_path;
 	job.instantiate();
-	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path);
+	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path, p_replace_script);
 	_start_job();
+}
+
+void GritGdxContextMenuPlugin::_confirm_replace(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, const String &p_script_path, const String &p_archive_path) {
+	if (confirm_dialog) {
+		confirm_dialog->queue_free();
+		confirm_dialog = nullptr;
+	}
+	confirm_dialog = memnew(ConfirmationDialog);
+	confirm_dialog->set_title("Convert Back to GDScript");
+	confirm_dialog->set_ok_button_text("Delete and Convert Back");
+	confirm_dialog->set_min_size(Vector2i(520, 0));
+
+	VBoxContainer *box = memnew(VBoxContainer);
+	confirm_dialog->add_child(box);
+	Label *label = memnew(Label);
+	label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
+	label->set_custom_minimum_size(Vector2i(500, 0));
+	label->set_text(vformat("\"%s\" was added after the conversion. Convert Back will delete it and restore \"%s\" under that name. Rename the script first if you want to keep it.", p_script_path, p_archive_path));
+	box->add_child(label);
+
+	EditorNode::get_singleton()->get_gui_base()->add_child(confirm_dialog);
+	confirm_dialog->popup_centered();
+	confirm_dialog->connect(SceneStringName(confirmed), callable_mp(this, &GritGdxContextMenuPlugin::_start_revert).bind(p_class_name, p_extension, p_scene_path, p_node_path, true));
 }
 
 void GritGdxContextMenuPlugin::_start_job() {
@@ -557,6 +580,13 @@ void GritGdxContextMenuPlugin::_convert_back(const Array &p_selection) {
 	// script editor's control tree.
 	GritGdxApply::close_editor_script_tabs(target.archived_script);
 	GritGdxApply::close_editor_script_tabs(target.script_path);
+	// A script added after the conversion is only replaced with confirmation (an
+	// identical copy needs none; revert() handles that case itself).
+	bool identical = false;
+	if (GritGdxApply::has_replacement_script(class_name, identical) && !identical) {
+		_confirm_replace(class_name, extension, scene, path, target.script_path, target.archived_script);
+		return;
+	}
 	_start_revert(class_name, extension, scene, path);
 }
 

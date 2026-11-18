@@ -928,7 +928,75 @@ bool GritGdxApply::find_revert_target(const String &p_class_name, RevertTarget &
 // revert
 // ---------------------------------------------------------------------------
 
-Error GritGdxApply::revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report) {
+// Nodes using a script whose type is not the generated class: deleting that script
+// for a revert would break them.
+int GritGdxApply::script_users_outside_class(const String &p_script_path, const String &p_class_name) {
+	int users = 0;
+	for (const String &scene_path : collect_scenes("res://")) {
+		Error error = OK;
+		const String text = FileAccess::get_file_as_string(scene_path, &error);
+		if (error != OK || !text.contains(p_script_path)) {
+			continue;
+		}
+		const PackedStringArray lines = text.split("\n");
+		const String id = script_resource_id(lines, p_script_path);
+		if (id.is_empty()) {
+			continue;
+		}
+		const String assignment = "script = ExtResource(\"" + id + "\")";
+		for (const SceneNodeInfo &node : scene_nodes(lines)) {
+			const String header = lines[node.line];
+			const int type_position = header.find("type=\"");
+			if (type_position < 0) {
+				continue;
+			}
+			const int value_start = type_position + 6;
+			const int value_end = header.find("\"", value_start);
+			if (value_end < 0) {
+				continue;
+			}
+			if (header.substr(value_start, value_end - value_start) == p_class_name) {
+				continue;
+			}
+			for (int i = node.line + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
+				if (lines[i].strip_edges() == assignment) {
+					users++;
+					break;
+				}
+			}
+		}
+	}
+	return users;
+}
+
+bool GritGdxApply::has_replacement_script(const String &p_class_name, bool &r_identical) {
+	r_identical = false;
+	for (const String &directory : GritGdxManifest::list_extensions()) {
+		GritGdxManifest manifest;
+		if (manifest.load(directory) != OK) {
+			continue;
+		}
+		const GritGdxManifestEntry *entry = manifest.find_class(p_class_name);
+		if (!entry) {
+			continue;
+		}
+		if (entry->archived_script.is_empty() || !FileAccess::exists(entry->archived_script) || !FileAccess::exists(entry->script_path)) {
+			return false;
+		}
+		Error archive_error = OK;
+		Error live_error = OK;
+		const String archived = FileAccess::get_file_as_string(entry->archived_script, &archive_error);
+		const String live = FileAccess::get_file_as_string(entry->script_path, &live_error);
+		if (archive_error != OK || live_error != OK) {
+			return false;
+		}
+		r_identical = archived == live;
+		return true;
+	}
+	return false;
+}
+
+Error GritGdxApply::revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_replace_script, bool p_build, const Progress &p_progress, Result &r_result, String &r_report) {
 	RevertTarget target;
 	bool found = false;
 	if (!p_extension_directory.is_empty()) {
@@ -960,11 +1028,26 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 	r_result.archived_script = target.archived_script;
 
 	// Put the archive back where the script was. A `.gd` at that path is a script
-	// added after the conversion; Convert Back must not silently replace it (the
-	// follow-up step adds delete-or-keep handling).
+	// added after the conversion: it is replaced when it is identical, or when the
+	// caller opted in; otherwise Convert Back refuses instead of overwriting code.
 	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && FileAccess::exists(target.script_path)) {
-		r_report = vformat("Grit: \"%s\" already exists; Convert Back would replace it. Delete or rename it first.", target.script_path);
-		return ERR_INVALID_PARAMETER;
+		Error archive_error = OK;
+		Error live_error = OK;
+		const String archived_text = FileAccess::get_file_as_string(target.archived_script, &archive_error);
+		const String live_text = FileAccess::get_file_as_string(target.script_path, &live_error);
+		const bool identical = archive_error == OK && live_error == OK && archived_text == live_text;
+		if (!identical && !p_replace_script) {
+			r_report = vformat("Grit: \"%s\" already exists; Convert Back would replace it. Delete or rename it first, or convert back with replace enabled.", target.script_path);
+			return ERR_INVALID_PARAMETER;
+		}
+		const int foreign_users = GritGdxApply::script_users_outside_class(target.script_path, p_class_name);
+		if (foreign_users > 0) {
+			r_report = vformat("Grit: \"%s\" is attached to %d other node(s); deleting it would break them.", target.script_path, foreign_users);
+			return ERR_INVALID_PARAMETER;
+		}
+		close_editor_script_tabs(target.script_path);
+		DirAccess::remove_absolute(target.script_path);
+		DirAccess::remove_absolute(target.script_path + ".uid");
 	}
 	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && !FileAccess::exists(target.script_path)) {
 		const Error rename_error = DirAccess::rename_absolute(target.archived_script, target.script_path);

@@ -22,7 +22,7 @@ public:
 	// translated (they are reported and missing from the class).
 	Error start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial);
 	// Main thread. Reverting a class: everything happens on the worker.
-	Error start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path);
+	Error start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_replace_script = false);
 	// Main thread. Rebuilding a class from its archive: generation happens here,
 	// the build in run(), the new hash in complete().
 	Error start_rebuild(const String &p_class_name, const String &p_extension_directory);
@@ -60,4 +60,5 @@ private:
 	GritGdxApply::Result result;
 	GritGdxApply::Rebuild rebuild_state;
 	String revert_class;
+	bool replace_script = false;
 };

@@ -68,7 +68,16 @@ public:
 
 	// Main thread. Returns one class to a script node. Refused while any node
 	// still uses the class.
-	static Error revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report);
+	// `p_replace_script` lets Convert Back delete a `.gd` that was added to the
+	// converted node after the conversion and restore the archive over it. An
+	// identical `.gd` is replaced without the flag; a different one is refused
+	// unless the caller opted in, and a `.gd` used by nodes outside the class is
+	// always refused.
+	static Error revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_replace_script, bool p_build, const Progress &p_progress, Result &r_result, String &r_report);
+
+	// True when a `.gd` exists next to the class's archive (a script added after
+	// the conversion). Used by the editor to ask before replacing it.
+	static bool has_replacement_script(const String &p_class_name, bool &r_identical);
 
 	// Scenes that instantiate a generated class (used to gate revert and the
 	// context menu).
@@ -120,6 +129,9 @@ private:
 	static Vector<String> collect_scenes(const String &p_directory);
 	// Number of nodes that attach the script; optionally reports where they are.
 	static int count_script_users(const String &p_script_path, Vector<String> *r_scenes = nullptr);
+	// Nodes using the script whose type is not the class; deleting the script for
+	// a revert would break them.
+	static int script_users_outside_class(const String &p_script_path, const String &p_class_name);
 	// Scenes that instantiate a generated class.
 	static Vector<String> find_class_users(const String &p_class_name);
 	static Error remove_directory(const String &p_path);

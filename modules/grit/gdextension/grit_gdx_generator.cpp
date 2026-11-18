@@ -618,6 +618,7 @@ void GritGdxGenerator::run_from_command_line() {
 	String node_path;
 	bool revert = false;
 	bool rebuild = false;
+	bool replace_script = false;
 	bool build = false;
 	bool allow_partial = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
@@ -638,6 +639,8 @@ void GritGdxGenerator::run_from_command_line() {
 			revert = true;
 		} else if (argument == "--grit-gdx-rebuild") {
 			rebuild = true;
+		} else if (argument == "--grit-gdx-replace-script") {
+			replace_script = true;
 		} else if (argument == "--grit-gdx-class") {
 			revert_class = next_value();
 		} else if (argument == "--grit-gdx-extension") {
@@ -681,14 +684,14 @@ void GritGdxGenerator::run_from_command_line() {
 			// Exercises the editor's worker-thread revert headlessly.
 			Ref<GritGdxJob> job;
 			job.instantiate();
-			job->start_revert(revert_class, extension, scene, node_path);
+			job->start_revert(revert_class, extension, scene, node_path, replace_script);
 			while (!job->is_finished()) {
 				OS::get_singleton()->delay_usec(10000);
 			}
 			error = job->complete(report);
 		} else {
 			GritGdxApply::Result result;
-			error = GritGdxApply::revert(revert_class, extension, scene, node_path, build, GritGdxApply::Progress(), result, report);
+			error = GritGdxApply::revert(revert_class, extension, scene, node_path, replace_script, build, GritGdxApply::Progress(), result, report);
 		}
 	} else if (!add_script.is_empty()) {
 		if (extension.is_empty()) {
