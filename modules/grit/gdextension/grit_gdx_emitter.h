@@ -15,6 +15,12 @@ public:
 	static String emit_header(const GritGdxClass &p_class);
 	static String emit_source(const GritGdxClass &p_class);
 	static String header_file_name(const GritGdxClass &p_class);
+	// C++ keywords (and the `godot` namespace) cannot be generated as class or
+	// method names.
+	static bool is_cpp_keyword(const String &p_name);
+	// A class name that cannot be emitted as a C++ class: a keyword, `godot`, or
+	// an engine virtual name (whose override would collide with the class).
+	static bool is_reserved_class_name(const String &p_name);
 	// Functions the backend cannot express, with the reason, so the caller can
 	// report them instead of silently leaving them behind.
 	static LocalVector<GritGdxSkipped> skipped_functions(const GritGdxClass &p_class);
@@ -36,6 +42,10 @@ private:
 	int symbol_count = 0;
 	HashMap<String, const GritFunction *> methods;
 	HashMap<String, const GritGdxProperty *> properties_by_name;
+	// C++ symbol of each script method. Usually the method name; renamed when it
+	// would be a constructor (the class name), a C++ keyword, or a member the
+	// generator emits itself (property accessors, stubs, lambdas).
+	HashMap<String, String> cpp_method_names;
 	HashMap<String, bool> supported_methods;
 	String reject_reason;
 
@@ -72,6 +82,10 @@ private:
 	int last_opcode = -1;
 	int last_statement_line = 0;
 
+	// Assigns the C++ symbols before anything is emitted, so header, definition,
+	// bindings and call sites agree on them.
+	void prepare_method_names();
+	String cpp_method_name(const String &p_name) const;
 	// Trial-emits every function once so header, bindings and call sites agree
 	// on which methods actually exist in the generated class.
 	void prepare();

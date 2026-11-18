@@ -305,7 +305,60 @@ bool GritGdxEmitter::is_supported(const String &p_name) const {
 	return supported && *supported;
 }
 
+void GritGdxEmitter::prepare_method_names() {
+	cpp_method_names.clear();
+	HashSet<String> used;
+	// Names the generated class owns: its own name, the GDCLASS/RIMT plumbing,
+	// the property accessors, the stubs and the lambda methods.
+	used.insert(klass.class_name);
+	used.insert("_bind_methods");
+	used.insert("get_class_static");
+	for (const GritGdxProperty &property : klass.properties) {
+		used.insert(property.getter);
+		used.insert(property.setter);
+	}
+	for (const GritFunction &function_entry : klass.functions) {
+		if (is_lambda_function(function_entry)) {
+			if (const LambdaInfo *info = lambda_info(function_entry)) {
+				used.insert(info->method);
+			}
+			continue;
+		}
+		// Every method may end up as a stub; reserve that name for all of them so
+		// a script method that happens to use it is renamed instead of clashing.
+		used.insert("_grit_unconverted_" + sanitize(String(function_entry.name)));
+	}
+
+	for (const GritFunction &function_entry : klass.functions) {
+		if (is_lambda_function(function_entry)) {
+			continue;
+		}
+		const String name = String(function_entry.name);
+		const String base = sanitize(name);
+		if (is_virtual_name(name)) {
+			// Virtual overrides must keep the engine's signature name.
+			cpp_method_names.insert(name, base);
+			used.insert(base);
+			continue;
+		}
+		String candidate = base;
+		int suffix = 1;
+		while (used.has(candidate) || candidate == klass.class_name || is_cpp_keyword(candidate)) {
+			candidate = base + (suffix == 1 ? String("_grit") : "_grit" + itos(suffix));
+			suffix++;
+		}
+		used.insert(candidate);
+		cpp_method_names.insert(name, candidate);
+	}
+}
+
+String GritGdxEmitter::cpp_method_name(const String &p_name) const {
+	const String *name = cpp_method_names.getptr(p_name);
+	return name ? *name : sanitize(p_name);
+}
+
 void GritGdxEmitter::prepare() {
+	prepare_method_names();
 	supported_methods.clear();
 	supported_lambdas.clear();
 	binding_defaults_by_function.clear();
@@ -405,6 +458,36 @@ String GritGdxEmitter::sanitize(const String &p_name) {
 		}
 	}
 	return out.is_empty() ? String("value") : out;
+}
+
+bool GritGdxEmitter::is_cpp_keyword(const String &p_name) {
+	static const char *const keywords[] = {
+		"alignas", "alignof", "and", "and_eq", "asm", "auto", "bitand", "bitor", "bool",
+		"break", "case", "catch", "char", "char8_t", "char16_t", "char32_t", "class",
+		"co_await", "co_return", "co_yield", "compl", "concept", "const", "consteval",
+		"constexpr", "constinit", "const_cast", "continue", "decltype", "default", "delete",
+		"do", "double", "dynamic_cast", "else", "enum", "explicit", "export", "extern",
+		"false", "float", "for", "friend", "goto", "if", "import", "inline", "int", "long",
+		"module", "mutable", "namespace", "new", "noexcept", "not", "not_eq", "nullptr", "operator",
+		"or", "or_eq", "private", "protected", "public", "register", "reinterpret_cast",
+		"requires", "return", "short", "signed", "sizeof", "static", "static_assert",
+		"static_cast", "struct", "switch", "template", "this", "thread_local", "throw",
+		"true", "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
+		"virtual", "void", "volatile", "wchar_t", "while", "xor", "xor_eq"
+	};
+	for (const char *keyword : keywords) {
+		if (p_name == keyword) {
+			return true;
+		}
+	}
+	return false;
+}
+
+bool GritGdxEmitter::is_reserved_class_name(const String &p_name) {
+	// A class shares its namespace with the virtual overrides it may declare, and
+	// a member function named like its class is parsed as a constructor.
+	return is_cpp_keyword(p_name) || p_name == "godot" || is_virtual_name(p_name) ||
+			p_name.begins_with("_grit_") || p_name == "_bind_methods" || p_name == "get_class_static";
 }
 
 String GritGdxEmitter::cpp_storage(Variant::Type p_type) {
@@ -1101,7 +1184,7 @@ bool GritGdxEmitter::write_call(const GritStatement &p_statement) {
 			const bool self_call = method && is_supported(name) && (base.kind == GritOperand::Kind::SELF || (base.kind == GritOperand::Kind::CLASS && callee_is_static));
 			String expression;
 			if (self_call) {
-				expression = String(callee_is_static ? klass.class_name + "::" : "this->") + sanitize(name) + "(" + call_arguments(p_statement, 1, method) + ")";
+				expression = String(callee_is_static ? klass.class_name + "::" : "this->") + cpp_method_name(name) + "(" + call_arguments(p_statement, 1, method) + ")";
 			} else if (base.kind == GritOperand::Kind::CLASS) {
 				reject("a class-level call that is not a static method of this class");
 				return false;
@@ -1933,7 +2016,7 @@ bool GritGdxEmitter::emit_function(const GritFunction &p_function, bool p_is_vir
 	}
 
 	const String return_cpp = entry_return_cpp(p_function);
-	const String method_name = lambda_function ? lambda->method : sanitize(String(p_function.name));
+	const String method_name = lambda_function ? lambda->method : cpp_method_name(String(p_function.name));
 	const String qualified_name = klass.class_name + "::" + method_name;
 	// `static` belongs to the declaration only.
 	r_output.append(return_cpp + " " + qualified_name + "(" + signature_parameters + ") {\n");
@@ -2059,7 +2142,7 @@ String GritGdxEmitter::emit_header(const GritGdxClass &p_class) {
 			}
 		}
 		const bool is_static = String(p_function.signature).begins_with("static ");
-		out.append("\t" + String(is_static ? "static " : "") + entry_return_cpp(p_function) + " " + sanitize(String(p_function.name)) + "(" + parameters + ");\n");
+		out.append("\t" + String(is_static ? "static " : "") + entry_return_cpp(p_function) + " " + emitter.cpp_method_name(String(p_function.name)) + "(" + parameters + ");\n");
 	}
 
 	bool needs_process = false;
@@ -2240,9 +2323,9 @@ String GritGdxEmitter::emit_source(const GritGdxClass &p_class) {
 		}
 		const bool *bind_static = emitter.binding_static_by_function.getptr(p_function.registry_key);
 		if (bind_static && *bind_static) {
-			out.append("\tClassDB::bind_static_method(\"" + p_class.class_name + "\", D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
+			out.append("\tClassDB::bind_static_method(\"" + p_class.class_name + "\", D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + emitter.cpp_method_name(String(p_function.name)) + defaults + ");\n");
 		} else {
-			out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + sanitize(String(p_function.name)) + defaults + ");\n");
+			out.append("\tClassDB::bind_method(D_METHOD(" + escaped_string(sanitize(String(p_function.name))) + (names.is_empty() ? String() : ", " + names) + "), &" + p_class.class_name + "::" + emitter.cpp_method_name(String(p_function.name)) + defaults + ");\n");
 		}
 	}
 	for (const GritGdxSkipped &entry : stubs) {

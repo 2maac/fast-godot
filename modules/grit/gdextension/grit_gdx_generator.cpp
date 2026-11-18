@@ -175,6 +175,10 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 		r_error = vformat("the class name \"%s\" in \"%s\" is not a valid identifier.", class_name, record_path);
 		return ERR_INVALID_PARAMETER;
 	}
+	if (GritGdxEmitter::is_reserved_class_name(class_name)) {
+		r_error = vformat("the class name \"%s\" in \"%s\" cannot be a generated C++ class (C++ keyword, the godot namespace, or an engine virtual name); choose another", class_name, record_path);
+		return ERR_INVALID_PARAMETER;
+	}
 	if (ClassDB::class_exists(class_name)) {
 		const ClassDB::APIType api = ClassDB::get_api_type(class_name);
 		if (api != ClassDB::API_EXTENSION && api != ClassDB::API_EDITOR_EXTENSION) {

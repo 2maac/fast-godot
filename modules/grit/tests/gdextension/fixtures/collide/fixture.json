@@ -1,0 +1,5 @@
+{
+	"script": "res://main.gde",
+	"scene": "res://main.tscn",
+	"run_args": []
+}

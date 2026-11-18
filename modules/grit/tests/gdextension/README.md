@@ -9,6 +9,7 @@ builds with the staged editor and runs headless:
 | `plain` | a class with plain methods: properties, a signal, loops, a helper method |
 | `cast` | `is`/`as` for builtins, native classes, typed arrays and typed dictionaries; `assert`; built-in statics (`Color.from_hsv`, `Vector2.from_angle`); `super` calls; optional parameters; static functions |
 | `lambda` | lambdas with captures, passed to `callable`-taking APIs and called directly |
+| `collide` | a lowercase class name (`test`) that matches one of its methods, and a method named after a C++ keyword (`delete`); both keep their GDScript names while the C++ symbols are renamed |
 
 `await` is not converted: a GDExtension method cannot suspend and resume, so a
 script that awaits has that method reported instead (see HANDOFF §22).

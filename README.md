@@ -60,7 +60,11 @@ drops its class on the next build.
 
 A `class_name` clash between two `.gde` sources is an error; the generated class
 is always the script's `class_name` verbatim (never renamed). The class name is
-also what the descriptor exposes to GDScript.
+also what the descriptor exposes to GDScript. A `class_name` that cannot be a
+C++ class (a C++ keyword, `godot`, or an engine virtual name such as `_ready`)
+is refused with a clear message. Methods keep their GDScript names; only the C++
+symbol changes when a method would collide with the generated class name or a
+C++ keyword.
 
 The export plugin keeps each project's compiled template in
 `res://exports/` (for example `exports/macos_fast.zip`), separate from the
