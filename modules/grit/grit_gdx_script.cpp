@@ -91,7 +91,8 @@ Ref<Resource> GritGdxScriptLoader::load(const String &p_path, const String &p_or
 
 	Ref<GritGdxScript> script;
 	script.instantiate();
-	script->set_path(path);
+	// The path is assigned by ResourceLoader: setting it here makes a second
+	// instance (ignore/replace cache modes) fight the cached one over the path.
 	script->set_name(path.get_file());
 	script->set_source_code(source);
 	script->set_archived_metadata(grit_gdx_archived_base_type(source), String());

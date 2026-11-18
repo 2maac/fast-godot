@@ -11,6 +11,8 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
+
+#include "editor/script/script_editor_plugin.h"
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
 #include "core/string/string_builder.h"
@@ -149,6 +151,16 @@ static Error write_scene(const String &p_scene_path, const PackedStringArray &p_
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_CANT_CREATE, vformat("Grit: could not write \"%s\".", p_scene_path));
 	file->store_string(output.as_string());
 	return OK;
+}
+
+// A file that is about to be renamed must not stay open in the script editor: the
+// editor would reload it mid-rename and report a missing script.
+static void close_script_tab(const String &p_path) {
+#ifdef TOOLS_ENABLED
+	if (ScriptEditor *editor = ScriptEditor::get_singleton()) {
+		editor->close_file(p_path);
+	}
+#endif
 }
 
 // Replaces the node's type and keeps its script attached: the assignment now
@@ -669,6 +681,7 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	const int remaining = count_script_users(p_class.script_path);
 	const String archived = p_class.script_path.get_basename() + ".gde";
 	if (archived != p_class.script_path && FileAccess::exists(p_class.script_path)) {
+		close_script_tab(p_class.script_path);
 		if (FileAccess::exists(archived)) {
 			DirAccess::remove_absolute(archived);
 		}
@@ -951,8 +964,11 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 	r_result.script_path = target.script_path;
 	r_result.archived_script = target.archived_script;
 
-	// Restore the script from the archive when it was archived.
+	// Restore the script from the archive when it was archived. Close the tabs
+	// first: both paths change meaning during the rename.
 	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && !FileAccess::exists(target.script_path)) {
+		close_script_tab(target.archived_script);
+		close_script_tab(target.script_path);
 		const Error rename_error = DirAccess::rename_absolute(target.archived_script, target.script_path);
 		if (rename_error != OK) {
 			r_report = vformat("Grit: could not restore \"%s\".", target.script_path);
