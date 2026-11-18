@@ -488,7 +488,8 @@ void ScriptCreateDialog::_create_new() {
 		}
 	}
 	if (is_extra_language && !is_built_in && !extra_languages.is_empty() && extra_languages[0].created) {
-		extra_languages[0].created(lpath);
+		// Run after this dialog closes: the build's progress window is exclusive too.
+		callable_mp_static(extra_languages[0].created).bind(lpath).call_deferred();
 	}
 
 	emit_signal(SNAME("script_created"), scr);
