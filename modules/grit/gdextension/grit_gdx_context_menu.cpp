@@ -163,7 +163,7 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 	// The archived script is attached to the node, so a rebuild is offered exactly
 	// where the archive is visible.
 	add_context_menu_item("Rebuild GDExtension", rebuildable ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_rebuild)) : Callable(), Ref<Texture2D>());
-	add_context_menu_item("Migrate Archive to .gds", legacy ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_migrate)) : Callable(), Ref<Texture2D>());
+	add_context_menu_item("Upgrade Archive", legacy ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_migrate)) : Callable(), Ref<Texture2D>());
 }
 
 void GritGdxContextMenuPlugin::_submenu_selected(int p_index) {

@@ -985,7 +985,17 @@ Variant GritGdxApply::class_stale_badge(const StringName &p_class) {
 
 bool GritGdxApply::has_legacy_archive(const String &p_class_name) {
 	GritGdxApply::RevertTarget target;
-	return GritGdxApply::find_revert_target(p_class_name, target) && target.archived_script.ends_with(".gde");
+	if (!GritGdxApply::find_revert_target(p_class_name, target) || target.archived_script.is_empty()) {
+		return false;
+	}
+	if (target.archived_script.ends_with(".gde")) {
+		return true;
+	}
+	// A `.gds` from the class_name era still declares class_name and needs the
+	// annotation rewrite.
+	Error error = OK;
+	const String text = FileAccess::get_file_as_string(target.archived_script, &error);
+	return error == OK && has_class_name(text) && gdextension_class_name_of(text).is_empty();
 }
 
 Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report) {
@@ -999,7 +1009,34 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 		}
 		bool changed = false;
 		for (GritGdxManifestEntry &entry : manifest.classes) {
+			if (entry.archived_script.is_empty()) {
+				continue;
+			}
 			if (!entry.archived_script.ends_with(".gde")) {
+				// A `.gds` from the class_name era: rewrite it to the annotation.
+				if (!FileAccess::exists(entry.archived_script)) {
+					continue;
+				}
+				Error read_error = OK;
+				const String text = FileAccess::get_file_as_string(entry.archived_script, &read_error);
+				if (read_error != OK || !has_class_name(text)) {
+					continue;
+				}
+				const String name = entry.class_name.is_empty() ? GritGdxApply::suggested_class_name(entry.script_path) : entry.class_name;
+				String rewritten = strip_class_name_line(text);
+				if (gdextension_class_name_of(rewritten).is_empty()) {
+					rewritten = insert_annotation(rewritten, name);
+				}
+				if (write_text_file(entry.archived_script, rewritten) != OK) {
+					report.append(vformat("Grit: could not rewrite \"%s\".\n", entry.archived_script));
+					continue;
+				}
+				Error hash_error = OK;
+				const String source = FileAccess::get_file_as_string(entry.archived_script, &hash_error);
+				entry.source_hash = hash_error == OK ? source.sha256_text() : String();
+				changed = true;
+				r_migrated.push_back(entry.class_name);
+				report.append(vformat("Grit: upgraded \"%s\": %s now uses @gdextension_class_name(\"%s\").\n", entry.class_name, entry.archived_script, name));
 				continue;
 			}
 			if (!FileAccess::exists(entry.archived_script)) {
