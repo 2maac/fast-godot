@@ -68,6 +68,12 @@ public:
 
 	// Main thread. Returns one class to a script node. Refused while any node
 	// still uses the class.
+	// Creates (or regenerates) the GDExtension for a `.gde` source. The extension
+	// lives next to the source in `<stem>_gdext/<stem>.gdextension`; nothing is
+	// attached to a node and no scene is rewritten.
+	static Error create_source(const String &p_script_path, String &r_report, String *r_extension_directory = nullptr);
+	static void create_source_callback(const String &p_script_path);
+
 	static Error revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report);
 
 	// Upgrades archives from the legacy format (`.gde`, attached to the node) to

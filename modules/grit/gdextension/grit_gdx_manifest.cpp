@@ -124,21 +124,33 @@ void GritGdxManifest::upsert(const GritGdxManifestEntry &p_entry) {
 }
 
 String GritGdxManifest::extension_name(const String &p_extension_directory) {
-	return p_extension_directory.ends_with("/") ? p_extension_directory.left(-1).get_file() : p_extension_directory.get_file();
+	String name = p_extension_directory.ends_with("/") ? p_extension_directory.left(-1).get_file() : p_extension_directory.get_file();
+	// Extensions created from a `.gde` source live in `<stem>_gdext/` and are
+	// named after the class (`<stem>.gdextension`).
+	if (name.ends_with("_gdext")) {
+		name = name.left(-6);
+	}
+	return name;
+}
+
+static void _scan_extensions(const String &p_directory, Vector<String> &r_extensions) {
+	// An extension directory owns a manifest; do not descend into it.
+	if (FileAccess::exists(p_directory.path_join(".grit_manifest.json"))) {
+		r_extensions.push_back(p_directory);
+		return;
+	}
+	for (const String &directory : DirAccess::get_directories_at(p_directory)) {
+		if (directory.begins_with(".")) {
+			continue;
+		}
+		_scan_extensions(p_directory.path_join(directory), r_extensions);
+	}
 }
 
 Vector<String> GritGdxManifest::list_extensions() {
 	Vector<String> extensions;
-	Ref<DirAccess> root = DirAccess::open("res://gdext");
-	if (root.is_null()) {
-		return extensions;
-	}
-	for (const String &name : root->get_directories()) {
-		const String directory = "res://gdext/" + name;
-		if (FileAccess::exists(directory.path_join(FILE_NAME))) {
-			extensions.push_back(directory);
-		}
-	}
+	_scan_extensions("res://", extensions);
 	extensions.sort();
 	return extensions;
 }
+

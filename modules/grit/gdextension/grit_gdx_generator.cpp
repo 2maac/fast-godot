@@ -615,6 +615,7 @@ Error GritGdxGenerator::remove_class(const String &p_extension_directory, const 
 void GritGdxGenerator::run_from_command_line() {
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	String add_script;
+	String generate_script;
 	String plan_script;
 	String revert_class;
 	String extension;
@@ -638,6 +639,8 @@ void GritGdxGenerator::run_from_command_line() {
 		};
 		if (argument == "--grit-gdx-add" || argument == "--grit-gdx") {
 			add_script = next_value();
+		} else if (argument == "--grit-gdx-generate") {
+			generate_script = next_value();
 		} else if (argument == "--grit-gdx-plan") {
 			plan_script = next_value();
 		} else if (argument == "--grit-gdx-revert") {
@@ -665,7 +668,17 @@ void GritGdxGenerator::run_from_command_line() {
 
 	String report;
 	Error error = OK;
-	if (!plan_script.is_empty()) {
+	if (!generate_script.is_empty()) {
+		String generated_directory;
+		error = GritGdxApply::create_source(generate_script, report, &generated_directory);
+		if (error == OK && build) {
+			const String directory = generated_directory;
+			String library;
+			String build_error;
+			error = GritGdxApply::build(directory, "editor", GritGdxApply::Progress(), library, build_error);
+			report += error == OK ? vformat("  library: %s\n", library) : "  " + build_error;
+		}
+	} else if (!plan_script.is_empty()) {
 		// Pre-flight only: report what a conversion would produce.
 		GritGdxApply::Plan plan;
 		String plan_error;

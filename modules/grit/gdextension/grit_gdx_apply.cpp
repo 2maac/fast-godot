@@ -13,6 +13,7 @@
 #include "core/io/dir_access.h"
 #include "core/os/thread.h"
 
+#include "editor/file_system/editor_file_system.h"
 #include "editor/script/script_editor_plugin.h"
 #include "core/io/file_access.h"
 #include "core/object/class_db.h"
@@ -776,6 +777,30 @@ static bool has_class_name(const String &p_text) {
 	return false;
 }
 
+static String strip_annotation_line(const String &p_text) {
+	PackedStringArray lines = p_text.split("\n");
+	Vector<int> dropped;
+	for (int i = 0; i < lines.size(); i++) {
+		if (lines[i].strip_edges().begins_with("@gdextension_class_name(")) {
+			dropped.push_back(i);
+			break;
+		}
+	}
+	StringBuilder output;
+	bool first = true;
+	for (int i = 0; i < lines.size(); i++) {
+		if (dropped.has(i)) {
+			continue;
+		}
+		if (!first) {
+			output.append("\n");
+		}
+		output.append(lines[i]);
+		first = false;
+	}
+	return output.as_string();
+}
+
 static String strip_class_name_line(const String &p_text) {
 	PackedStringArray lines = p_text.split("\n");
 	Vector<int> dropped;
@@ -980,7 +1005,7 @@ Variant GritGdxApply::class_stale_badge(const StringName &p_class) {
 		}
 		Dictionary badge;
 		badge["icon"] = StringName("GritGdxStaleBadge");
-		badge["tooltip"] = String("The script of this generated class changed since the extension was built. Rebuild it from the node menu.");
+		badge["tooltip"] = String("The .gde source of this generated class changed since the extension was built. Regenerate and rebuild it (--grit-gdx-generate).");
 		return badge;
 	}
 	return Variant();
@@ -991,24 +1016,7 @@ bool GritGdxApply::has_legacy_archive(const String &p_class_name) {
 	if (!GritGdxApply::find_revert_target(p_class_name, target) || target.script_path.is_empty()) {
 		return false;
 	}
-	if (!FileAccess::exists(target.script_path)) {
-		return true;
-	}
-	if (target.archived_script.ends_with(".gde")) {
-		return true;
-	}
-	const String expected = target.script_path.get_basename() + ".gds";
-	if (target.archived_script != expected) {
-		return true;
-	}
-	Error error = OK;
-	const String source = FileAccess::get_file_as_string(target.script_path, &error);
-	if (error == OK && has_class_name(source)) {
-		return true;
-	}
-	error = OK;
-	const String archive = FileAccess::get_file_as_string(target.archived_script, &error);
-	return error == OK && has_class_name(archive);
+	return !target.script_path.ends_with(".gde") || !target.archived_script.is_empty() || !FileAccess::exists(target.script_path);
 }
 
 Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report) {
@@ -1027,51 +1035,40 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 			if (!source_exists && !archive_exists) {
 				continue;
 			}
-			// The `.gd` is authoritative; a legacy class may only have the archive.
+			if (entry.script_path.ends_with(".gde") && entry.archived_script.is_empty() && source_exists) {
+				continue; // already a GDExtension source
+			}
+			const String old_source = source_exists ? entry.script_path : entry.archived_script;
 			Error read_error = OK;
-			const String text = FileAccess::get_file_as_string(source_exists ? entry.script_path : entry.archived_script, &read_error);
+			const String text = FileAccess::get_file_as_string(old_source, &read_error);
 			if (read_error != OK) {
 				report.append(vformat("Grit: could not read the source of \"%s\"; skipped.\n", entry.class_name));
 				continue;
 			}
-			const String original_class = class_name_of(text);
-			const String annotation = gdextension_class_name_of(text);
-			String rewritten = text;
-			bool needs_write = !source_exists;
-			if (!original_class.is_empty()) {
-				rewritten = strip_class_name_line(rewritten);
-				needs_write = true;
+			// One model: a `.gde` source with the class annotation and no class_name.
+			String name = !entry.class_name.is_empty() ? entry.class_name : class_name_of(text);
+			if (name.is_empty()) {
+				name = GritGdxApply::suggested_class_name(old_source);
 			}
-			if (annotation.is_empty()) {
-				String name = !original_class.is_empty() ? original_class : entry.class_name;
-				if (name.is_empty()) {
-					name = GritGdxApply::suggested_class_name(entry.script_path);
-				}
-				rewritten = insert_annotation(rewritten, name);
-				needs_write = true;
-			}
-			if (needs_write && write_text_file(entry.script_path, rewritten) != OK) {
-				report.append(vformat("Grit: could not write \"%s\"; skipped \"%s\".\n", entry.script_path, entry.class_name));
+			String rewritten = strip_class_name_line(text);
+			rewritten = strip_annotation_line(rewritten);
+			rewritten = insert_annotation(rewritten, name);
+			const String new_path = old_source.get_basename() + ".gde";
+			if (write_text_file(new_path, rewritten) != OK) {
+				report.append(vformat("Grit: could not write \"%s\"; skipped \"%s\".\n", new_path, entry.class_name));
 				continue;
 			}
-
-			// Keep a detached snapshot next to the authoritative script.
-			const String snapshot = entry.script_path.get_basename() + ".gds";
-			if (snapshot != entry.script_path) {
-				if (FileAccess::exists(snapshot)) {
-					DirAccess::remove_absolute(snapshot);
+			if (old_source != new_path) {
+				if (FileAccess::exists(old_source + ".uid")) {
+					if (FileAccess::exists(new_path + ".uid")) {
+						DirAccess::remove_absolute(new_path + ".uid");
+					}
+					DirAccess::rename_absolute(old_source + ".uid", new_path + ".uid");
 				}
-				if (write_text_file(snapshot, rewritten) != OK) {
-					report.append(vformat("Grit: could not write \"%s\"; skipped \"%s\".\n", snapshot, entry.class_name));
-					continue;
-				}
-				if (FileAccess::exists(entry.script_path + ".uid")) {
-					DirAccess::copy_absolute(entry.script_path + ".uid", snapshot + ".uid");
-				}
+				DirAccess::remove_absolute(old_source);
 			}
-
-			// A legacy archive was attached to the class's nodes; detach and drop it.
-			if (!entry.archived_script.is_empty() && entry.archived_script != snapshot && archive_exists) {
+			// Drop a legacy archive (and detach the nodes it was attached to).
+			if (!entry.archived_script.is_empty() && entry.archived_script != new_path && archive_exists) {
 				for (const String &scene : collect_scenes("res://")) {
 					String detach_error;
 					detach_archive_assignments(scene, entry.class_name, entry.archived_script, detach_error);
@@ -1082,14 +1079,14 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 				DirAccess::remove_absolute(entry.archived_script);
 				DirAccess::remove_absolute(entry.archived_script + ".uid");
 			}
-
+			entry.script_path = new_path;
+			entry.archived_script = String();
 			Error hash_error = OK;
-			const String source = FileAccess::get_file_as_string(entry.script_path, &hash_error);
-			entry.archived_script = snapshot;
+			const String source = FileAccess::get_file_as_string(new_path, &hash_error);
 			entry.source_hash = hash_error == OK ? source.sha256_text() : String();
 			changed = true;
 			r_migrated.push_back(entry.class_name);
-			report.append(vformat("Grit: upgraded \"%s\": source %s, snapshot %s.\n", entry.class_name, entry.script_path, snapshot));
+			report.append(vformat("Grit: upgraded \"%s\": source %s.\n", entry.class_name, new_path));
 		}
 		if (changed) {
 			const Error save_error = manifest.save(directory);
@@ -1101,7 +1098,7 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 		}
 	}
 	if (r_migrated.is_empty()) {
-		report.append("Grit: nothing to upgrade (every class already uses its script as the source).\n");
+		report.append("Grit: nothing to upgrade (every class already uses a .gde source).\n");
 	}
 	r_report = report.as_string();
 	return OK;
@@ -1251,6 +1248,76 @@ bool GritGdxApply::find_revert_target(const String &p_class_name, RevertTarget &
 // ---------------------------------------------------------------------------
 
 
+
+Error GritGdxApply::create_source(const String &p_script_path, String &r_report, String *r_extension_directory) {
+	if (p_script_path.is_empty()) {
+		r_report = "Grit: no script path given.";
+		return ERR_INVALID_PARAMETER;
+	}
+	const String path = p_script_path.begins_with("res://") ? p_script_path : ProjectSettings::get_singleton()->localize_path(p_script_path);
+	if (!FileAccess::exists(path)) {
+		r_report = vformat("Grit: \"%s\" does not exist.", path);
+		return ERR_FILE_NOT_FOUND;
+	}
+	const String stem = path.get_file().get_basename();
+	String directory = path.get_base_dir().path_join(stem + "_gdext");
+	// A migrated or previously generated class keeps its extension; only a new
+	// class gets the sibling `<stem>_gdext` directory.
+	{
+		Error load_error = OK;
+		const Ref<GDScript> source = GDScriptCache::get_full_script(path, load_error);
+		const String class_name = source.is_valid() ? source->get_gdextension_class_name() : String();
+		if (load_error == OK && !class_name.is_empty()) {
+			for (const String &existing : GritGdxManifest::list_extensions()) {
+				GritGdxManifest manifest;
+				if (manifest.load(existing) == OK && manifest.find_class(class_name)) {
+					directory = existing;
+					break;
+				}
+			}
+		}
+	}
+
+	GritGdxClass klass;
+	String report;
+	const Error error = GritGdxGenerator::generate_class(directory, path, klass, report);
+	if (error != OK) {
+		r_report = report;
+		return error;
+	}
+	if (r_extension_directory) {
+		*r_extension_directory = directory;
+	}
+
+	GritGdxManifest manifest;
+	if (manifest.load(directory) == OK) {
+		if (const GritGdxManifestEntry *entry = manifest.find_class(klass.class_name)) {
+			GritGdxManifestEntry updated = *entry;
+			updated.script_path = path;
+			updated.archived_script = String();
+			Error hash_error = OK;
+			const String source = FileAccess::get_file_as_string(path, &hash_error);
+			updated.source_hash = hash_error == OK ? source.sha256_text() : String();
+			manifest.upsert(updated);
+			manifest.save(directory);
+		}
+	}
+	r_report = report + vformat("\n  source: %s\n  extension: %s\n", path, directory);
+	return OK;
+}
+
+void GritGdxApply::create_source_callback(const String &p_script_path) {
+	String report;
+	const Error error = GritGdxApply::create_source(p_script_path, report);
+	if (error != OK) {
+		ERR_PRINT(report.is_empty() ? String("Grit: could not create the GDExtension source.") : report);
+		return;
+	}
+	print_line(report);
+	if (EditorFileSystem::get_singleton()) {
+		EditorFileSystem::get_singleton()->scan_changes();
+	}
+}
 
 Error GritGdxApply::revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report) {
 	RevertTarget target;

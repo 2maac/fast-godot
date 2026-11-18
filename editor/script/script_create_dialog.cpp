@@ -36,6 +36,8 @@
 #include "core/io/resource_saver.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
+#include "core/os/os.h"
+#include "core/string/char_utils.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
@@ -43,6 +45,7 @@
 #include "editor/gui/create_dialog.h"
 #include "editor/gui/editor_file_dialog.h"
 #include "editor/gui/editor_validation_panel.h"
+#include "scene/main/scene_tree.h"
 #include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
 #include "scene/gui/grid_container.h"
@@ -136,6 +139,10 @@ void ScriptCreateDialog::_notification(int p_what) {
 
 			EditorData &ed = EditorNode::get_editor_data();
 
+			for (int i = ScriptServer::get_language_count(); i < language_menu->get_item_count(); i++) {
+				language_menu->set_item_icon(i, get_editor_theme_icon(SNAME("GDScript")));
+			}
+
 			for (int i = 0; i < ScriptServer::get_language_count(); i++) {
 				// Check if the extension has an icon first.
 				String script_type = ScriptServer::get_language(i)->get_type();
@@ -191,7 +198,7 @@ String ScriptCreateDialog::_adjust_file_path(const String &p_base_path) const {
 	String base_dir = p_base_path.get_base_dir();
 	String file_name = p_base_path.get_file().get_basename();
 	file_name = EditorNode::adjust_script_name_casing(file_name, language->preferred_file_name_casing());
-	String extension = language->get_extension();
+	String extension = is_extra_language ? extra_languages[0].extension : language->get_extension();
 	return base_dir.path_join(file_name + "." + extension);
 }
 
@@ -205,6 +212,19 @@ void ScriptCreateDialog::config(const String &p_base_name, const String &p_base_
 
 	built_in_enabled = p_built_in_enabled;
 	load_enabled = p_load_enabled;
+
+	// Creation-only dialects are never part of the attach/load dialog.
+	while (language_menu->get_item_count() > ScriptServer::get_language_count()) {
+		language_menu->remove_item(language_menu->get_item_count() - 1);
+	}
+	if (!p_load_enabled) {
+		for (const ExtraLanguage &extra : extra_languages) {
+			language_menu->add_item(extra.name);
+		}
+	}
+	if (language_menu->get_selected() < 0) {
+		language_menu->select(default_language >= 0 ? default_language : 0);
+	}
 
 	_language_changed(language_menu->get_selected());
 
@@ -281,11 +301,19 @@ String ScriptCreateDialog::_validate_path(const String &p_path, bool p_file_must
 
 	// Check file extension.
 	String extension = p.get_extension();
+	if (load_enabled && extension == "gde") {
+		// A GDExtension source is a class source, not a script to attach.
+		return TTRC("GDExtension sources cannot be attached to a node.");
+	}
 	List<String> extensions;
 
 	// Get all possible extensions for script.
 	for (int l = 0; l < language_menu->get_item_count(); l++) {
-		ScriptServer::get_language(l)->get_recognized_extensions(&extensions);
+		if (l < ScriptServer::get_language_count()) {
+			ScriptServer::get_language(l)->get_recognized_extensions(&extensions);
+		} else if (!extra_languages.is_empty()) {
+			extensions.push_back(extra_languages[0].extension);
+		}
 	}
 
 	bool found = false;
@@ -293,7 +321,10 @@ String ScriptCreateDialog::_validate_path(const String &p_path, bool p_file_must
 	for (const String &E : extensions) {
 		if (E.nocasecmp_to(extension) == 0) {
 			found = true;
-			if (E == ScriptServer::get_language(language_menu->get_selected())->get_extension()) {
+			const int selected_index = language_menu->get_selected();
+			if (selected_index >= ScriptServer::get_language_count()) {
+				match = !extra_languages.is_empty() && E == extra_languages[0].extension;
+			} else if (selected_index >= 0 && E == ScriptServer::get_language(selected_index)->get_extension()) {
 				match = true;
 			}
 			break;
@@ -308,7 +339,8 @@ String ScriptCreateDialog::_validate_path(const String &p_path, bool p_file_must
 	}
 
 	// Let ScriptLanguage do custom validation.
-	return ScriptServer::get_language(language_menu->get_selected())->validate_path(p);
+	ScriptLanguage *selected_language = _selected_language();
+	return selected_language ? selected_language->validate_path(p) : String();
 }
 
 void ScriptCreateDialog::_parent_name_changed(const String &p_parent) {
@@ -379,7 +411,47 @@ void ScriptCreateDialog::_create_new() {
 	}
 
 	String class_name = file_path->get_text().get_file().get_basename();
-	scr = ScriptServer::get_language(language_menu->get_selected())->make_template(sinfo.content, class_name, parent_class);
+	ScriptLanguage *selected_language = _selected_language();
+	ERR_FAIL_NULL_V(selected_language, );
+	scr = selected_language->make_template(sinfo.content, class_name, parent_class);
+	if (is_extra_language && !extra_languages.is_empty() && !extra_languages[0].annotation_format.is_empty()) {
+		// The GDExtension source is a class source: it needs the annotation and an
+		// explicit base class (the template body may be empty).
+		String annotation_name = class_name;
+		if (!annotation_name.is_valid_identifier()) {
+			for (int i = 0; i < annotation_name.length(); i++) {
+				if (!is_ascii_identifier_char(annotation_name[i])) {
+					annotation_name[i] = '_';
+				}
+			}
+			if (!annotation_name.is_empty() && is_digit(annotation_name[0])) {
+				annotation_name = "_" + annotation_name;
+			}
+		}
+		String body = scr->get_source_code();
+		bool has_extends = false;
+		for (const String &line : body.split("\n")) {
+			if (line.strip_edges().begins_with("extends ")) {
+				has_extends = true;
+				break;
+			}
+		}
+		if (!has_extends && !parent_class.is_empty()) {
+			PackedStringArray lines = body.split("\n");
+			int insert_at = lines.size();
+			for (int i = 0; i < lines.size(); i++) {
+				const String stripped = lines[i].strip_edges();
+				if (stripped.is_empty() || stripped.begins_with("#") || stripped.begins_with("@")) {
+					continue;
+				}
+				insert_at = i;
+				break;
+			}
+			lines.insert(insert_at, "extends " + parent_class);
+			body = String("\n").join(lines);
+		}
+		scr->set_source_code(vformat(extra_languages[0].annotation_format, annotation_name) + "\n" + body);
+	}
 
 	if (is_built_in) {
 		scr->set_name(built_in_name->get_text());
@@ -393,6 +465,9 @@ void ScriptCreateDialog::_create_new() {
 			alert->set_text(TTR("Error - Could not create script in filesystem."));
 			alert->popup_centered();
 			return;
+		}
+		if (is_extra_language && !extra_languages.is_empty() && extra_languages[0].created) {
+			extra_languages[0].created(lpath);
 		}
 	}
 
@@ -413,8 +488,75 @@ void ScriptCreateDialog::_load_exist() {
 	hide();
 }
 
+Vector<ScriptCreateDialog::ExtraLanguage> ScriptCreateDialog::extra_languages;
+
+void ScriptCreateDialog::run_language_check() {
+	ScriptCreateDialog *dialog = memnew(ScriptCreateDialog);
+	dialog->config("Node", "res://grit_language_check.gd", false, false);
+	print_line("Grit: create-mode languages:");
+	for (int i = 0; i < dialog->language_menu->get_item_count(); i++) {
+		print_line(vformat("  [%d] %s", i, dialog->language_menu->get_item_text(i)));
+	}
+	dialog->config("Node", "res://grit_language_check.gd", false, true);
+	print_line("Grit: attach-mode languages:");
+	for (int i = 0; i < dialog->language_menu->get_item_count(); i++) {
+		print_line(vformat("  [%d] %s", i, dialog->language_menu->get_item_text(i)));
+	}
+	const String attach_error = dialog->_validate_path("res://grit_language_check.gde", false, nullptr);
+	print_line(vformat("Grit: attach-mode .gde validation: %s", attach_error.is_empty() ? String("accepted (unexpected)") : attach_error));
+
+	// End-to-end: create a source through the creation dialog itself.
+	dialog->config("Node2D", "res://grit_dialog_check.gde", false, false);
+	dialog->parent_name->set_text("Node2D");
+	dialog->language_menu->select(dialog->language_menu->get_item_count() - 1);
+	dialog->_language_changed(dialog->language_menu->get_selected());
+	dialog->file_path->set_text("res://grit_dialog_check.gde");
+	dialog->_path_changed("res://grit_dialog_check.gde");
+	print_line(vformat("Grit: dialog create path valid: %s", dialog->is_path_valid ? "yes" : "no"));
+	dialog->_create_new();
+	print_line(vformat("Grit: dialog created source: %s, extension: %s", FileAccess::exists("res://grit_dialog_check.gde") ? "yes" : "no", FileAccess::exists("res://grit_dialog_check_gdext/grit_dialog_check.gdextension") ? "yes" : "no"));
+	memdelete(dialog);
+
+	if (SceneTree *tree = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop())) {
+		tree->quit();
+	}
+}
+
+void ScriptCreateDialog::register_extra_language(const String &p_name, const String &p_extension, const String &p_annotation_format, void (*p_created)(const String &)) {
+	for (const ExtraLanguage &existing : extra_languages) {
+		if (existing.name == p_name) {
+			return;
+		}
+	}
+	ExtraLanguage extra;
+	extra.name = p_name;
+	extra.extension = p_extension;
+	extra.annotation_format = p_annotation_format;
+	extra.created = p_created;
+	extra_languages.push_back(extra);
+}
+
+ScriptLanguage *ScriptCreateDialog::_gdscript_language() const {
+	for (int i = 0; i < ScriptServer::get_language_count(); i++) {
+		ScriptLanguage *candidate = ScriptServer::get_language(i);
+		if (candidate->get_name() == "GDScript") {
+			return candidate;
+		}
+	}
+	return ScriptServer::get_language_count() > 0 ? ScriptServer::get_language(0) : nullptr;
+}
+
+ScriptLanguage *ScriptCreateDialog::_selected_language() const {
+	const int index = language_menu->get_selected();
+	if (index >= ScriptServer::get_language_count()) {
+		return _gdscript_language();
+	}
+	return index >= 0 ? ScriptServer::get_language(index) : nullptr;
+}
+
 void ScriptCreateDialog::_language_changed(int l) {
-	language = ScriptServer::get_language(l);
+	is_extra_language = l >= ScriptServer::get_language_count() && !extra_languages.is_empty();
+	language = is_extra_language ? _gdscript_language() : ScriptServer::get_language(l);
 	if (language == nullptr) {
 		return;
 	}
@@ -470,9 +612,16 @@ void ScriptCreateDialog::_browse_path(bool browse_parent, bool p_save) {
 	List<String> extensions;
 
 	int lang = language_menu->get_selected();
-	ScriptServer::get_language(lang)->get_recognized_extensions(&extensions);
+	if (lang < ScriptServer::get_language_count()) {
+		ScriptServer::get_language(lang)->get_recognized_extensions(&extensions);
+	} else if (!extra_languages.is_empty()) {
+		extensions.push_back(extra_languages[0].extension);
+	}
 
 	for (const String &E : extensions) {
+		if (load_enabled && E == "gde") {
+			continue; // never attach a class source
+		}
 		file_browse->add_filter("*." + E);
 	}
 

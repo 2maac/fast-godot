@@ -21,55 +21,57 @@ each one with the reason.
 
 ## GDExtension classes from scripts
 
-Right-clicking a node that has a script offers three actions:
+GDExtension classes are created from a source file, not from the scene tree. In
+the FileSystem dock, **New Script…** offers **GDScript (GDExtension)**: it writes
+a `.gde` script whose template declares the class and its base:
 
-- **Make GDExtension…** — compiles that script with Grit's front end, emits
-  godot-cpp C++, builds it as a shared library under `res://gdext/<name>/`,
-  renames the script to `.gde` (same folder and stem) and switches the node to
-  the generated class. The script must declare a `class_name`: it becomes the
-  generated class, and conversion is **class-wide**, so every node in every scene
-  that uses the script switches together (Convert Back restores them all). The archive stays attached to the node but never runs: it
-  is the readable source of the class, opens in the script editor, and Convert
-  Back turns it into a normal `.gd` again. In the scene tree it keeps a script
-  icon, drawn **red** instead of the usual grey, to show that it is the source of
-  a generated class rather than a running script. If the archive is edited after
-  the library was built, the icon gains an amber badge: the source no longer
-  matches the class. **Rebuild GDExtension** in the node's context menu
-  regenerates and rebuilds the class from the archive (headlessly:
-  `--grit-gdx-rebuild --grit-gdx-class <name> --grit-gdx-build`), which clears
-  the badge.
-- **Add to Existing Extension** — adds another class to an extension the project
-  already has; classes of one extension share a single library.
-- **Convert Back to GDScript** — restores the `.gde` script (same path, `.gd`
-  again), re-attaches it as a normal script, puts the node back on its base type
-  and removes the class. The class is only removed once no node
-  uses it, and the extension folder goes away with its last class.
+```gdscript
+@gdextension_class_name("Player")
+extends CharacterBody2D
+```
+
+`@gdextension_class_name` is a Grit annotation that GDScript ignores; the name
+becomes the generated class. The script is a **class source**: it cannot be
+attached to a node (the Attach Script dialog does not offer the language and
+rejects `.gde` paths); nodes use the generated class as their type instead.
+
+Creating the script generates the extension next to it:
+
+```
+res://player.gde
+res://player_gdext/player.gdextension
+res://player_gdext/SConstruct
+res://player_gdext/src/...
+res://player_gdext/.grit_manifest.json
+```
+
+Only the scaffold is generated; building the library is a separate step:
+`--grit-gdx-generate res://player.gde --grit-gdx-build` builds it with the
+configured SCons/godot-cpp toolchain (the `SConstruct` in the folder works too).
+Running `--grit-gdx-generate` again after editing the source regenerates it and
+keeps the same extension folder. A generated class whose source changed since the
+library was built gets the amber badge on its class icon.
 
 An extension folder holds:
 
 | file | purpose |
 |---|---|
-| `.grit_manifest.json` | the classes, their script, base type and archived script |
+| `.grit_manifest.json` | the classes, their `.gde` source, base type and built hash |
 | `<name>.gdextension` | the descriptor the editor loads |
 | `SConstruct` | builds the library against godot-cpp |
 | `src/` | generated class sources and the class registry |
 | `bin/lib<name>.<platform>.<arch>.<config>.<ext>` | the built library |
 
-The conversion reports what it will do before writing anything: the dialog names
-the class, how many methods convert and which stay behind with the reason, and the
-button reads **Convert Anyway** when a method cannot be translated. A skipped
-method still exists on the generated class as a stub that logs an error when
-called, so a call fails loudly instead of silently doing nothing. A script where
-nothing converts is refused, and so is a script that other nodes also use when it
-declares a `class_name` (those nodes would lose their script), or one whose parent
-is another script. `--grit-gdx-plan` prints the same report headlessly and
-`--grit-gdx-partial` accepts a partial class from the command line.
+Projects converted by an older build (`.gd` + `.gds` archives and the
+node-context actions) are upgraded once with `--grit-gdx-migrate`: each class
+gets a `.gde` source in place of its script/archive and keeps its extension. The
+old node-context actions are gone; generation and migration are driven from the
+CLI, and creation from the New Script dialog.
 
 Generated classes are ordinary godot-cpp classes: exported variables become
 properties, `signal` declarations become signals, and a script-defined `_ready`
-or `_process` overrides the native virtual. The identifier of the generated
-class is de-collided against `ClassDB`, so a `Control` script becomes
-`ControlNative` rather than shadowing the engine class.
+or `_process` overrides the native virtual. The class name is taken from the
+annotation; a name that hides a native class is refused rather than renamed.
 
 What converts: functions, exported variables, signals, virtual overrides,
 `is`/`as` (built-in, native and preloaded script types), `assert`, optional

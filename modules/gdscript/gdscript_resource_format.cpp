@@ -57,6 +57,7 @@ Ref<Resource> ResourceFormatLoaderGDScript::load(const String &p_path, const Str
 void ResourceFormatLoaderGDScript::get_recognized_extensions(List<String> *p_extensions) const {
 	p_extensions->push_back("gd");
 	p_extensions->push_back("gdc");
+	p_extensions->push_back("gde");
 }
 
 bool ResourceFormatLoaderGDScript::handles_type(const String &p_type) const {
@@ -65,7 +66,7 @@ bool ResourceFormatLoaderGDScript::handles_type(const String &p_type) const {
 
 String ResourceFormatLoaderGDScript::get_resource_type(const String &p_path) const {
 	String el = p_path.get_extension().to_lower();
-	if (el == "gd" || el == "gdc") {
+	if (el == "gd" || el == "gdc" || el == "gde") {
 		return "GDScript";
 	}
 	return "";
@@ -174,6 +175,7 @@ Error ResourceFormatSaverGDScript::save(const Ref<Resource> &p_resource, const S
 void ResourceFormatSaverGDScript::get_recognized_extensions(const Ref<Resource> &p_resource, List<String> *p_extensions) const {
 	if (Object::cast_to<GDScript>(*p_resource)) {
 		p_extensions->push_back("gd");
+		p_extensions->push_back("gde");
 	}
 }
 

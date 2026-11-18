@@ -78,6 +78,7 @@ class ScriptCreateDialog : public ConfirmationDialog {
 	bool built_in_enabled = true;
 	bool load_enabled = true;
 	int default_language;
+	bool is_extra_language = false;
 	bool re_check_path = false;
 
 	Control *path_controls[2];
@@ -85,6 +86,15 @@ class ScriptCreateDialog : public ConfirmationDialog {
 
 	Vector<ScriptLanguage::ScriptTemplate> template_list;
 	ScriptLanguage *language = nullptr;
+	// Creation-only script dialects (for example a Grit GDExtension source). They
+	// are never offered by the attach/load dialog.
+	struct ExtraLanguage {
+		String name;
+		String extension;
+		String annotation_format;
+		void (*created)(const String &) = nullptr;
+	};
+	static Vector<ExtraLanguage> extra_languages;
 
 	String base_type;
 
@@ -92,6 +102,8 @@ class ScriptCreateDialog : public ConfirmationDialog {
 	bool _can_be_built_in();
 	void _path_changed(const String &p_path = String());
 	void _language_changed(int l = 0);
+	ScriptLanguage *_selected_language() const;
+	ScriptLanguage *_gdscript_language() const;
 	void _built_in_pressed();
 	void _use_template_pressed();
 	bool _validate_parent(const String &p_string);
@@ -120,5 +132,11 @@ protected:
 public:
 	void config(const String &p_base_name, const String &p_base_path, bool p_built_in_enabled = true, bool p_load_enabled = true);
 	void set_inheritance_base_type(const String &p_base);
+	// Registered by modules (editor init); safe to call without an instance.
+	static void register_extra_language(const String &p_name, const String &p_extension, const String &p_annotation_format, void (*p_created)(const String &) = nullptr);
+
+	// Debug aid: prints the language list in create and attach mode.
+	static void run_language_check();
+
 	ScriptCreateDialog();
 };

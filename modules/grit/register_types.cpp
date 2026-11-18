@@ -24,6 +24,7 @@
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
 #include "editor/editor_node.h"
+#include "editor/script/script_create_dialog.h"
 #include "editor/inspector/editor_context_menu_plugin.h"
 #include "editor/export/editor_export.h"
 #endif
@@ -66,29 +67,20 @@ static void grit_editor_init() {
 	}
 	print_line(vformat("Grit: GDExtension tools active (build %s).", String(VERSION_HASH).is_empty() ? String(VERSION_FULL_BUILD) : vformat("%s.%s", VERSION_FULL_BUILD, VERSION_HASH)));
 
-	// Experimental: turn a script into a GDExtension from the scene tree.
-	Ref<GritGdxContextMenuPlugin> gdextension_menu;
-	gdextension_menu.instantiate();
-	EditorContextMenuPluginManager::get_singleton()->add_plugin(EditorContextMenuPlugin::CONTEXT_SLOT_SCENE_TREE, gdextension_menu);
-	// Debug harness: GRIT_GDX_AUTOTEST=<scene> drives the actions in a real editor.
-	const String autotest_scene = OS::get_singleton()->get_environment("GRIT_GDX_AUTOTEST");
-	if (!autotest_scene.is_empty()) {
-		callable_mp(gdextension_menu.ptr(), &GritGdxContextMenuPlugin::run_autotest).bind(autotest_scene).call_deferred();
-	}
-	String menu_check_scene;
+	// GDExtension sources are created from FileSystem > New Script with the
+	// "GDScript (GDExtension)" language; the scene tree has no Grit actions.
+	ScriptCreateDialog::register_extra_language("GDScript (GDExtension)", "gde", "@gdextension_class_name(\"%s\")", &GritGdxApply::create_source_callback);
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
-		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-migrate" || argument == "--grit-gdx-plan") {
+		if (argument == "--grit-gdx-dialog-check") {
+			callable_mp_static(&ScriptCreateDialog::run_language_check).call_deferred();
+			break;
+		}
+		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-generate" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-migrate" || argument == "--grit-gdx-plan") {
 			callable_mp_static(&GritGdxGenerator::run_from_command_line).call_deferred();
 			break;
 		}
-		if (argument == "--grit-gdx-menu-check" && element->next()) {
-			menu_check_scene = element->next()->get();
-		}
-	}
-	if (!menu_check_scene.is_empty()) {
-		callable_mp_static(&GritGdxContextMenuPlugin::run_menu_check).bind(menu_check_scene).call_deferred();
 	}
 	for (const Ref<EditorExportPlugin> &plugin : other_plugins) {
 		editor_export->add_export_plugin(plugin);
