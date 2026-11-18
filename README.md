@@ -50,11 +50,12 @@ res://player_gdext/.grit_manifest.json
 
 Only the scaffold is generated; building the library is a separate step. With the
 `.gde` source open, the script editor's **Build GDE** button (next to Online
-Docs / Search Help) regenerates the `.gdextension` descriptor and builds the
-library for it; it never changes a scene, a node or the `.gde` source itself,
-and the class is ready for GDScript once the build finishes. If the source has
-not changed since the last build and the library exists, the button reports that
-it is up to date instead of running SCons again. Headlessly the same is
+Docs / Search Help) saves the file (File > Save), copies it to a temporary
+`.gde`, builds from that copy and deletes it; the real `.gde` is never loaded or
+modified by the build. It always rebuilds (there is no up-to-date check) and
+never changes a scene or a node. The class name is always the source's
+`class_name` verbatim — it is never renamed; a clash with another script's class
+is an error. Headlessly the same is
 `--grit-gdx-generate res://player.gde --grit-gdx-build` (the `SConstruct` in the
 folder works too).
 Running `--grit-gdx-generate` again after editing the source regenerates it and

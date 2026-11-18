@@ -185,6 +185,8 @@ void ScriptEditor::_build_gde() {
 		EditorNode::get_singleton()->show_warning(TTR("GDExtension tools are not available."), TTR("Build GDE"));
 		return;
 	}
+	// File > Save first: the build copies the saved source to a temporary file.
+	save_current_script();
 	build_gde_handler.call(script->get_path());
 }
 

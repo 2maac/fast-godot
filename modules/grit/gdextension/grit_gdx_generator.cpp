@@ -141,12 +141,13 @@ Error GritGdxGenerator::write_file(const String &p_path, const String &p_content
 	return OK;
 }
 
-Error GritGdxGenerator::collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error) {
+Error GritGdxGenerator::collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error, const String &p_record_path) {
 	Error error = OK;
-	const String path = p_script_path.begins_with("res://") ? p_script_path : ProjectSettings::get_singleton()->localize_path(p_script_path);
+	const String path = p_script_path.begins_with("res://") || p_script_path.begins_with("user://") ? p_script_path : ProjectSettings::get_singleton()->localize_path(p_script_path);
+	const String record_path = p_record_path.is_empty() ? path : p_record_path;
 	Ref<GDScript> script = GDScriptCache::get_full_script(path, error);
 	if (error != OK || script.is_null()) {
-		r_error = vformat("could not load \"%s\"", path);
+		r_error = vformat("could not load \"%s\"", record_path);
 		return error != OK ? error : ERR_CANT_OPEN;
 	}
 
@@ -160,7 +161,7 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 	GritScriptRecording recording(build_script.ptr());
 	error = build_script->reload(true);
 	if (error != OK) {
-		r_error = vformat("could not compile \"%s\"", path);
+		r_error = vformat("could not compile \"%s\"", record_path);
 		return error;
 	}
 
@@ -168,23 +169,23 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 	// with class_name; legacy `.gd` sources may still carry the annotation.
 	const String class_name = !build_script->get_global_name().is_empty() ? String(build_script->get_global_name()) : build_script->get_gdextension_class_name();
 	if (class_name.is_empty()) {
-		r_error = vformat("\"%s\" has no class_name; add one (the generated class takes that name).", path);
+		r_error = vformat("\"%s\" has no class_name; add one (the generated class takes that name).", record_path);
 		return ERR_INVALID_PARAMETER;
 	}
 	if (!class_name.is_valid_identifier()) {
-		r_error = vformat("the class name \"%s\" in \"%s\" is not a valid identifier.", class_name, path);
+		r_error = vformat("the class name \"%s\" in \"%s\" is not a valid identifier.", class_name, record_path);
 		return ERR_INVALID_PARAMETER;
 	}
 	if (ClassDB::class_exists(class_name)) {
 		const ClassDB::APIType api = ClassDB::get_api_type(class_name);
 		if (api != ClassDB::API_EXTENSION && api != ClassDB::API_EDITOR_EXTENSION) {
-			r_error = vformat("the class name \"%s\" in \"%s\" hides the native class \"%s\"; choose another name.", class_name, path, class_name);
+			r_error = vformat("the class name \"%s\" in \"%s\" hides the native class \"%s\"; choose another name.", class_name, record_path, class_name);
 			return ERR_INVALID_PARAMETER;
 		}
 	}
 
 	r_class = GritGdxClass();
-	r_class.script_path = path;
+	r_class.script_path = record_path;
 	r_class.class_name = class_name_for(build_script);
 	r_class.base_type = build_script->get_instance_base_type();
 	r_class.is_tool = build_script->is_tool();
@@ -211,27 +212,6 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 	if (base_api == ClassDB::API_EXTENSION || base_api == ClassDB::API_EDITOR_EXTENSION) {
 		r_error = vformat("\"%s\" already extends the GDExtension class \"%s\"; attach it to a %s node instead of converting it again", path, r_class.base_type, r_class.base_type);
 		return ERR_INVALID_PARAMETER;
-	}
-
-	// Two classes in one extension must not share a name. The entry for this very
-	// script does not count: re-converting it must keep its class name.
-	GritGdxManifest manifest;
-	manifest.load(p_extension_directory);
-	const auto taken_by_other_script = [&manifest, &path](const String &p_class_name) {
-		for (const GritGdxManifestEntry &entry : manifest.classes) {
-			if (entry.script_path != path && entry.class_name == p_class_name) {
-				return true;
-			}
-		}
-		return false;
-	};
-	if (taken_by_other_script(r_class.class_name)) {
-		const String base = r_class.class_name;
-		int suffix = 1;
-		while (taken_by_other_script(r_class.class_name)) {
-			r_class.class_name = suffix == 1 ? base + "Native" : base + "Native" + itos(suffix);
-			suffix++;
-		}
 	}
 
 	// Script variables become native fields.
@@ -527,10 +507,10 @@ Error GritGdxGenerator::write_extension_files(const String &p_extension_director
 	return write_file(directory.path_join(name + ".gdextension"), descriptor.as_string());
 }
 
-Error GritGdxGenerator::generate_class(const String &p_extension_directory, const String &p_script_path, GritGdxClass &r_class, String &r_report) {
+Error GritGdxGenerator::generate_class(const String &p_extension_directory, const String &p_script_path, GritGdxClass &r_class, String &r_report, const String &p_record_path) {
 	const String directory = p_extension_directory.ends_with("/") ? p_extension_directory.left(-1) : p_extension_directory;
 	String error_message;
-	const Error error = collect(p_script_path, directory, r_class, error_message);
+	const Error error = collect(p_script_path, directory, r_class, error_message, p_record_path);
 	if (error != OK) {
 		r_report = "Grit: " + error_message + ".";
 		return error;
@@ -548,6 +528,22 @@ Error GritGdxGenerator::generate_class(const String &p_extension_directory, cons
 	GritGdxManifest manifest;
 	const Error load_error = manifest.load(directory);
 	ERR_FAIL_COND_V_MSG(load_error != OK, load_error, "Grit: could not read the extension manifest.");
+	// The source's class_name is authoritative: never rename it. Another script
+	// using the same name is an error; an entry left over from a previous
+	// class_name of this same source is dropped.
+	for (int i = manifest.classes.size() - 1; i >= 0; i--) {
+		const GritGdxManifestEntry &existing = manifest.classes[i];
+		if (existing.script_path != r_class.script_path) {
+			if (existing.class_name == r_class.class_name) {
+				r_report = vformat("Grit: class \"%s\" is already generated from \"%s\"; class names must be unique.", r_class.class_name, existing.script_path);
+				return ERR_INVALID_PARAMETER;
+			}
+			continue;
+		}
+		if (existing.class_name != r_class.class_name) {
+			manifest.classes.remove_at(i);
+		}
+	}
 	GritGdxManifestEntry entry;
 	entry.class_name = r_class.class_name;
 	entry.script_path = r_class.script_path;

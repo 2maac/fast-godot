@@ -12,7 +12,9 @@ class GritGdxGenerator {
 public:
 	// Adds or refreshes one class inside `p_extension_directory` (created when
 	// missing) and regenerates the registry. `r_report` receives a summary.
-	static Error generate_class(const String &p_extension_directory, const String &p_script_path, GritGdxClass &r_class, String &r_report);
+	// `p_record_path` is the source path recorded in the manifest (the real
+	// `.gde`); `p_script_path` may be a temporary copy compiled for the build.
+	static Error generate_class(const String &p_extension_directory, const String &p_script_path, GritGdxClass &r_class, String &r_report, const String &p_record_path = String());
 
 	// Writes SConstruct, descriptor and registry from the folder's manifest.
 	// `p_extra_class` is the class being generated: the manifest may not contain it
@@ -34,7 +36,7 @@ public:
 	static LocalVector<GritGdxSkipped> collect_skipped(const GritGdxClass &p_class);
 	// Records a script and classifies its methods without writing any file: the
 	// pre-flight plan (and the CLI's --grit-gdx-plan) builds on it.
-	static Error collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error);
+	static Error collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error, const String &p_record_path = String());
 
 private:
 	static Error write_file(const String &p_path, const String &p_content);

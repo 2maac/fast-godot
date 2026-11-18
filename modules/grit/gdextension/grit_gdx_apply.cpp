@@ -1276,33 +1276,6 @@ void GritGdxApply::build_source_from_editor(const String &p_script_path) {
 		EditorNode::get_singleton()->show_accept("Open a GDExtension source (.gde) first.", "Build GDE");
 		return;
 	}
-	// Nothing changed since the last successful build: do not run SCons again
-	// (the generated sources are already up to date and the library exists).
-	for (const String &directory : GritGdxManifest::list_extensions()) {
-		GritGdxManifest manifest;
-		if (manifest.load(directory) != OK) {
-			continue;
-		}
-		const GritGdxManifestEntry *entry = manifest.find_script(p_script_path);
-		if (!entry) {
-			continue;
-		}
-		Error hash_error = OK;
-		const String source = FileAccess::get_file_as_string(p_script_path, &hash_error);
-		const String extension_name = GritGdxManifest::extension_name(directory);
-		const String library = GritGdxBuilder::library_path(directory, extension_name, "editor");
-		const String descriptor = directory.path_join(extension_name + ".gdextension");
-		if (hash_error == OK && !entry->source_hash.is_empty() && source.sha256_text() == entry->source_hash && FileAccess::exists(library) && FileAccess::exists(descriptor)) {
-			EditorNode::get_singleton()->show_accept(vformat("%s is up to date; its library is already built.", p_script_path.get_file()), "Build GDE");
-			if (!OS::get_singleton()->get_environment("GRIT_GDX_BUILD_TEST").is_empty()) {
-				if (SceneTree *tree = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop())) {
-					tree->quit();
-				}
-			}
-			return;
-		}
-		break;
-	}
 	build_source_job.instantiate();
 	const Error start_error = build_source_job->start_build_source(p_script_path);
 	if (start_error != OK) {
@@ -1364,15 +1337,31 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 		r_report = vformat("Grit: \"%s\" does not exist.", path);
 		return ERR_FILE_NOT_FOUND;
 	}
+	Error read_error = OK;
+	const String source = FileAccess::get_file_as_string(path, &read_error);
+	if (read_error != OK) {
+		r_report = vformat("Grit: could not read \"%s\".", path);
+		return read_error;
+	}
 	const String stem = path.get_file().get_basename();
-	String directory = path.get_base_dir().path_join(stem + "_gdext");
 	// A migrated or previously generated class keeps its extension; only a new
 	// class gets the sibling `<stem>_gdext` directory.
+	String class_name = class_name_of(source);
+	if (class_name.is_empty()) {
+		class_name = gdextension_class_name_of(source);
+	}
+	String directory = path.get_base_dir().path_join(stem + "_gdext");
 	{
-		Error load_error = OK;
-		const Ref<GDScript> source = GDScriptCache::get_full_script(path, load_error);
-		const String class_name = source.is_valid() ? source->get_gdextension_class_name() : String();
-		if (load_error == OK && !class_name.is_empty()) {
+		// Prefer the extension that already owns this script (even if its class_name
+		// changed), then one that already has the class.
+		for (const String &existing : GritGdxManifest::list_extensions()) {
+			GritGdxManifest manifest;
+			if (manifest.load(existing) == OK && manifest.find_script(path)) {
+				directory = existing;
+				break;
+			}
+		}
+		if (!class_name.is_empty()) {
 			for (const String &existing : GritGdxManifest::list_extensions()) {
 				GritGdxManifest manifest;
 				if (manifest.load(existing) == OK && manifest.find_class(class_name)) {
@@ -1383,9 +1372,22 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 		}
 	}
 
+	// Compile a temporary copy: the build never loads, compiles or otherwise
+	// touches the `.gde` file itself.
+	const String build_copy = vformat("user://grit_build_%d.gde", (int)OS::get_singleton()->get_ticks_usec());
+	if (write_text_file(build_copy, source) != OK) {
+		r_report = "Grit: could not create the temporary build copy.";
+		return ERR_CANT_CREATE;
+	}
 	GritGdxClass klass;
 	String report;
-	const Error error = GritGdxGenerator::generate_class(directory, path, klass, report);
+	const Error error = GritGdxGenerator::generate_class(directory, build_copy, klass, report, path);
+	GDScriptCache::remove_script(build_copy);
+	if (const Ref<Resource> cached = ResourceCache::get_ref(build_copy); cached.is_valid()) {
+		cached->set_path(String());
+	}
+	DirAccess::remove_absolute(build_copy);
+	DirAccess::remove_absolute(build_copy + ".uid");
 	if (error != OK) {
 		r_report = report;
 		return error;
@@ -1400,9 +1402,7 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 			GritGdxManifestEntry updated = *entry;
 			updated.script_path = path;
 			updated.archived_script = String();
-			Error hash_error = OK;
-			const String source = FileAccess::get_file_as_string(path, &hash_error);
-			updated.source_hash = hash_error == OK ? source.sha256_text() : String();
+			updated.source_hash = source.sha256_text();
 			manifest.upsert(updated);
 			manifest.save(directory);
 		}
