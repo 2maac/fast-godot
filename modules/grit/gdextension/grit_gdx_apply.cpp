@@ -1344,31 +1344,20 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 		return read_error;
 	}
 	const String stem = path.get_file().get_basename();
-	// A migrated or previously generated class keeps its extension; only a new
-	// class gets the sibling `<stem>_gdext` directory.
-	String class_name = class_name_of(source);
-	if (class_name.is_empty()) {
-		class_name = gdextension_class_name_of(source);
+	// The build's class is always the script's class_name.
+	const String script_class = class_name_of(source);
+	if (script_class.is_empty()) {
+		r_report = vformat("Grit: \"%s\" has no class_name; the generated class always takes the script's class_name.", path);
+		return ERR_INVALID_PARAMETER;
 	}
+	// The extension that already owns this script (even if its class_name changed)
+	// is reused; a new script gets the sibling `<stem>_gdext` directory.
 	String directory = path.get_base_dir().path_join(stem + "_gdext");
-	{
-		// Prefer the extension that already owns this script (even if its class_name
-		// changed), then one that already has the class.
-		for (const String &existing : GritGdxManifest::list_extensions()) {
-			GritGdxManifest manifest;
-			if (manifest.load(existing) == OK && manifest.find_script(path)) {
-				directory = existing;
-				break;
-			}
-		}
-		if (!class_name.is_empty()) {
-			for (const String &existing : GritGdxManifest::list_extensions()) {
-				GritGdxManifest manifest;
-				if (manifest.load(existing) == OK && manifest.find_class(class_name)) {
-					directory = existing;
-					break;
-				}
-			}
+	for (const String &existing : GritGdxManifest::list_extensions()) {
+		GritGdxManifest manifest;
+		if (manifest.load(existing) == OK && manifest.find_script(path)) {
+			directory = existing;
+			break;
 		}
 	}
 

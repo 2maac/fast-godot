@@ -165,11 +165,13 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 		return error;
 	}
 
-	// The generated class takes the source's name: a `.gde` source declares it
-	// with class_name; legacy `.gd` sources may still carry the annotation.
-	const String class_name = !build_script->get_global_name().is_empty() ? String(build_script->get_global_name()) : build_script->get_gdextension_class_name();
+	// The generated class always takes the script's name. A `.gde` source must
+	// declare class_name; legacy `.gd` sources may still carry the annotation.
+	const bool is_gdextension_source = record_path.ends_with(".gde");
+	const String global_name = build_script->get_global_name();
+	const String class_name = !global_name.is_empty() ? String(global_name) : (is_gdextension_source ? String() : build_script->get_gdextension_class_name());
 	if (class_name.is_empty()) {
-		r_error = vformat("\"%s\" has no class_name; add one (the generated class takes that name).", record_path);
+		r_error = is_gdextension_source ? vformat("\"%s\" has no class_name; the generated class always takes the script's class_name.", record_path) : vformat("\"%s\" has no class_name; add one (the generated class takes that name).", record_path);
 		return ERR_INVALID_PARAMETER;
 	}
 	if (!class_name.is_valid_identifier()) {
