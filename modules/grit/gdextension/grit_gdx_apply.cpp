@@ -1343,12 +1343,6 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 		r_report = vformat("Grit: \"%s\" does not exist.", path);
 		return ERR_FILE_NOT_FOUND;
 	}
-	// The New Script dialog creates a plain GDScript before saving it; drop that
-	// instance so the path loads as the inert Grit source.
-	if (const Ref<Resource> cached = ResourceCache::get_ref(path); cached.is_valid() && Object::cast_to<GritGdxScript>(cached.ptr()) == nullptr) {
-		GDScriptCache::remove_script(path);
-		cached->set_path(String());
-	}
 	const String stem = path.get_file().get_basename();
 	String directory = path.get_base_dir().path_join(stem + "_gdext");
 	// A migrated or previously generated class keeps its extension; only a new

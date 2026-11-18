@@ -141,8 +141,15 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 		return error != OK ? error : ERR_CANT_OPEN;
 	}
 
-	GritScriptRecording recording(script.ptr());
-	error = script->reload(true);
+	// Never compile or otherwise touch the resource the editor has open: build a
+	// private copy under a synthetic path (still ending in `.gde` so the class
+	// name exemptions apply) and record that.
+	Ref<GDScript> build_script;
+	build_script.instantiate();
+	build_script->set_source_code(script->get_source_code());
+	build_script->set_path(path + ".__grit_build.gde");
+	GritScriptRecording recording(build_script.ptr());
+	error = build_script->reload(true);
 	if (error != OK) {
 		r_error = vformat("could not compile \"%s\"", path);
 		return error;
@@ -150,7 +157,7 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 
 	// The generated class takes the source's name: a `.gde` source declares it
 	// with class_name; legacy `.gd` sources may still carry the annotation.
-	const String class_name = !script->get_global_name().is_empty() ? String(script->get_global_name()) : script->get_gdextension_class_name();
+	const String class_name = !build_script->get_global_name().is_empty() ? String(build_script->get_global_name()) : build_script->get_gdextension_class_name();
 	if (class_name.is_empty()) {
 		r_error = vformat("\"%s\" has no class_name; add one (the generated class takes that name).", path);
 		return ERR_INVALID_PARAMETER;
@@ -169,9 +176,10 @@ Error GritGdxGenerator::collect(const String &p_script_path, const String &p_ext
 
 	r_class = GritGdxClass();
 	r_class.script_path = path;
-	r_class.class_name = class_name_for(script);
-	r_class.base_type = script->get_instance_base_type();
-	r_class.is_tool = script->is_tool();
+	r_class.class_name = class_name_for(build_script);
+	r_class.base_type = build_script->get_instance_base_type();
+	r_class.is_tool = build_script->is_tool();
+	build_script->set_path(String());
 	if (r_class.base_type == StringName()) {
 		r_error = "the script has no native base class (does it extend another script?)";
 		return ERR_INVALID_PARAMETER;
