@@ -658,27 +658,23 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	// The converted node now references the archive, so it has to exist. When no
 	// node needs the live script anymore it is renamed; when other nodes still use
 	// it, a copy is archived and those nodes keep the `.gd`.
-	const int remaining = count_script_users(p_class.script_path);
+	// The `.gd` stays the source of truth (and the file the editor knows); the
+	// archive is a detached snapshot of it, written next to it.
 	const String archived = p_class.script_path.get_basename() + ".gds";
 	if (archived != p_class.script_path && FileAccess::exists(p_class.script_path)) {
-		close_editor_script_tabs(p_class.script_path);
 		if (FileAccess::exists(archived)) {
 			DirAccess::remove_absolute(archived);
 		}
-		Error archive_error = OK;
-		if (remaining == 0) {
-			archive_error = DirAccess::rename_absolute(p_class.script_path, archived);
-			// Keep the script's UID with it so a later Convert Back restores the
-			// same resource id.
-			if (FileAccess::exists(p_class.script_path + ".uid")) {
-				DirAccess::rename_absolute(p_class.script_path + ".uid", archived + ".uid");
-			}
-		} else {
-			archive_error = DirAccess::copy_absolute(p_class.script_path, archived);
+		const Error copy_error = DirAccess::copy_absolute(p_class.script_path, archived);
+		if (copy_error != OK) {
+			r_report = r_report + vformat("\nGrit: could not snapshot \"%s\".", p_class.script_path);
+			return copy_error;
 		}
-		if (archive_error != OK) {
-			r_report = r_report + vformat("\nGrit: could not archive \"%s\".", p_class.script_path);
-			return archive_error;
+		if (FileAccess::exists(archived + ".uid")) {
+			DirAccess::remove_absolute(archived + ".uid");
+		}
+		if (FileAccess::exists(p_class.script_path + ".uid")) {
+			DirAccess::copy_absolute(p_class.script_path + ".uid", archived + ".uid");
 		}
 	}
 	if (FileAccess::exists(archived)) {
@@ -689,10 +685,9 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 			if (const GritGdxManifestEntry *entry = manifest.find_class(p_class.class_name)) {
 				GritGdxManifestEntry updated = *entry;
 				updated.archived_script = archived;
-				// Baseline for the stale check: edits to the archive after this
-				// point mean the library no longer matches the source.
+				// The script is authoritative: the stale baseline is its hash.
 				Error hash_error = OK;
-				const String source = FileAccess::get_file_as_string(archived, &hash_error);
+				const String source = FileAccess::get_file_as_string(p_class.script_path, &hash_error);
 				updated.source_hash = hash_error == OK ? source.sha256_text() : String();
 				manifest.upsert(updated);
 				manifest.save(r_result.extension_directory);
@@ -706,9 +701,6 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	report.append(vformat("  node rewritten: %s\n", r_result.node_rewritten ? "yes" : "no"));
 	if (!r_result.archived_script.is_empty()) {
 		report.append(vformat("  script archived: %s\n", r_result.archived_script));
-	}
-	if (remaining > 0) {
-		report.append(vformat("  script kept for %d other node(s): %s\n", remaining, p_class.script_path));
 	}
 	if (!r_result.library_path.is_empty()) {
 		report.append(vformat("  library: %s\n", r_result.library_path));
@@ -759,6 +751,17 @@ static String gdextension_class_name_of(const String &p_text) {
 			argument = argument.substr(1, argument.length() - 2);
 		}
 		return argument;
+	}
+	return String();
+}
+
+// The value of a (now rejected) top-level `class_name X`.
+static String class_name_of(const String &p_text) {
+	for (const String &line : p_text.split("\n")) {
+		const String stripped = line.strip_edges();
+		if (stripped.begins_with("class_name ")) {
+			return stripped.substr(11).strip_edges();
+		}
 	}
 	return String();
 }
@@ -954,17 +957,17 @@ Variant GritGdxApply::class_stale_badge(const StringName &p_class) {
 		if (!entry) {
 			continue;
 		}
-		if (entry->archived_script.is_empty() || entry->source_hash.is_empty() || !FileAccess::exists(entry->archived_script)) {
+		if (entry->script_path.is_empty() || entry->source_hash.is_empty() || !FileAccess::exists(entry->script_path)) {
 			return Variant();
 		}
-		const uint64_t mtime = FileAccess::get_modified_time(entry->archived_script);
+		const uint64_t mtime = FileAccess::get_modified_time(entry->script_path);
 		CacheEntry *cached = cache.getptr(p_class);
 		bool stale = false;
 		if (cached && cached->mtime == mtime && cached->built_hash == entry->source_hash) {
 			stale = cached->stale;
 		} else {
 			Error error = OK;
-			const String source = FileAccess::get_file_as_string(entry->archived_script, &error);
+			const String source = FileAccess::get_file_as_string(entry->script_path, &error);
 			stale = error == OK && source.sha256_text() != entry->source_hash;
 			CacheEntry value;
 			value.mtime = mtime;
@@ -977,7 +980,7 @@ Variant GritGdxApply::class_stale_badge(const StringName &p_class) {
 		}
 		Dictionary badge;
 		badge["icon"] = StringName("GritGdxStaleBadge");
-		badge["tooltip"] = String("The archived source of this generated class changed since the extension was built. Rebuild it from the node menu.");
+		badge["tooltip"] = String("The script of this generated class changed since the extension was built. Rebuild it from the node menu.");
 		return badge;
 	}
 	return Variant();
@@ -985,17 +988,27 @@ Variant GritGdxApply::class_stale_badge(const StringName &p_class) {
 
 bool GritGdxApply::has_legacy_archive(const String &p_class_name) {
 	GritGdxApply::RevertTarget target;
-	if (!GritGdxApply::find_revert_target(p_class_name, target) || target.archived_script.is_empty()) {
+	if (!GritGdxApply::find_revert_target(p_class_name, target) || target.script_path.is_empty()) {
 		return false;
+	}
+	if (!FileAccess::exists(target.script_path)) {
+		return true;
 	}
 	if (target.archived_script.ends_with(".gde")) {
 		return true;
 	}
-	// A `.gds` from the class_name era still declares class_name and needs the
-	// annotation rewrite.
+	const String expected = target.script_path.get_basename() + ".gds";
+	if (target.archived_script != expected) {
+		return true;
+	}
 	Error error = OK;
-	const String text = FileAccess::get_file_as_string(target.archived_script, &error);
-	return error == OK && has_class_name(text) && gdextension_class_name_of(text).is_empty();
+	const String source = FileAccess::get_file_as_string(target.script_path, &error);
+	if (error == OK && has_class_name(source)) {
+		return true;
+	}
+	error = OK;
+	const String archive = FileAccess::get_file_as_string(target.archived_script, &error);
+	return error == OK && has_class_name(archive);
 }
 
 Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report) {
@@ -1009,81 +1022,74 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 		}
 		bool changed = false;
 		for (GritGdxManifestEntry &entry : manifest.classes) {
-			if (entry.archived_script.is_empty()) {
+			const bool source_exists = !entry.script_path.is_empty() && FileAccess::exists(entry.script_path);
+			const bool archive_exists = !entry.archived_script.is_empty() && FileAccess::exists(entry.archived_script);
+			if (!source_exists && !archive_exists) {
 				continue;
 			}
-			if (!entry.archived_script.ends_with(".gde")) {
-				// A `.gds` from the class_name era: rewrite it to the annotation.
-				if (!FileAccess::exists(entry.archived_script)) {
-					continue;
-				}
-				Error read_error = OK;
-				const String text = FileAccess::get_file_as_string(entry.archived_script, &read_error);
-				if (read_error != OK || !has_class_name(text)) {
-					continue;
-				}
-				const String name = entry.class_name.is_empty() ? GritGdxApply::suggested_class_name(entry.script_path) : entry.class_name;
-				String rewritten = strip_class_name_line(text);
-				if (gdextension_class_name_of(rewritten).is_empty()) {
-					rewritten = insert_annotation(rewritten, name);
-				}
-				if (write_text_file(entry.archived_script, rewritten) != OK) {
-					report.append(vformat("Grit: could not rewrite \"%s\".\n", entry.archived_script));
-					continue;
-				}
-				Error hash_error = OK;
-				const String source = FileAccess::get_file_as_string(entry.archived_script, &hash_error);
-				entry.source_hash = hash_error == OK ? source.sha256_text() : String();
-				changed = true;
-				r_migrated.push_back(entry.class_name);
-				report.append(vformat("Grit: upgraded \"%s\": %s now uses @gdextension_class_name(\"%s\").\n", entry.class_name, entry.archived_script, name));
-				continue;
-			}
-			if (!FileAccess::exists(entry.archived_script)) {
-				report.append(vformat("Grit: \"%s\" has no legacy archive at \"%s\"; skipped.\n", entry.class_name, entry.archived_script));
-				continue;
-			}
-			const String legacy = entry.archived_script;
-			const String archived = entry.script_path.get_basename() + ".gds";
-			if (FileAccess::exists(archived)) {
-				report.append(vformat("Grit: \"%s\" already exists; skipped \"%s\".\n", archived, entry.class_name));
-				continue;
-			}
-			const Error rename_error = DirAccess::rename_absolute(legacy, archived);
-			if (rename_error != OK) {
-				report.append(vformat("Grit: could not rename \"%s\"; skipped \"%s\".\n", legacy, entry.class_name));
-				continue;
-			}
-			if (FileAccess::exists(legacy + ".uid")) {
-				DirAccess::rename_absolute(legacy + ".uid", archived + ".uid");
-			}
-			// Archives used to keep the script's class_name; the converter now expects
-			// the @gdextension_class_name annotation instead.
+			// The `.gd` is authoritative; a legacy class may only have the archive.
 			Error read_error = OK;
-			const String text = FileAccess::get_file_as_string(archived, &read_error);
-			if (read_error == OK && gdextension_class_name_of(text).is_empty()) {
-				const String name = entry.class_name.is_empty() ? GritGdxApply::suggested_class_name(entry.script_path) : entry.class_name;
-				write_text_file(archived, insert_annotation(strip_class_name_line(text), name));
+			const String text = FileAccess::get_file_as_string(source_exists ? entry.script_path : entry.archived_script, &read_error);
+			if (read_error != OK) {
+				report.append(vformat("Grit: could not read the source of \"%s\"; skipped.\n", entry.class_name));
+				continue;
+			}
+			const String original_class = class_name_of(text);
+			const String annotation = gdextension_class_name_of(text);
+			String rewritten = text;
+			bool needs_write = !source_exists;
+			if (!original_class.is_empty()) {
+				rewritten = strip_class_name_line(rewritten);
+				needs_write = true;
+			}
+			if (annotation.is_empty()) {
+				String name = !original_class.is_empty() ? original_class : entry.class_name;
+				if (name.is_empty()) {
+					name = GritGdxApply::suggested_class_name(entry.script_path);
+				}
+				rewritten = insert_annotation(rewritten, name);
+				needs_write = true;
+			}
+			if (needs_write && write_text_file(entry.script_path, rewritten) != OK) {
+				report.append(vformat("Grit: could not write \"%s\"; skipped \"%s\".\n", entry.script_path, entry.class_name));
+				continue;
 			}
 
-			// The legacy archive was attached to the class's nodes; detach them.
-			int detached = 0;
-			for (const String &scene : collect_scenes("res://")) {
-				String detach_error;
-				detached += detach_archive_assignments(scene, entry.class_name, legacy, detach_error);
-				if (!detach_error.is_empty()) {
-					report.append("Grit: " + detach_error + "\n");
+			// Keep a detached snapshot next to the authoritative script.
+			const String snapshot = entry.script_path.get_basename() + ".gds";
+			if (snapshot != entry.script_path) {
+				if (FileAccess::exists(snapshot)) {
+					DirAccess::remove_absolute(snapshot);
+				}
+				if (write_text_file(snapshot, rewritten) != OK) {
+					report.append(vformat("Grit: could not write \"%s\"; skipped \"%s\".\n", snapshot, entry.class_name));
+					continue;
+				}
+				if (FileAccess::exists(entry.script_path + ".uid")) {
+					DirAccess::copy_absolute(entry.script_path + ".uid", snapshot + ".uid");
 				}
 			}
 
-			entry.archived_script = archived;
-			// The legacy manifest predates the stale baseline; record it now.
+			// A legacy archive was attached to the class's nodes; detach and drop it.
+			if (!entry.archived_script.is_empty() && entry.archived_script != snapshot && archive_exists) {
+				for (const String &scene : collect_scenes("res://")) {
+					String detach_error;
+					detach_archive_assignments(scene, entry.class_name, entry.archived_script, detach_error);
+					if (!detach_error.is_empty()) {
+						report.append("Grit: " + detach_error + "\n");
+					}
+				}
+				DirAccess::remove_absolute(entry.archived_script);
+				DirAccess::remove_absolute(entry.archived_script + ".uid");
+			}
+
 			Error hash_error = OK;
-			const String source = FileAccess::get_file_as_string(archived, &hash_error);
+			const String source = FileAccess::get_file_as_string(entry.script_path, &hash_error);
+			entry.archived_script = snapshot;
 			entry.source_hash = hash_error == OK ? source.sha256_text() : String();
 			changed = true;
 			r_migrated.push_back(entry.class_name);
-			report.append(vformat("Grit: migrated \"%s\": %s -> %s (%d node(s) detached).\n", entry.class_name, legacy, archived, detached));
+			report.append(vformat("Grit: upgraded \"%s\": source %s, snapshot %s.\n", entry.class_name, entry.script_path, snapshot));
 		}
 		if (changed) {
 			const Error save_error = manifest.save(directory);
@@ -1091,12 +1097,11 @@ Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report)
 				report.append(vformat("Grit: could not write the manifest in \"%s\".\n", directory));
 				continue;
 			}
-			// Re-write the descriptor so the migrated extension gets its class icon.
 			GritGdxGenerator::write_extension_files(directory);
 		}
 	}
 	if (r_migrated.is_empty()) {
-		report.append("Grit: nothing to migrate (no legacy .gde archive found).\n");
+		report.append("Grit: nothing to upgrade (every class already uses its script as the source).\n");
 	}
 	r_report = report.as_string();
 	return OK;
@@ -1131,64 +1136,19 @@ Error GritGdxApply::begin_rebuild(const String &p_class_name, const String &p_ex
 		r_rebuild.error = ERR_DOES_NOT_EXIST;
 		return r_rebuild.error;
 	}
-	if (entry->archived_script.is_empty() || !FileAccess::exists(entry->archived_script)) {
-		r_rebuild.report = vformat("Grit: \"%s\" has no archived source to rebuild from (%s).", p_class_name, entry->archived_script);
+	if (entry->script_path.is_empty() || !FileAccess::exists(entry->script_path)) {
+		r_rebuild.report = vformat("Grit: \"%s\" has no script source to rebuild from (run Upgrade Archive first).", p_class_name);
 		r_rebuild.error = ERR_DOES_NOT_EXIST;
 		return r_rebuild.error;
 	}
 
-	Error error = OK;
-	const String source = FileAccess::get_file_as_string(entry->archived_script, &error);
-	if (error != OK) {
-		r_rebuild.report = vformat("Grit: could not read \"%s\".", entry->archived_script);
-		r_rebuild.error = error;
-		return error;
-	}
-
-	// The recorder compiles a GDScript at its resource path, and the archive must
-	// never be compiled. Provide the archive text at the original `.gd` path for
-	// the duration of the generation, then restore what was there.
-	const String script_path = entry->script_path;
-	const bool live_exists = FileAccess::exists(script_path);
-	String live_source;
-	if (live_exists) {
-		live_source = FileAccess::get_file_as_string(script_path, &error);
-		if (error != OK) {
-			r_rebuild.report = vformat("Grit: could not read \"%s\".", script_path);
-			r_rebuild.error = error;
-			return error;
-		}
-	}
-	DirAccess::make_dir_recursive_absolute(script_path.get_base_dir());
-	{
-		Ref<FileAccess> file = FileAccess::open(script_path, FileAccess::WRITE);
-		if (file.is_null()) {
-			r_rebuild.report = vformat("Grit: could not write \"%s\".", script_path);
-			r_rebuild.error = ERR_CANT_CREATE;
-			return r_rebuild.error;
-		}
-		file->store_string(source);
-	}
-
-	r_rebuild.result.script_path = script_path;
+	r_rebuild.result.script_path = entry->script_path;
 	r_rebuild.result.class_name = p_class_name;
 	r_rebuild.result.extension_directory = extension;
 	r_rebuild.result.extension_name = GritGdxManifest::extension_name(extension);
 	r_rebuild.result.archived_script = entry->archived_script;
 
-	const Error generate_error = GritGdxGenerator::generate_class(extension, script_path, r_rebuild.klass, r_rebuild.report);
-
-	// Restore the live script, or remove the scratch `.gd` that only existed for
-	// the generation (the archive is the source of a rebuilt class).
-	if (live_exists) {
-		Ref<FileAccess> file = FileAccess::open(script_path, FileAccess::WRITE);
-		if (file.is_valid()) {
-			file->store_string(live_source);
-		}
-	} else {
-		DirAccess::remove_absolute(script_path);
-		DirAccess::remove_absolute(script_path + ".uid");
-	}
+	const Error generate_error = GritGdxGenerator::generate_class(extension, entry->script_path, r_rebuild.klass, r_rebuild.report);
 	r_rebuild.error = generate_error;
 	return generate_error;
 }
@@ -1202,12 +1162,21 @@ Error GritGdxApply::finish_rebuild(Rebuild &r_rebuild, bool p_built, String &r_r
 	// built library matches it, so a source-only run keeps the class stale.
 	if (p_built) {
 		Error error = OK;
-		const String source = FileAccess::get_file_as_string(r_rebuild.result.archived_script, &error);
+		const String source = FileAccess::get_file_as_string(r_rebuild.result.script_path, &error);
 		GritGdxManifest manifest;
 		if (error == OK && manifest.load(r_rebuild.result.extension_directory) == OK) {
 			if (const GritGdxManifestEntry *entry = manifest.find_class(r_rebuild.klass.class_name)) {
 				GritGdxManifestEntry updated = *entry;
-				updated.archived_script = r_rebuild.result.archived_script;
+				// Refresh the detached snapshot from the authoritative script.
+				const String snapshot = r_rebuild.result.script_path.get_basename() + ".gds";
+				if (snapshot != r_rebuild.result.script_path) {
+					if (FileAccess::exists(snapshot)) {
+						DirAccess::remove_absolute(snapshot);
+					}
+					DirAccess::copy_absolute(r_rebuild.result.script_path, snapshot);
+					updated.archived_script = snapshot;
+					r_rebuild.result.archived_script = snapshot;
+				}
 				updated.source_hash = source.sha256_text();
 				manifest.upsert(updated);
 				manifest.save(r_rebuild.result.extension_directory);
@@ -1218,7 +1187,7 @@ Error GritGdxApply::finish_rebuild(Rebuild &r_rebuild, bool p_built, String &r_r
 	StringBuilder report;
 	report.append(r_rebuild.report);
 	report.append(vformat("\n  class: %s (in %s)\n", r_rebuild.klass.class_name, r_rebuild.result.extension_directory));
-	report.append(vformat("  rebuilt from: %s\n", r_rebuild.result.archived_script));
+	report.append(vformat("  rebuilt from: %s\n", r_rebuild.result.script_path));
 	if (p_built) {
 		report.append("  library: " + r_rebuild.result.library_path + "\n");
 	} else {
@@ -1281,75 +1250,9 @@ bool GritGdxApply::find_revert_target(const String &p_class_name, RevertTarget &
 // revert
 // ---------------------------------------------------------------------------
 
-// Nodes using a script whose type is not the generated class: deleting that script
-// for a revert would break them.
-int GritGdxApply::script_users_outside_class(const String &p_script_path, const String &p_class_name) {
-	int users = 0;
-	for (const String &scene_path : collect_scenes("res://")) {
-		Error error = OK;
-		const String text = FileAccess::get_file_as_string(scene_path, &error);
-		if (error != OK || !text.contains(p_script_path)) {
-			continue;
-		}
-		const PackedStringArray lines = text.split("\n");
-		const String id = script_resource_id(lines, p_script_path);
-		if (id.is_empty()) {
-			continue;
-		}
-		const String assignment = "script = ExtResource(\"" + id + "\")";
-		for (const SceneNodeInfo &node : scene_nodes(lines)) {
-			const String header = lines[node.line];
-			const int type_position = header.find("type=\"");
-			if (type_position < 0) {
-				continue;
-			}
-			const int value_start = type_position + 6;
-			const int value_end = header.find("\"", value_start);
-			if (value_end < 0) {
-				continue;
-			}
-			if (header.substr(value_start, value_end - value_start) == p_class_name) {
-				continue;
-			}
-			for (int i = node.line + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
-				if (lines[i].strip_edges() == assignment) {
-					users++;
-					break;
-				}
-			}
-		}
-	}
-	return users;
-}
 
-bool GritGdxApply::has_replacement_script(const String &p_class_name, bool &r_identical) {
-	r_identical = false;
-	for (const String &directory : GritGdxManifest::list_extensions()) {
-		GritGdxManifest manifest;
-		if (manifest.load(directory) != OK) {
-			continue;
-		}
-		const GritGdxManifestEntry *entry = manifest.find_class(p_class_name);
-		if (!entry) {
-			continue;
-		}
-		if (entry->archived_script.is_empty() || !FileAccess::exists(entry->archived_script) || !FileAccess::exists(entry->script_path)) {
-			return false;
-		}
-		Error archive_error = OK;
-		Error live_error = OK;
-		const String archived = FileAccess::get_file_as_string(entry->archived_script, &archive_error);
-		const String live = FileAccess::get_file_as_string(entry->script_path, &live_error);
-		if (archive_error != OK || live_error != OK) {
-			return false;
-		}
-		r_identical = archived == live;
-		return true;
-	}
-	return false;
-}
 
-Error GritGdxApply::revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_replace_script, bool p_build, const Progress &p_progress, Result &r_result, String &r_report) {
+Error GritGdxApply::revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report) {
 	RevertTarget target;
 	bool found = false;
 	if (!p_extension_directory.is_empty()) {
@@ -1380,38 +1283,26 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 	r_result.script_path = target.script_path;
 	r_result.archived_script = target.archived_script;
 
-	// Put the archive back where the script was. A `.gd` at that path is a script
-	// added after the conversion: it is replaced when it is identical, or when the
-	// caller opted in; otherwise Convert Back refuses instead of overwriting code.
-	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && FileAccess::exists(target.script_path)) {
-		Error archive_error = OK;
-		Error live_error = OK;
-		const String archived_text = FileAccess::get_file_as_string(target.archived_script, &archive_error);
-		const String live_text = FileAccess::get_file_as_string(target.script_path, &live_error);
-		const bool identical = archive_error == OK && live_error == OK && archived_text == live_text;
-		if (!identical && !p_replace_script) {
-			r_report = vformat("Grit: \"%s\" already exists; Convert Back would replace it. Delete or rename it first, or convert back with replace enabled.", target.script_path);
-			return ERR_INVALID_PARAMETER;
+	// The script is authoritative and was never moved. Drop the snapshot (or, for a
+	// class converted before this model, restore a missing `.gd` from it).
+	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script)) {
+		if (!FileAccess::exists(target.script_path)) {
+			const Error rename_error = DirAccess::rename_absolute(target.archived_script, target.script_path);
+			if (rename_error != OK) {
+				r_report = vformat("Grit: could not restore \"%s\".", target.script_path);
+				return rename_error;
+			}
+			if (FileAccess::exists(target.archived_script + ".uid")) {
+				DirAccess::rename_absolute(target.archived_script + ".uid", target.script_path + ".uid");
+			}
+		} else {
+			DirAccess::remove_absolute(target.archived_script);
+			DirAccess::remove_absolute(target.archived_script + ".uid");
 		}
-		const int foreign_users = GritGdxApply::script_users_outside_class(target.script_path, p_class_name);
-		if (foreign_users > 0) {
-			r_report = vformat("Grit: \"%s\" is attached to %d other node(s); deleting it would break them.", target.script_path, foreign_users);
-			return ERR_INVALID_PARAMETER;
-		}
-		close_editor_script_tabs(target.script_path);
-		DirAccess::remove_absolute(target.script_path);
-		DirAccess::remove_absolute(target.script_path + ".uid");
 	}
-	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && !FileAccess::exists(target.script_path)) {
-		const Error rename_error = DirAccess::rename_absolute(target.archived_script, target.script_path);
-		if (rename_error != OK) {
-			r_report = vformat("Grit: could not restore \"%s\".", target.script_path);
-			return rename_error;
-		}
-		// The archive carried the script's UID; restore it with the script.
-		if (FileAccess::exists(target.archived_script + ".uid")) {
-			DirAccess::rename_absolute(target.archived_script + ".uid", target.script_path + ".uid");
-		}
+	if (!FileAccess::exists(target.script_path)) {
+		r_report = vformat("Grit: \"%s\" is missing; the class has no source to restore.", target.script_path);
+		return ERR_DOES_NOT_EXIST;
 	}
 
 	// A conversion is class-wide, so Convert Back restores every node of the class

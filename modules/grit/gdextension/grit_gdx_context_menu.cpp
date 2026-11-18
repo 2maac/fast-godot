@@ -411,11 +411,11 @@ void GritGdxContextMenuPlugin::_rebuild(const Array &p_selection) {
 	}
 }
 
-void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, bool p_replace_script) {
+void GritGdxContextMenuPlugin::_start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path) {
 	_close_dialog();
 	active_scene = p_scene_path;
 	job.instantiate();
-	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path, p_replace_script);
+	job->start_revert(p_class_name, p_extension, p_scene_path, p_node_path);
 	_start_job();
 }
 
@@ -455,28 +455,6 @@ void GritGdxContextMenuPlugin::_add_class_name_and_continue(const String &p_scri
 	_prompt_extension_name(p_script_path, p_scene_path, p_node_path, GritGdxGenerator::snake_case(class_name));
 }
 
-void GritGdxContextMenuPlugin::_confirm_replace(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, const String &p_script_path, const String &p_archive_path) {
-	if (confirm_dialog) {
-		confirm_dialog->queue_free();
-		confirm_dialog = nullptr;
-	}
-	confirm_dialog = memnew(ConfirmationDialog);
-	confirm_dialog->set_title("Convert Back to GDScript");
-	confirm_dialog->set_ok_button_text("Delete and Convert Back");
-	confirm_dialog->set_min_size(Vector2i(520, 0));
-
-	VBoxContainer *box = memnew(VBoxContainer);
-	confirm_dialog->add_child(box);
-	Label *label = memnew(Label);
-	label->set_autowrap_mode(TextServer::AUTOWRAP_WORD_SMART);
-	label->set_custom_minimum_size(Vector2i(500, 0));
-	label->set_text(vformat("\"%s\" was added after the conversion. Convert Back will delete it and restore \"%s\" under that name. Rename the script first if you want to keep it.", p_script_path, p_archive_path));
-	box->add_child(label);
-
-	EditorNode::get_singleton()->get_gui_base()->add_child(confirm_dialog);
-	confirm_dialog->popup_centered();
-	confirm_dialog->connect(SceneStringName(confirmed), callable_mp(this, &GritGdxContextMenuPlugin::_start_revert).bind(p_class_name, p_extension, p_scene_path, p_node_path, true));
-}
 
 void GritGdxContextMenuPlugin::_start_job() {
 	action_finished = false;
@@ -661,16 +639,9 @@ void GritGdxContextMenuPlugin::_convert_back(const Array &p_selection) {
 		return;
 	}
 	// Main thread: the revert itself runs on a worker and must not touch the
-	// script editor's control tree.
+	// script editor's control tree. The `.gd` is the source and stays open; the
+	// snapshot is removed, so close its tab.
 	GritGdxApply::close_editor_script_tabs(target.archived_script);
-	GritGdxApply::close_editor_script_tabs(target.script_path);
-	// A script added after the conversion is only replaced with confirmation (an
-	// identical copy needs none; revert() handles that case itself).
-	bool identical = false;
-	if (GritGdxApply::has_replacement_script(class_name, identical) && !identical) {
-		_confirm_replace(class_name, extension, scene, path, target.script_path, target.archived_script);
-		return;
-	}
 	_start_revert(class_name, extension, scene, path);
 }
 
@@ -852,19 +823,19 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 				return;
 			}
 			Node *live_child = reloaded->get_node_or_null(NodePath("Child"));
-			// Touch the archives so the class badge goes stale, and print what the
-			// scene tree would draw.
+			// Touch the authoritative scripts so the class badge goes stale, and
+			// print what the scene tree would draw.
 			const auto make_stale = [](Node *p_node) {
 				GritGdxApply::RevertTarget target;
-				if (!p_node || !GritGdxApply::find_revert_target(p_node->get_class_name(), target) || !FileAccess::exists(target.archived_script)) {
+				if (!p_node || !GritGdxApply::find_revert_target(p_node->get_class_name(), target) || !FileAccess::exists(target.script_path)) {
 					return;
 				}
 				Error error = OK;
-				const String text = FileAccess::get_file_as_string(target.archived_script, &error);
+				const String text = FileAccess::get_file_as_string(target.script_path, &error);
 				if (error != OK) {
 					return;
 				}
-				Ref<FileAccess> file = FileAccess::open(target.archived_script, FileAccess::WRITE);
+				Ref<FileAccess> file = FileAccess::open(target.script_path, FileAccess::WRITE);
 				if (file.is_valid()) {
 					file->store_string(text + "# made stale by the autotest\n");
 				}
@@ -874,6 +845,16 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 			const Dictionary root_badge = EditorNode::get_singleton()->get_class_badge(reloaded->get_class_name());
 			const Dictionary child_badge = live_child ? EditorNode::get_singleton()->get_class_badge(live_child->get_class_name()) : Dictionary();
 			print_line(vformat("Grit autotest [7b] stale badge: root=%s child=%s", root_badge.get("icon", StringName("<none>")), child_badge.get("icon", StringName("<none>"))));
+			// The original script stays in place, so attaching it to the converted node
+			// is a load of an existing resource; the file is never recreated.
+			const String existing_path = "res://child.gd";
+			{
+				const Ref<Script> existing = ResourceLoader::load(existing_path, "Script");
+				print_line(vformat("Grit autotest [7c] attaching existing %s: %s", existing_path, existing.is_valid() ? "yes" : "no"));
+				if (existing.is_valid() && live_child) {
+					live_child->set_script(existing);
+				}
+			}
 			selection->clear();
 			selection->add_node(live_child ? live_child : reloaded);
 			print_line("Grit autotest [8] converting the child back");

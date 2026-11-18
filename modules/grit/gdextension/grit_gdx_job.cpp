@@ -30,10 +30,9 @@ Error GritGdxJob::start(const String &p_script_path, const String &p_extension_d
 	return OK;
 }
 
-Error GritGdxJob::start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_replace_script) {
+Error GritGdxJob::start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path) {
 	mode = Mode::REVERT;
 	revert_class = p_class_name;
-	replace_script = p_replace_script;
 	result = GritGdxApply::Result();
 	result.class_name = p_class_name;
 	result.extension_directory = p_extension_directory;
@@ -96,7 +95,7 @@ void GritGdxJob::run() {
 		const String extension_directory = result.extension_directory;
 		const String scene_path = result.scene_path;
 		const String node_path = result.node_path;
-		const Error revert_status = GritGdxApply::revert(revert_class, extension_directory, scene_path, node_path, replace_script, true, progress_callback, result, action_report);
+		const Error revert_status = GritGdxApply::revert(revert_class, extension_directory, scene_path, node_path, true, progress_callback, result, action_report);
 		build_error = revert_status;
 		MutexLock lock(mutex);
 		report = action_report;

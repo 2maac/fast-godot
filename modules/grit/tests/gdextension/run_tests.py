@@ -111,9 +111,13 @@ def check_archive(project_dir, fixture, class_name, failures):
     if not script.startswith("res://") or not scene.startswith("res://"):
         return
     stem = script.rsplit(".", 1)[0]
+    source = project_file(project_dir, script)
     archive = project_file(project_dir, stem + ".gds")
+    if not os.path.isfile(source):
+        failures.append("the converted script is missing (it is the authoritative source): %s" % source)
+        return
     if not os.path.isfile(archive):
-        failures.append("converted script was not archived next to the source: %s" % archive)
+        failures.append("no detached snapshot next to the source: %s" % archive)
         return
     try:
         with open(project_file(project_dir, scene), "r", encoding="utf-8") as handle:
@@ -124,7 +128,7 @@ def check_archive(project_dir, fixture, class_name, failures):
     if 'path="%s.gds"' % stem in scene_text:
         failures.append("the archive is still referenced by the scene; it must be detached")
     if 'path="%s"' % script in scene_text:
-        failures.append("the live script resource is still in the scene after conversion")
+        failures.append("the converted node still has its script attached")
     if 'type="%s"' % class_name not in scene_text:
         failures.append("the converted node is not of the class_name type %r" % class_name)
 
@@ -144,10 +148,11 @@ def check_archive(project_dir, fixture, class_name, failures):
     if entry is None:
         failures.append("no manifest entry references the archived script")
     else:
-        with open(archive, "rb") as handle:
+        # The script is authoritative; the snapshot is secondary.
+        with open(source, "rb") as handle:
             expected_hash = hashlib.sha256(handle.read()).hexdigest()
         if entry.get("source_hash") != expected_hash:
-            failures.append("the manifest's source_hash does not match the archive")
+            failures.append("the manifest's source_hash does not match the source script")
 
 
 def script_class_name(directory, fixture):

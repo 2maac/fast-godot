@@ -68,16 +68,7 @@ public:
 
 	// Main thread. Returns one class to a script node. Refused while any node
 	// still uses the class.
-	// `p_replace_script` lets Convert Back delete a `.gd` that was added to the
-	// converted node after the conversion and restore the archive over it. An
-	// identical `.gd` is replaced without the flag; a different one is refused
-	// unless the caller opted in, and a `.gd` used by nodes outside the class is
-	// always refused.
-	static Error revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_replace_script, bool p_build, const Progress &p_progress, Result &r_result, String &r_report);
-
-	// True when a `.gd` exists next to the class's archive (a script added after
-	// the conversion). Used by the editor to ask before replacing it.
-	static bool has_replacement_script(const String &p_class_name, bool &r_identical);
+	static Error revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report);
 
 	// Upgrades archives from the legacy format (`.gde`, attached to the node) to
 	// the current one (`.gds`, detached), updates the manifest and its hash, and

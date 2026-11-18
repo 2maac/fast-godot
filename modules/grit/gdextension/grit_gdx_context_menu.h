@@ -42,9 +42,7 @@ private:
 	// A partial conversion needs an explicit "Convert Anyway".
 	void _confirm_partial(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path, const GritGdxApply::Plan &p_plan);
 	void _confirm_partial_add(const String &p_script_path, const String &p_extension, const String &p_scene_path, const String &p_node_path);
-	void _start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, bool p_replace_script = false);
-	// Confirms deleting a `.gd` that was added after the conversion.
-	void _confirm_replace(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path, const String &p_script_path, const String &p_archive_path);
+	void _start_revert(const String &p_class_name, const String &p_extension, const String &p_scene_path, const String &p_node_path);
 	// Offers to insert the missing `class_name` before converting.
 	void _confirm_add_class_name(const String &p_script_path, const String &p_scene_path, const String &p_node_path, const String &p_class_name);
 	void _add_class_name_and_continue(const String &p_script_path, const String &p_scene_path, const String &p_node_path);
