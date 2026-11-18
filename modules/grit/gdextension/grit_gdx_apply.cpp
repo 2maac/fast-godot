@@ -692,6 +692,11 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 			if (const GritGdxManifestEntry *entry = manifest.find_class(p_class.class_name)) {
 				GritGdxManifestEntry updated = *entry;
 				updated.archived_script = archived;
+				// Baseline for the stale check: edits to the archive after this
+				// point mean the library no longer matches the source.
+				Error hash_error = OK;
+				const String source = FileAccess::get_file_as_string(archived, &hash_error);
+				updated.source_hash = hash_error == OK ? source.sha256_text() : String();
 				manifest.upsert(updated);
 				manifest.save(r_result.extension_directory);
 			}

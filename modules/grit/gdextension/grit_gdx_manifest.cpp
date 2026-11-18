@@ -33,6 +33,7 @@ Error GritGdxManifest::load(const String &p_extension_directory) {
 		parsed.script_path = entry.get("script", String());
 		parsed.base_type = entry.get("base", String());
 		parsed.archived_script = entry.get("archived", String());
+		parsed.source_hash = entry.get("source_hash", String());
 		parsed.is_tool = entry.get("tool", false);
 		if (!parsed.class_name.is_empty()) {
 			classes.push_back(parsed);
@@ -54,6 +55,9 @@ Error GritGdxManifest::save(const String &p_extension_directory) const {
 		if (!entry.archived_script.is_empty()) {
 			item["archived"] = entry.archived_script;
 		}
+		if (!entry.source_hash.is_empty()) {
+			item["source_hash"] = entry.source_hash;
+		}
 		if (entry.is_tool) {
 			item["tool"] = true;
 		}
@@ -67,6 +71,15 @@ Error GritGdxManifest::save(const String &p_extension_directory) const {
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_CANT_CREATE, vformat("Grit: could not write \"%s\".", p_extension_directory.path_join(FILE_NAME)));
 	file->store_string(JSON::stringify(root, "\t") + "\n");
 	return OK;
+}
+
+const GritGdxManifestEntry *GritGdxManifest::find_archived(const String &p_archived_path) const {
+	for (const GritGdxManifestEntry &entry : classes) {
+		if (!entry.archived_script.is_empty() && entry.archived_script == p_archived_path) {
+			return &entry;
+		}
+	}
+	return nullptr;
 }
 
 const GritGdxManifestEntry *GritGdxManifest::find_class(const String &p_class_name) const {

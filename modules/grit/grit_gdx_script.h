@@ -18,10 +18,13 @@ class GritGdxScript : public GDScript {
 	String archived_class;
 
 protected:
-	static void _bind_methods() {}
+	static void _bind_methods();
 
 public:
 	void set_archived_metadata(const StringName &p_base_type, const String &p_class);
+	// True when the archive no longer matches the hash recorded when the library
+	// was built, i.e. the class needs a rebuild. Always false in exported games.
+	bool is_stale() const;
 	StringName get_archived_base_type() const { return archived_base_type; }
 	String get_archived_class() const { return archived_class; }
 

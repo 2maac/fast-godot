@@ -3,10 +3,50 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
+#include "core/object/class_db.h"
+#ifdef TOOLS_ENABLED
+#include "modules/grit/gdextension/grit_gdx_manifest.h"
+#endif
+
+void GritGdxScript::_bind_methods() {
+	ClassDB::bind_method(D_METHOD("is_archived_script_stale"), &GritGdxScript::is_stale);
+	ClassDB::bind_method(D_METHOD("get_archived_base_type"), &GritGdxScript::get_archived_base_type);
+	ClassDB::bind_method(D_METHOD("get_archived_class"), &GritGdxScript::get_archived_class);
+}
+
+// The library recorded the archive's hash when it was built; anything else means
+// the archive was edited since and the class is out of date.
+bool GritGdxScript::is_stale() const {
+#ifdef TOOLS_ENABLED
+	const String path = get_path();
+	if (path.is_empty() || !FileAccess::exists(path)) {
+		return false;
+	}
+	String built;
+	for (const String &directory : GritGdxManifest::list_extensions()) {
+		GritGdxManifest manifest;
+		if (manifest.load(directory) != OK) {
+			continue;
+		}
+		if (const GritGdxManifestEntry *entry = manifest.find_archived(path)) {
+			built = entry->source_hash;
+			break;
+		}
+	}
+	if (built.is_empty()) {
+		return false;
+	}
+	Error error = OK;
+	const String source = FileAccess::get_file_as_string(path, &error);
+	return error == OK && source.sha256_text() != built;
+#else
+	return false;
+#endif
+}
 
 #ifdef TOOLS_ENABLED
 StringName GritGdxScript::get_editor_icon() const {
-	return SNAME("GritGdxScript");
+	return is_stale() ? SNAME("GritGdxScriptModified") : SNAME("GritGdxScript");
 }
 #endif
 

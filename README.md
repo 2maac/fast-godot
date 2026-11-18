@@ -30,7 +30,9 @@ Right-clicking a node that has a script offers three actions:
   is the readable source of the class, opens in the script editor, and Convert
   Back turns it into a normal `.gd` again. In the scene tree it keeps a script
   icon, drawn **red** instead of the usual grey, to show that it is the source of
-  a generated class rather than a running script.
+  a generated class rather than a running script. If the archive is edited after
+  the library was built, the icon gains an amber badge: the source no longer
+  matches the class, so it needs a rebuild.
 - **Add to Existing Extension** — adds another class to an extension the project
   already has; classes of one extension share a single library.
 - **Convert Back to GDScript** — restores the `.gde` script (same path, `.gd`

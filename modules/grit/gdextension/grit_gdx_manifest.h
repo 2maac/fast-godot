@@ -10,6 +10,7 @@ struct GritGdxManifestEntry {
 	String script_path; // res:// path of the source script
 	String base_type; // native base class the node had before conversion
 	String archived_script; // res:// path of the .gde archive, when the script was archived
+	String source_hash; // hash of the archive when the library was built; empty = unknown
 	bool is_tool = false;
 };
 
@@ -26,6 +27,7 @@ public:
 
 	const GritGdxManifestEntry *find_class(const String &p_class_name) const;
 	const GritGdxManifestEntry *find_script(const String &p_script_path) const;
+	const GritGdxManifestEntry *find_archived(const String &p_archived_path) const;
 	bool has_class(const String &p_class_name) const;
 	void remove_class(const String &p_class_name);
 	// Adds or replaces the entry for the same script.

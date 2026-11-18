@@ -20,6 +20,7 @@ Usage:
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import shutil
@@ -124,6 +125,27 @@ def check_archive(project_dir, fixture, failures):
         failures.append("the converted node does not reference the .gde archive")
     if "script = ExtResource(" not in scene_text:
         failures.append("the converted node lost its script assignment")
+
+    # The manifest records the archive hash the library was built from, which is
+    # what makes a later edit detectable.
+    archive_res = "res://" + os.path.relpath(archive, project_dir).replace(os.sep, "/")
+    entry = None
+    for manifest_path in glob.glob(os.path.join(project_dir, "gdext", "*", ".grit_manifest.json")):
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+        except (OSError, ValueError):
+            continue
+        for candidate in data.get("classes", []):
+            if candidate.get("archived") == archive_res:
+                entry = candidate
+    if entry is None:
+        failures.append("no manifest entry references the archived script")
+    else:
+        with open(archive, "rb") as handle:
+            expected_hash = hashlib.sha256(handle.read()).hexdigest()
+        if entry.get("source_hash") != expected_hash:
+            failures.append("the manifest's source_hash does not match the archive")
 
 
 def run_fixture(name, args, env_with_paths, session):
