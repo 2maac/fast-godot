@@ -4,7 +4,9 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
+#ifdef TOOLS_ENABLED
 #include "modules/grit/compiler/grit_recording_code_generator.h"
+#endif
 #ifdef TOOLS_ENABLED
 #include "modules/grit/gdextension/grit_gdx_manifest.h"
 #endif
@@ -52,12 +54,14 @@ StringName GritGdxScript::get_editor_icon() const {
 #endif
 
 Error GritGdxScript::reload(bool p_keep_state) {
-	// Only the converter compiles a `.gde` source (to record it); the editor and
-	// the runtime never do, and the class can never be instantiated.
-	if (!is_source || !GritScriptRecording::get_current()) {
-		return OK;
+#ifdef TOOLS_ENABLED
+	// Only the editor converter compiles a `.gde` source (to record it). Exported
+	// games never compile it, and the class can never be instantiated.
+	if (is_source && GritScriptRecording::get_current()) {
+		return GDScript::reload(p_keep_state);
 	}
-	return GDScript::reload(p_keep_state);
+#endif
+	return OK;
 }
 
 void GritGdxScript::set_archived_metadata(const StringName &p_base_type, const String &p_class) {

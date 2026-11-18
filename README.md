@@ -62,6 +62,11 @@ A `class_name` clash between two `.gde` sources is an error; the generated class
 is always the script's `class_name` verbatim (never renamed). The class name is
 also what the descriptor exposes to GDScript.
 
+The export plugin keeps each project's compiled template in
+`res://exports/` (for example `exports/macos_fast.zip`), separate from the
+export destination; deleting it only forces the template to be rebuilt on the
+next export.
+
 Projects converted by an older build have one extension per source. The next
 successful build copies every class into the project extension, removes the old
 folders, and updates the editor's extension list; restart the editor afterwards
