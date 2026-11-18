@@ -33,6 +33,7 @@ private:
 	void _add_to_extension(const Array &p_selection);
 	void _convert_back(const Array &p_selection);
 	void _rebuild(const Array &p_selection);
+	void _migrate(const Array &p_selection);
 	static void _show_message(const String &p_text);
 	void _submenu_selected(int p_index);
 

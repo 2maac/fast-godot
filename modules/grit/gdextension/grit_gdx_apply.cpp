@@ -750,6 +750,145 @@ Error GritGdxApply::run(const String &p_script_path, const String &p_extension_d
 }
 
 // ---------------------------------------------------------------------------
+// legacy (.gde) archive migration
+// ---------------------------------------------------------------------------
+
+// Drops the `.gde` assignment from the nodes of the class (the legacy archive was
+// attached to them). Returns how many nodes were detached.
+static int detach_archive_assignments(const String &p_scene_path, const String &p_class_name, const String &p_archive_path, String &r_error) {
+	Error read_error = OK;
+	const String text = FileAccess::get_file_as_string(p_scene_path, &read_error);
+	if (read_error != OK || !text.contains(p_archive_path)) {
+		return 0;
+	}
+	PackedStringArray lines = text.split("\n");
+	const String id = script_resource_id(lines, p_archive_path);
+	if (id.is_empty()) {
+		return 0;
+	}
+	const String assignment = "script = ExtResource(\"" + id + "\")";
+	Vector<int> dropped;
+	int detached = 0;
+	for (const SceneNodeInfo &node : scene_nodes(lines)) {
+		const String header = lines[node.line];
+		const int type_position = header.find("type=\"");
+		if (type_position < 0) {
+			continue;
+		}
+		const int value_start = type_position + 6;
+		const int value_end = header.find("\"", value_start);
+		if (value_end < 0 || header.substr(value_start, value_end - value_start) != p_class_name) {
+			continue;
+		}
+		for (int i = node.line + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
+			if (lines[i].strip_edges() == assignment) {
+				dropped.push_back(i);
+				detached++;
+				break;
+			}
+		}
+	}
+	if (detached == 0) {
+		return 0;
+	}
+	// Drop the archive's ExtResource entry when nothing else references it.
+	bool used = false;
+	for (int i = 0; i < lines.size(); i++) {
+		if (!dropped.has(i) && lines[i].strip_edges() == assignment) {
+			used = true;
+			break;
+		}
+	}
+	if (!used) {
+		for (int i = 0; i < lines.size(); i++) {
+			if (lines[i].begins_with("[ext_resource") && lines[i].contains("path=\"" + p_archive_path + "\"")) {
+				dropped.push_back(i);
+				break;
+			}
+		}
+	}
+	if (write_scene(p_scene_path, lines, dropped) != OK) {
+		r_error = vformat("could not rewrite \"%s\"", p_scene_path);
+		return 0;
+	}
+	return detached;
+}
+
+bool GritGdxApply::has_legacy_archive(const String &p_class_name) {
+	GritGdxApply::RevertTarget target;
+	return GritGdxApply::find_revert_target(p_class_name, target) && target.archived_script.ends_with(".gde");
+}
+
+Error GritGdxApply::migrate_legacy(Vector<String> &r_migrated, String &r_report) {
+	r_migrated.clear();
+	StringBuilder report;
+	for (const String &directory : GritGdxManifest::list_extensions()) {
+		GritGdxManifest manifest;
+		if (manifest.load(directory) != OK) {
+			report.append(vformat("Grit: could not read \"%s\"; skipped.\n", directory));
+			continue;
+		}
+		bool changed = false;
+		for (GritGdxManifestEntry &entry : manifest.classes) {
+			if (!entry.archived_script.ends_with(".gde")) {
+				continue;
+			}
+			if (!FileAccess::exists(entry.archived_script)) {
+				report.append(vformat("Grit: \"%s\" has no legacy archive at \"%s\"; skipped.\n", entry.class_name, entry.archived_script));
+				continue;
+			}
+			const String legacy = entry.archived_script;
+			const String archived = entry.script_path.get_basename() + ".gds";
+			if (FileAccess::exists(archived)) {
+				report.append(vformat("Grit: \"%s\" already exists; skipped \"%s\".\n", archived, entry.class_name));
+				continue;
+			}
+			const Error rename_error = DirAccess::rename_absolute(legacy, archived);
+			if (rename_error != OK) {
+				report.append(vformat("Grit: could not rename \"%s\"; skipped \"%s\".\n", legacy, entry.class_name));
+				continue;
+			}
+			if (FileAccess::exists(legacy + ".uid")) {
+				DirAccess::rename_absolute(legacy + ".uid", archived + ".uid");
+			}
+
+			// The legacy archive was attached to the class's nodes; detach them.
+			int detached = 0;
+			for (const String &scene : collect_scenes("res://")) {
+				String detach_error;
+				detached += detach_archive_assignments(scene, entry.class_name, legacy, detach_error);
+				if (!detach_error.is_empty()) {
+					report.append("Grit: " + detach_error + "\n");
+				}
+			}
+
+			entry.archived_script = archived;
+			// The legacy manifest predates the stale baseline; record it now.
+			Error hash_error = OK;
+			const String source = FileAccess::get_file_as_string(archived, &hash_error);
+			entry.source_hash = hash_error == OK ? source.sha256_text() : String();
+			changed = true;
+			r_migrated.push_back(entry.class_name);
+			report.append(vformat("Grit: migrated \"%s\": %s -> %s (%d node(s) detached).\n", entry.class_name, legacy, archived, detached));
+		}
+		if (changed) {
+			const Error save_error = manifest.save(directory);
+			if (save_error != OK) {
+				report.append(vformat("Grit: could not write the manifest in \"%s\".\n", directory));
+				continue;
+			}
+			// Re-write the descriptor so the migrated extension gets its class icon.
+			GritGdxGenerator::write_extension_files(directory);
+		}
+	}
+	if (r_migrated.is_empty()) {
+		report.append("Grit: nothing to migrate (no legacy .gde archive found).\n");
+	}
+	r_report = report.as_string();
+	return OK;
+}
+
+// ---------------------------------------------------------------------------
 // rebuild from the archive
 // ---------------------------------------------------------------------------
 

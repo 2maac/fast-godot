@@ -79,6 +79,13 @@ public:
 	// the conversion). Used by the editor to ask before replacing it.
 	static bool has_replacement_script(const String &p_class_name, bool &r_identical);
 
+	// Upgrades archives from the legacy format (`.gde`, attached to the node) to
+	// the current one (`.gds`, detached), updates the manifest and its hash, and
+	// re-writes the descriptor (which adds the class icon). Idempotent.
+	static Error migrate_legacy(Vector<String> &r_migrated, String &r_report);
+	// True when the class still uses a legacy `.gde` archive.
+	static bool has_legacy_archive(const String &p_class_name);
+
 	// Scenes that instantiate a generated class (used to gate revert and the
 	// context menu).
 	static Vector<String> class_users(const String &p_class_name);

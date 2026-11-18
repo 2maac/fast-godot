@@ -101,6 +101,7 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 	bool makeable = false;
 	bool revertable = false;
 	bool rebuildable = false;
+	bool legacy = false;
 	String revert_class;
 	String revert_extension;
 
@@ -127,6 +128,7 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 			if (!node_class.is_empty() && GritGdxApply::find_revert_target(node_class, target)) {
 				revert_class = node_class;
 				revert_extension = target.extension_directory;
+				legacy = GritGdxApply::has_legacy_archive(node_class);
 				// Offered for any generated node; the class itself is only dropped
 				// when no other node uses it.
 				revertable = true;
@@ -160,6 +162,7 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 	// The archived script is attached to the node, so a rebuild is offered exactly
 	// where the archive is visible.
 	add_context_menu_item("Rebuild GDExtension", rebuildable ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_rebuild)) : Callable(), Ref<Texture2D>());
+	add_context_menu_item("Migrate Archive to .gds", legacy ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_migrate)) : Callable(), Ref<Texture2D>());
 }
 
 void GritGdxContextMenuPlugin::_submenu_selected(int p_index) {
@@ -327,6 +330,39 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 	if (error != OK) {
 		_poll();
 	}
+}
+
+void GritGdxContextMenuPlugin::_migrate(const Array &p_selection) {
+	Vector<String> migrated;
+	String report;
+	const Error error = GritGdxApply::migrate_legacy(migrated, report);
+	if (error == OK && !migrated.is_empty()) {
+		// The descriptor gained its class icon and the scenes lost the attached
+		// `.gde`, so refresh both.
+		if (EditorFileSystem::get_singleton()) {
+			EditorFileSystem::get_singleton()->scan_changes();
+		}
+		GDExtensionManager *manager = GDExtensionManager::get_singleton();
+		if (manager) {
+			for (const String &directory : GritGdxManifest::list_extensions()) {
+				const String descriptor = directory.path_join(GritGdxManifest::extension_name(directory) + ".gdextension");
+				if (FileAccess::exists(descriptor) && manager->is_extension_loaded(descriptor)) {
+					manager->reload_extension(descriptor);
+				}
+			}
+		}
+		if (EditorNode::get_singleton()) {
+			EditorData &data = EditorNode::get_editor_data();
+			for (int i = 0; i < data.get_edited_scene_count(); i++) {
+				const String scene = data.get_scene_path(i);
+				if (!scene.is_empty() && FileAccess::exists(scene) && !EditorNode::get_singleton()->is_scene_unsaved(i)) {
+					callable_mp(EditorInterface::get_singleton(), &EditorInterface::reload_scene_from_path).bind(scene).call_deferred();
+					break;
+				}
+			}
+		}
+	}
+	_show_message(report.strip_edges());
 }
 
 void GritGdxContextMenuPlugin::_rebuild(const Array &p_selection) {

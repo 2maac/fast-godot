@@ -619,6 +619,7 @@ void GritGdxGenerator::run_from_command_line() {
 	bool revert = false;
 	bool rebuild = false;
 	bool replace_script = false;
+	bool migrate = false;
 	bool build = false;
 	bool allow_partial = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
@@ -641,6 +642,8 @@ void GritGdxGenerator::run_from_command_line() {
 			rebuild = true;
 		} else if (argument == "--grit-gdx-replace-script") {
 			replace_script = true;
+		} else if (argument == "--grit-gdx-migrate") {
+			migrate = true;
 		} else if (argument == "--grit-gdx-class") {
 			revert_class = next_value();
 		} else if (argument == "--grit-gdx-extension") {
@@ -668,6 +671,9 @@ void GritGdxGenerator::run_from_command_line() {
 		} else {
 			report = "Grit: " + plan_error;
 		}
+	} else if (migrate) {
+		Vector<String> migrated;
+		error = GritGdxApply::migrate_legacy(migrated, report);
 	} else if (rebuild) {
 		if (revert_class.is_empty()) {
 			report = "Grit: rebuild needs --grit-gdx-class (the extension is found automatically).";

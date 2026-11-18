@@ -77,7 +77,7 @@ static void grit_editor_init() {
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
-		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-plan") {
+		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-migrate" || argument == "--grit-gdx-plan") {
 			callable_mp_static(&GritGdxGenerator::run_from_command_line).call_deferred();
 			break;
 		}
