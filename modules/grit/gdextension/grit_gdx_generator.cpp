@@ -585,6 +585,7 @@ void GritGdxGenerator::run_from_command_line() {
 	String scene;
 	String node_path;
 	bool revert = false;
+	bool rebuild = false;
 	bool build = false;
 	bool allow_partial = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
@@ -603,6 +604,8 @@ void GritGdxGenerator::run_from_command_line() {
 			plan_script = next_value();
 		} else if (argument == "--grit-gdx-revert") {
 			revert = true;
+		} else if (argument == "--grit-gdx-rebuild") {
+			rebuild = true;
 		} else if (argument == "--grit-gdx-class") {
 			revert_class = next_value();
 		} else if (argument == "--grit-gdx-extension") {
@@ -629,6 +632,14 @@ void GritGdxGenerator::run_from_command_line() {
 			report = vformat("Grit: \"%s\" -> class \"%s\" (%s)\n  %s\n%s", plan.script_path, plan.class_name, plan.base_type, plan.summary(), plan.skipped_text());
 		} else {
 			report = "Grit: " + plan_error;
+		}
+	} else if (rebuild) {
+		if (revert_class.is_empty()) {
+			report = "Grit: rebuild needs --grit-gdx-class (the extension is found automatically).";
+			error = ERR_INVALID_PARAMETER;
+		} else {
+			GritGdxApply::Result result;
+			error = GritGdxApply::rebuild(revert_class, extension, build, result, report);
 		}
 	} else if (revert) {
 		if (revert_class.is_empty()) {

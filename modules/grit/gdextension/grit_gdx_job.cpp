@@ -47,6 +47,24 @@ Error GritGdxJob::start_revert(const String &p_class_name, const String &p_exten
 	return OK;
 }
 
+Error GritGdxJob::start_rebuild(const String &p_class_name, const String &p_extension_directory) {
+	mode = Mode::REBUILD;
+	{
+		MutexLock lock(mutex);
+		status = "Regenerating the native class";
+	}
+	progress.store(5);
+	prepare_error = GritGdxApply::begin_rebuild(p_class_name, p_extension_directory, rebuild_state);
+	report = rebuild_state.report;
+	result = rebuild_state.result;
+	if (prepare_error != OK) {
+		finished.store(true);
+		return prepare_error;
+	}
+	thread.start(_thread, this);
+	return OK;
+}
+
 void GritGdxJob::_thread(void *p_userdata) {
 	static_cast<GritGdxJob *>(p_userdata)->run();
 }
@@ -59,7 +77,7 @@ void GritGdxJob::run() {
 	};
 
 	String action_report;
-	if (mode == Mode::ADD) {
+	if (mode == Mode::ADD || mode == Mode::REBUILD) {
 		String build_output;
 		String library;
 		const Error build_status = GritGdxApply::build(result.extension_directory, "template_debug", progress_callback, library, build_output);
@@ -116,6 +134,26 @@ Error GritGdxJob::complete(String &r_report) {
 	if (build_error != OK) {
 		r_report = get_report();
 		return build_error;
+	}
+
+	if (mode == Mode::REBUILD) {
+		{
+			MutexLock lock(mutex);
+			status = "Recording the new source";
+		}
+		progress.store(95);
+		rebuild_state.result = result;
+		String finish_report = get_report();
+		const Error finish_status = GritGdxApply::finish_rebuild(rebuild_state, true, finish_report);
+		r_report = finish_report;
+		if (finish_status == OK) {
+			progress.store(100);
+		}
+		{
+			MutexLock lock(mutex);
+			status = finish_status == OK ? "Done" : "Refused";
+		}
+		return finish_status;
 	}
 
 	{

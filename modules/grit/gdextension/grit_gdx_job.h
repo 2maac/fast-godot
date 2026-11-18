@@ -23,6 +23,9 @@ public:
 	Error start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial);
 	// Main thread. Reverting a class: everything happens on the worker.
 	Error start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path);
+	// Main thread. Rebuilding a class from its archive: generation happens here,
+	// the build in run(), the new hash in complete().
+	Error start_rebuild(const String &p_class_name, const String &p_extension_directory);
 
 	bool is_finished() const { return finished.load(); }
 	int get_progress() const { return progress.load(); }
@@ -37,6 +40,7 @@ private:
 	enum class Mode {
 		ADD,
 		REVERT,
+		REBUILD,
 	};
 
 	static void _thread(void *p_userdata);
@@ -54,5 +58,6 @@ private:
 	Error build_error = OK;
 	GritGdxClass klass;
 	GritGdxApply::Result result;
+	GritGdxApply::Rebuild rebuild_state;
 	String revert_class;
 };

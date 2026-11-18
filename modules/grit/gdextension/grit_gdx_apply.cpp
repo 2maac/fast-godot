@@ -742,6 +742,159 @@ Error GritGdxApply::run(const String &p_script_path, const String &p_extension_d
 }
 
 // ---------------------------------------------------------------------------
+// rebuild from the archive
+// ---------------------------------------------------------------------------
+
+Error GritGdxApply::begin_rebuild(const String &p_class_name, const String &p_extension_directory, Rebuild &r_rebuild) {
+	r_rebuild = Rebuild();
+	String extension = p_extension_directory;
+	if (extension.is_empty()) {
+		for (const String &directory : GritGdxManifest::list_extensions()) {
+			GritGdxManifest manifest;
+			if (manifest.load(directory) == OK && manifest.has_class(p_class_name)) {
+				extension = directory;
+				break;
+			}
+		}
+	}
+	if (extension.is_empty()) {
+		r_rebuild.report = vformat("Grit: could not find the extension that owns \"%s\".", p_class_name);
+		r_rebuild.error = ERR_DOES_NOT_EXIST;
+		return r_rebuild.error;
+	}
+	GritGdxManifest manifest;
+	const Error manifest_error = manifest.load(extension);
+	const GritGdxManifestEntry *entry = manifest_error == OK ? manifest.find_class(p_class_name) : nullptr;
+	if (!entry) {
+		r_rebuild.report = vformat("Grit: \"%s\" is not in \"%s\".", p_class_name, extension);
+		r_rebuild.error = ERR_DOES_NOT_EXIST;
+		return r_rebuild.error;
+	}
+	if (entry->archived_script.is_empty() || !FileAccess::exists(entry->archived_script)) {
+		r_rebuild.report = vformat("Grit: \"%s\" has no archived source to rebuild from (%s).", p_class_name, entry->archived_script);
+		r_rebuild.error = ERR_DOES_NOT_EXIST;
+		return r_rebuild.error;
+	}
+
+	Error error = OK;
+	const String source = FileAccess::get_file_as_string(entry->archived_script, &error);
+	if (error != OK) {
+		r_rebuild.report = vformat("Grit: could not read \"%s\".", entry->archived_script);
+		r_rebuild.error = error;
+		return error;
+	}
+
+	// The recorder compiles a GDScript at its resource path, and the archive must
+	// never be compiled. Provide the archive text at the original `.gd` path for
+	// the duration of the generation, then restore what was there.
+	const String script_path = entry->script_path;
+	const bool live_exists = FileAccess::exists(script_path);
+	String live_source;
+	if (live_exists) {
+		live_source = FileAccess::get_file_as_string(script_path, &error);
+		if (error != OK) {
+			r_rebuild.report = vformat("Grit: could not read \"%s\".", script_path);
+			r_rebuild.error = error;
+			return error;
+		}
+	}
+	DirAccess::make_dir_recursive_absolute(script_path.get_base_dir());
+	{
+		Ref<FileAccess> file = FileAccess::open(script_path, FileAccess::WRITE);
+		if (file.is_null()) {
+			r_rebuild.report = vformat("Grit: could not write \"%s\".", script_path);
+			r_rebuild.error = ERR_CANT_CREATE;
+			return r_rebuild.error;
+		}
+		file->store_string(source);
+	}
+
+	r_rebuild.result.script_path = script_path;
+	r_rebuild.result.class_name = p_class_name;
+	r_rebuild.result.extension_directory = extension;
+	r_rebuild.result.extension_name = GritGdxManifest::extension_name(extension);
+	r_rebuild.result.archived_script = entry->archived_script;
+
+	const Error generate_error = GritGdxGenerator::generate_class(extension, script_path, r_rebuild.klass, r_rebuild.report);
+
+	// Restore the live script, or remove the scratch `.gd` that only existed for
+	// the generation (the archive is the source of a rebuilt class).
+	if (live_exists) {
+		Ref<FileAccess> file = FileAccess::open(script_path, FileAccess::WRITE);
+		if (file.is_valid()) {
+			file->store_string(live_source);
+		}
+	} else {
+		DirAccess::remove_absolute(script_path);
+		DirAccess::remove_absolute(script_path + ".uid");
+	}
+	r_rebuild.error = generate_error;
+	return generate_error;
+}
+
+Error GritGdxApply::finish_rebuild(Rebuild &r_rebuild, bool p_built, String &r_report) {
+	if (r_rebuild.error != OK) {
+		r_report = r_rebuild.report;
+		return r_rebuild.error;
+	}
+	// The new baseline is the archive the sources were generated from. Only a
+	// built library matches it, so a source-only run keeps the class stale.
+	if (p_built) {
+		Error error = OK;
+		const String source = FileAccess::get_file_as_string(r_rebuild.result.archived_script, &error);
+		GritGdxManifest manifest;
+		if (error == OK && manifest.load(r_rebuild.result.extension_directory) == OK) {
+			if (const GritGdxManifestEntry *entry = manifest.find_class(r_rebuild.klass.class_name)) {
+				GritGdxManifestEntry updated = *entry;
+				updated.archived_script = r_rebuild.result.archived_script;
+				updated.source_hash = source.sha256_text();
+				manifest.upsert(updated);
+				manifest.save(r_rebuild.result.extension_directory);
+			}
+		}
+	}
+
+	StringBuilder report;
+	report.append(r_rebuild.report);
+	report.append(vformat("\n  class: %s (in %s)\n", r_rebuild.klass.class_name, r_rebuild.result.extension_directory));
+	report.append(vformat("  rebuilt from: %s\n", r_rebuild.result.archived_script));
+	if (p_built) {
+		report.append("  library: " + r_rebuild.result.library_path + "\n");
+	} else {
+		report.append("  the library was not rebuilt; the class is still out of date\n");
+	}
+	r_report = report.as_string();
+	return OK;
+}
+
+Error GritGdxApply::rebuild(const String &p_class_name, const String &p_extension_directory, bool p_build, Result &r_result, String &r_report) {
+	Rebuild state;
+	Error error = begin_rebuild(p_class_name, p_extension_directory, state);
+	if (error != OK) {
+		r_report = state.report;
+		r_result = state.result;
+		return error;
+	}
+	bool built = false;
+	if (p_build) {
+		String build_output;
+		String library;
+		const Error build_status = build(state.result.extension_directory, "template_debug", Progress(), library, build_output);
+		if (build_status != OK) {
+			state.error = build_status;
+			state.report = state.report + "\nGrit: the build failed:\n" + build_output;
+		} else {
+			built = true;
+			state.result.built = true;
+			state.result.library_path = library;
+		}
+	}
+	const Error finish_status = finish_rebuild(state, built, r_report);
+	r_result = state.result;
+	return finish_status;
+}
+
+// ---------------------------------------------------------------------------
 // revert target lookup
 // ---------------------------------------------------------------------------
 

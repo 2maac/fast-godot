@@ -32,7 +32,10 @@ Right-clicking a node that has a script offers three actions:
   icon, drawn **red** instead of the usual grey, to show that it is the source of
   a generated class rather than a running script. If the archive is edited after
   the library was built, the icon gains an amber badge: the source no longer
-  matches the class, so it needs a rebuild.
+  matches the class. **Rebuild GDExtension** in the node's context menu
+  regenerates and rebuilds the class from the archive (headlessly:
+  `--grit-gdx-rebuild --grit-gdx-class <name> --grit-gdx-build`), which clears
+  the badge.
 - **Add to Existing Extension** — adds another class to an extension the project
   already has; classes of one extension share a single library.
 - **Convert Back to GDScript** — restores the `.gde` script (same path, `.gd`

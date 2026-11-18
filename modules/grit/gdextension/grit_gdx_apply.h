@@ -91,6 +91,26 @@ public:
 	// prepare + build + finish, for the command line.
 	static Error run(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, bool p_allow_partial, Result &r_result, String &r_report);
 
+	// Rebuilding an already converted class from its `.gde` archive. The archive
+	// is temporarily written to the original `.gd` path so the recorder can
+	// compile it (the archive itself is intentionally never compiled); the live
+	// script is restored afterwards when other nodes still use it.
+	struct Rebuild {
+		GritGdxClass klass;
+		Result result;
+		String report;
+		Error error = OK;
+	};
+	// Main thread: regenerate the sources from the archive. No build, no scene
+	// rewrite; `r_rebuild.error` is set when the class cannot be found or the
+	// archive is missing.
+	static Error begin_rebuild(const String &p_class_name, const String &p_extension_directory, Rebuild &r_rebuild);
+	// Main thread, after the build: records the archive hash (clearing "stale")
+	// and writes the report. Only a built class records a new hash.
+	static Error finish_rebuild(Rebuild &r_rebuild, bool p_built, String &r_report);
+	// Blocking convenience for the CLI: begin + build + finish.
+	static Error rebuild(const String &p_class_name, const String &p_extension_directory, bool p_build, Result &r_result, String &r_report);
+
 private:
 	static Vector<String> collect_scenes(const String &p_directory);
 	// Number of nodes that attach the script; optionally reports where they are.

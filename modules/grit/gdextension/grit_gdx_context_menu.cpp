@@ -1,5 +1,7 @@
 #include "grit_gdx_context_menu.h"
 
+#include "grit/grit_gdx_script.h"
+
 #include "grit_gdx_apply.h"
 #include "grit_gdx_generator.h"
 #include "grit_gdx_job.h"
@@ -99,6 +101,7 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 	bool single = false;
 	bool makeable = false;
 	bool revertable = false;
+	bool rebuildable = false;
 	String revert_class;
 	String revert_extension;
 
@@ -108,6 +111,8 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 		if (selected.size() == 1) {
 			Node *node = selected.front()->get();
 			makeable = can_make_gdextension(node);
+			const Ref<Script> node_script = node->get_script();
+			rebuildable = node_script.is_valid() && Object::cast_to<GritGdxScript>(node_script.ptr()) != nullptr;
 			// The editor may still hold the scene it loaded before a conversion, so
 			// the node's in-memory type can be stale; trust the scene file.
 			String node_class = String(node->get_class_name());
@@ -153,6 +158,9 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 	}
 
 	add_context_menu_item("Convert Back to GDScript", revertable ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_convert_back)) : Callable(), Ref<Texture2D>());
+	// The archived script is attached to the node, so a rebuild is offered exactly
+	// where the archive is visible.
+	add_context_menu_item("Rebuild GDExtension", rebuildable ? Callable(callable_mp(this, &GritGdxContextMenuPlugin::_rebuild)) : Callable(), Ref<Texture2D>());
 }
 
 void GritGdxContextMenuPlugin::_submenu_selected(int p_index) {
@@ -317,6 +325,40 @@ void GritGdxContextMenuPlugin::_start_add(const String &p_script_path, const Str
 	job.instantiate();
 	const Error error = job->start(p_script_path, extension, p_scene_path, p_node_path, p_allow_partial);
 	_start_job();
+	if (error != OK) {
+		_poll();
+	}
+}
+
+void GritGdxContextMenuPlugin::_rebuild(const Array &p_selection) {
+	if (p_selection.size() != 1) {
+		return;
+	}
+	Node *node = Object::cast_to<Node>(p_selection[0]);
+	if (!node) {
+		return;
+	}
+	const Ref<Script> script = node->get_script();
+	if (script.is_null() || Object::cast_to<GritGdxScript>(script.ptr()) == nullptr) {
+		return;
+	}
+	const String class_name = String(node->get_class_name());
+	String scene;
+	String path;
+	node_location(node, scene, path);
+	GritGdxApply::RevertTarget target;
+	if (class_name.is_empty() || !GritGdxApply::find_revert_target(class_name, target)) {
+		_show_message("Could not find the extension that owns this class.");
+		return;
+	}
+	_close_dialog();
+	active_scene = scene;
+	job.instantiate();
+	const Error error = job->start_rebuild(class_name, target.extension_directory);
+	_start_job();
+	if (dialog) {
+		dialog->set_title("Rebuild GDExtension");
+	}
 	if (error != OK) {
 		_poll();
 	}
