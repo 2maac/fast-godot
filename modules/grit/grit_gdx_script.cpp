@@ -4,6 +4,12 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 
+#ifdef TOOLS_ENABLED
+StringName GritGdxScript::get_editor_icon() const {
+	return SNAME("GritGdxScript");
+}
+#endif
+
 void GritGdxScript::set_archived_metadata(const StringName &p_base_type, const String &p_class) {
 	archived_base_type = p_base_type;
 	archived_class = p_class;

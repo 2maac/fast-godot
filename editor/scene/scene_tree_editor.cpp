@@ -435,7 +435,8 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 		// Add script icons for all scripted nodes.
 		Ref<Script> scr = p_node->get_script();
 		if (scr.is_valid()) {
-			p_item->add_button(0, get_editor_theme_icon(SNAME("Script")), BUTTON_SCRIPT);
+			const StringName script_icon = scr->get_editor_icon();
+			p_item->add_button(0, get_editor_theme_icon(script_icon.is_empty() ? SNAME("Script") : script_icon), BUTTON_SCRIPT);
 			if (EditorNode::get_singleton()->get_object_custom_type_base(p_node) == scr) {
 				// Disable button on custom scripts (pure visual cue).
 				p_item->set_button_disabled(0, p_item->get_button_count(0) - 1, true);
@@ -602,7 +603,8 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 				additional_notes += "\n" + TTR("This script is a custom type.");
 				button_color.a = 0.5;
 			}
-			p_item->add_button(0, get_editor_theme_icon(SNAME("Script")), BUTTON_SCRIPT, false, TTR("Open Script:") + " " + scr->get_path() + additional_notes);
+			const StringName script_icon = scr->get_editor_icon();
+			p_item->add_button(0, get_editor_theme_icon(script_icon.is_empty() ? SNAME("Script") : script_icon), BUTTON_SCRIPT, false, TTR("Open Script:") + " " + scr->get_path() + additional_notes);
 			p_item->set_button_color(0, p_item->get_button_count(0) - 1, button_color);
 		}
 

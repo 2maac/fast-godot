@@ -28,7 +28,9 @@ Right-clicking a node that has a script offers three actions:
   renames the script to `.gde` (same folder and stem) and switches the node to
   the generated class. The archive stays attached to the node but never runs: it
   is the readable source of the class, opens in the script editor, and Convert
-  Back turns it into a normal `.gd` again.
+  Back turns it into a normal `.gd` again. In the scene tree it keeps a script
+  icon, drawn **red** instead of the usual grey, to show that it is the source of
+  a generated class rather than a running script.
 - **Add to Existing Extension** — adds another class to an extension the project
   already has; classes of one extension share a single library.
 - **Convert Back to GDScript** — restores the `.gde` script (same path, `.gd`

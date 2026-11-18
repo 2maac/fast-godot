@@ -158,6 +158,9 @@ public:
 	virtual Error reload(bool p_keep_state = false) = 0;
 
 #ifdef TOOLS_ENABLED
+	// Icon that represents this script in the scene tree and the FileSystem dock.
+	// Empty keeps the generic "Script" icon.
+	virtual StringName get_editor_icon() const { return StringName(); }
 	virtual StringName get_doc_class_name() const = 0;
 	virtual Vector<DocData::ClassDoc> get_documentation() const = 0;
 	virtual String get_class_icon_path() const = 0;

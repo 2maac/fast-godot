@@ -28,6 +28,10 @@ public:
 	// Never instantiate: the generated class is the implementation, the archive is
 	// only its readable source.
 	bool can_instantiate() const override { return false; }
+#ifdef TOOLS_ENABLED
+	// The archived script shows the red GDScript icon in the scene tree.
+	StringName get_editor_icon() const override;
+#endif
 	Error reload(bool p_keep_state = false) override { return OK; }
 	StringName get_instance_base_type() const override { return archived_base_type; }
 };
