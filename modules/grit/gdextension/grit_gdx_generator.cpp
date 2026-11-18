@@ -43,6 +43,10 @@ static String grit_gdx_arch_key() {
 #endif
 }
 
+// The class icon of every generated class: the red GDScript gear, the same mark
+// the archived `.gds` source uses.
+static const char *const GRIT_GDX_CLASS_ICON_SVG = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><path fill=\"#ff5a5a\" d=\"m7 1-.565 2.258a5 5 0 0 0-.689.28L3.758 2.343 2.344 3.758l1.195 1.994a5 5 0 0 0-.285.685L1 7v2l2.258.564a5 5 0 0 0 .279.688l-1.193 1.99 1.414 1.414 1.994-1.195a5 5 0 0 0 .685.285L7 15h2l.564-2.258a5 5 0 0 0 .688-.28l1.99 1.194 1.414-1.414-1.195-1.994a5 5 0 0 0 .285-.685L15 9V7l-2.258-.564a5 5 0 0 0-.28-.688l1.194-1.99-1.414-1.414-1.994 1.195a5 5 0 0 0-.686-.285L9 1H7zm1 5a2 2 0 0 1 0 4 2 2 0 0 1 0-4z\"/></svg>\n";
+
 String GritGdxGenerator::sanitize_identifier(const String &p_name) {
 	String out;
 	for (int i = 0; i < p_name.length(); i++) {
@@ -419,7 +423,7 @@ Error GritGdxGenerator::write_registry(const String &p_extension_directory, cons
 	return write_file(p_extension_directory.path_join("src").path_join("register_classes.gen.cpp"), registry.as_string());
 }
 
-Error GritGdxGenerator::write_extension_files(const String &p_extension_directory) {
+Error GritGdxGenerator::write_extension_files(const String &p_extension_directory, const String &p_extra_class) {
 	const String directory = p_extension_directory.ends_with("/") ? p_extension_directory.left(-1) : p_extension_directory;
 	const String name = GritGdxManifest::extension_name(directory);
 	GritGdxManifest manifest;
@@ -479,6 +483,30 @@ Error GritGdxGenerator::write_extension_files(const String &p_extension_director
 	descriptor.append("[libraries]\n\n");
 	descriptor.append(platform + ".debug = \"res://" + relative_output + "/bin/lib" + name + "." + platform + "." + arch + ".debug" + extension + "\"\n");
 	descriptor.append(platform + ".release = \"res://" + relative_output + "/bin/lib" + name + "." + platform + "." + arch + ".release" + extension + "\"\n");
+
+	// The generated class is the node's type, so its class icon is the red script:
+	// the editor reads [icons] from the descriptor. The manifest lists the classes
+	// of the extension; the class being generated may not be saved there yet.
+	GritGdxManifest icon_manifest;
+	Vector<String> icon_classes;
+	if (icon_manifest.load(directory) == OK) {
+		for (const GritGdxManifestEntry &entry : icon_manifest.classes) {
+			if (!entry.class_name.is_empty()) {
+				icon_classes.push_back(entry.class_name);
+			}
+		}
+	}
+	if (!p_extra_class.is_empty() && !icon_classes.has(p_extra_class)) {
+		icon_classes.push_back(p_extra_class);
+	}
+	if (!icon_classes.is_empty()) {
+		descriptor.append("\n[icons]\n\n");
+		for (const String &class_name : icon_classes) {
+			descriptor.append(class_name + " = \"icon.svg\"\n");
+		}
+		const Error icon_error = write_file(directory.path_join("icon.svg"), GRIT_GDX_CLASS_ICON_SVG);
+		ERR_FAIL_COND_V_MSG(icon_error != OK, icon_error, "Grit: could not write the extension icon.");
+	}
 	return write_file(directory.path_join(name + ".gdextension"), descriptor.as_string());
 }
 
@@ -536,7 +564,7 @@ Error GritGdxGenerator::generate_class(const String &p_extension_directory, cons
 		}
 	}
 
-	write_error = write_extension_files(directory);
+	write_error = write_extension_files(directory, r_class.class_name);
 	ERR_FAIL_COND_V_MSG(write_error != OK, write_error, "Grit: could not write the extension files.");
 
 	const LocalVector<GritGdxSkipped> skipped = collect_skipped(r_class);

@@ -15,7 +15,9 @@ public:
 	static Error generate_class(const String &p_extension_directory, const String &p_script_path, GritGdxClass &r_class, String &r_report);
 
 	// Writes SConstruct, descriptor and registry from the folder's manifest.
-	static Error write_extension_files(const String &p_extension_directory);
+	// `p_extra_class` is the class being generated: the manifest may not contain it
+	// yet when the descriptor (and its [icons] section) is written.
+	static Error write_extension_files(const String &p_extension_directory, const String &p_extra_class = String());
 
 	// Removes a class from the manifest and its sources, then regenerates.
 	static Error remove_class(const String &p_extension_directory, const String &p_class_name);

@@ -100,6 +100,9 @@ Ref<Resource> GritGdxScriptLoader::load(const String &p_path, const String &p_or
 }
 
 void GritGdxScriptLoader::get_recognized_extensions(List<String> *p_extensions) const {
+	// `.gds` is the archived source of a converted class; `.gde` is the legacy
+	// archive that used to stay attached to the node.
+	p_extensions->push_back("gds");
 	p_extensions->push_back("gde");
 }
 
@@ -108,7 +111,8 @@ bool GritGdxScriptLoader::handles_type(const String &p_type) const {
 }
 
 String GritGdxScriptLoader::get_resource_type(const String &p_path) const {
-	return p_path.get_extension().to_lower() == "gde" ? String("GritGdxScript") : String();
+	const String extension = p_path.get_extension().to_lower();
+	return (extension == "gds" || extension == "gde") ? String("GritGdxScript") : String();
 }
 
 Error GritGdxScriptSaver::save(const Ref<Resource> &p_resource, const String &p_path, uint32_t p_flags) {
@@ -127,6 +131,7 @@ Error GritGdxScriptSaver::save(const Ref<Resource> &p_resource, const String &p_
 
 void GritGdxScriptSaver::get_recognized_extensions(const Ref<Resource> &p_resource, List<String> *p_extensions) const {
 	if (p_resource.is_valid() && p_resource->is_class("GritGdxScript")) {
+		p_extensions->push_back("gds");
 		p_extensions->push_back("gde");
 	}
 }

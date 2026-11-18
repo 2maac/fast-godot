@@ -59,7 +59,9 @@ than as a stub.
   inside the temporary directory. Building the extension needs a godot-cpp
   checkout the process may write to.
 - The fixtures are copied to a temp directory because converting rewrites the
-  scene, archives the script as `.gde` and writes `gdext/`.
+  scene, archives the script as a detached `.gds` next to it and writes
+  `gdext/`. The converted node becomes the script's `class_name` and has no script
+  attached, so a new `.gd` can be added later.
 - Converting on one host writes only that host's library entries into the
   descriptor. To run the same converted project on another platform, add the
   matching `platform.debug`/`platform.release` lines and build the generated

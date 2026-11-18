@@ -104,14 +104,14 @@ def project_file(project_dir, res_path):
     return os.path.join(project_dir, res_path[len("res://") :])
 
 
-def check_archive(project_dir, fixture, failures):
-    """The converted node keeps its script attached, pointing at the .gde archive."""
+def check_archive(project_dir, fixture, class_name, failures):
+    """The converted node is the class and the archive is a detached .gds."""
     script = fixture.get("script", "")
     scene = fixture.get("scene", "")
     if not script.startswith("res://") or not scene.startswith("res://"):
         return
     stem = script.rsplit(".", 1)[0]
-    archive = project_file(project_dir, stem + ".gde")
+    archive = project_file(project_dir, stem + ".gds")
     if not os.path.isfile(archive):
         failures.append("converted script was not archived next to the source: %s" % archive)
         return
@@ -121,10 +121,12 @@ def check_archive(project_dir, fixture, failures):
     except OSError as error:
         failures.append("could not read the converted scene: %s" % error)
         return
-    if 'path="%s.gde"' % stem not in scene_text:
-        failures.append("the converted node does not reference the .gde archive")
-    if "script = ExtResource(" not in scene_text:
-        failures.append("the converted node lost its script assignment")
+    if 'path="%s.gds"' % stem in scene_text:
+        failures.append("the archive is still referenced by the scene; it must be detached")
+    if 'path="%s"' % script in scene_text:
+        failures.append("the live script resource is still in the scene after conversion")
+    if 'type="%s"' % class_name not in scene_text:
+        failures.append("the converted node is not of the class_name type %r" % class_name)
 
     # The manifest records the archive hash the library was built from, which is
     # what makes a later edit detectable.
@@ -148,11 +150,29 @@ def check_archive(project_dir, fixture, failures):
             failures.append("the manifest's source_hash does not match the archive")
 
 
+def script_class_name(directory, fixture):
+    script = fixture.get("script", "")
+    if not script.startswith("res://"):
+        return ""
+    try:
+        with open(os.path.join(directory, script[len("res://") :]), "r", encoding="utf-8") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if stripped.startswith("class_name "):
+                    return stripped.split()[1]
+    except OSError:
+        return ""
+    return ""
+
+
 def run_fixture(name, args, env_with_paths, session):
     """Converts and runs one fixture inside the shared session directory."""
     directory = os.path.join(FIXTURES, name)
     with open(os.path.join(directory, "fixture.json"), "r", encoding="utf-8") as handle:
         fixture = json.load(handle)
+    class_name = script_class_name(directory, fixture)
+    if not class_name:
+        raise SystemExit("fixture %r has no class_name; conversion requires one" % name)
     expected = read_lines(os.path.join(directory, "expected.txt"))
     forbidden = read_lines(os.path.join(directory, "forbidden.txt"))
 
@@ -187,7 +207,7 @@ def run_fixture(name, args, env_with_paths, session):
         failures.append("no extension library was built; the run would use the GDScript VM")
 
     if not failures:
-        check_archive(work, fixture, failures)
+        check_archive(work, fixture, class_name, failures)
 
     game_output = ""
     if not failures:

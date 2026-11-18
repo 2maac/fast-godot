@@ -150,7 +150,11 @@ static Error write_scene(const String &p_scene_path, const PackedStringArray &p_
 	}
 	Ref<FileAccess> file = FileAccess::open(p_scene_path, FileAccess::WRITE);
 	ERR_FAIL_COND_V_MSG(file.is_null(), ERR_CANT_CREATE, vformat("Grit: could not write \"%s\".", p_scene_path));
-	file->store_string(output.as_string());
+	String text = output.as_string();
+	if (!text.ends_with("\n")) {
+		text += "\n";
+	}
+	file->store_string(text);
 	return OK;
 }
 
@@ -174,8 +178,9 @@ void GritGdxApply::close_editor_script_tabs(const String &p_path) {
 #endif
 }
 
-// Replaces the node's type and keeps its script attached: the assignment now
-// points at the archived source (`.gde`), which loads as an inert GritGdxScript.
+// Replaces the node's type and drops its script assignment: the class is the
+// implementation, and the script is archived as a standalone `.gds` source, so a
+// new `.gd` can take the node later without a second copy of the old one.
 static Error convert_node(const String &p_scene_path, const String &p_node_path, const String &p_script_path, const String &p_class_name, bool &r_rewritten, String &r_error) {
 	r_rewritten = false;
 	Error error = OK;
@@ -212,8 +217,6 @@ static Error convert_node(const String &p_scene_path, const String &p_node_path,
 			r_error = vformat("node \"%s\" was not found in \"%s\"", p_node_path, p_scene_path);
 			return ERR_DOES_NOT_EXIST;
 		}
-		// The editor writes script = ExtResource(...) after the node's other
-		// properties, so look through the whole node block.
 		bool has_script = false;
 		for (int i = header + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
 			if (lines[i].strip_edges() == script_line) {
@@ -231,7 +234,7 @@ static Error convert_node(const String &p_scene_path, const String &p_node_path,
 		return OK;
 	}
 
-	Vector<int> converted;
+	Vector<int> dropped;
 	for (int header : targets) {
 		String line = lines[header];
 		const int type_position = line.find("type=\"");
@@ -243,7 +246,6 @@ static Error convert_node(const String &p_scene_path, const String &p_node_path,
 		if (value_end < 0) {
 			continue;
 		}
-		// Never replace a node that is already a generated class.
 		const String current_type = line.substr(value_start, value_end - value_start);
 		if (ClassDB::class_exists(current_type)) {
 			const ClassDB::APIType api = ClassDB::get_api_type(current_type);
@@ -252,70 +254,35 @@ static Error convert_node(const String &p_scene_path, const String &p_node_path,
 			}
 		}
 		lines.write[header] = line.substr(0, value_start) + p_class_name + line.substr(value_end);
-		converted.push_back(header);
+		for (int i = header + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
+			if (lines[i].strip_edges() == script_line) {
+				dropped.push_back(i);
+				break;
+			}
+		}
 		r_rewritten = true;
 	}
 	if (!r_rewritten) {
 		return OK;
 	}
 
-	// The assignment stays on each converted node; collect the lines to retarget.
-	Vector<int> assignments;
-	for (int header : converted) {
-		for (int i = header + 1; i < lines.size() && !lines[i].begins_with("[node "); i++) {
-			if (lines[i].strip_edges() == script_line) {
-				assignments.push_back(i);
-				break;
-			}
+	// Drop the script's ExtResource entry when nothing else uses it.
+	bool still_used = false;
+	for (int i = 0; i < lines.size(); i++) {
+		if (!dropped.has(i) && lines[i].strip_edges() == script_line) {
+			still_used = true;
+			break;
 		}
 	}
-
-	const String archived_path = p_script_path.get_basename() + ".gde";
-	const int remaining = script_assignment_users(lines, id) - int(assignments.size());
-	String archive_id = id;
-	if (remaining > 0) {
-		// Other nodes still run the live script. The converted nodes get their own
-		// resource entry so they do not drag the others into the archive.
-		archive_id = "grit_archive";
-		for (int suffix = 2; text.contains("id=\"" + archive_id + "\""); suffix++) {
-			archive_id = "grit_archive" + itos(suffix);
-		}
-		// Keep the new entry with the other resources rather than before the blank
-		// line the editor writes under `[gd_scene]`.
-		int insert_at = -1;
-		for (int i = 0; i < lines.size(); i++) {
-			if (lines[i].begins_with("[ext_resource")) {
-				insert_at = i + 1;
-			}
-		}
-		if (insert_at < 0) {
-			for (int i = 0; i < lines.size(); i++) {
-				if (lines[i].begins_with("[gd_scene")) {
-					insert_at = i + 1;
-					break;
-				}
-			}
-		}
-		lines.insert(insert_at, "[ext_resource type=\"Script\" path=\"" + archived_path + "\" id=\"" + archive_id + "\"]");
-		for (int &line_index : assignments) {
-			if (line_index >= insert_at) {
-				line_index++;
-			}
-		}
-	} else {
-		// Every user is converted: the single entry becomes the archive.
+	if (!still_used) {
 		for (int i = 0; i < lines.size(); i++) {
 			if (lines[i].begins_with("[ext_resource") && lines[i].contains("path=\"" + p_script_path + "\"")) {
-				lines.write[i] = retarget_resource_line(lines[i], archived_path);
+				dropped.push_back(i);
 				break;
 			}
 		}
 	}
-	const String archive_assignment = "script = ExtResource(\"" + archive_id + "\")";
-	for (int line_index : assignments) {
-		lines.write[line_index] = archive_assignment;
-	}
-	return write_scene(p_scene_path, lines, Vector<int>());
+	return write_scene(p_scene_path, lines, dropped);
 }
 
 // Puts the node back to its script: base type plus a script assignment to the
@@ -330,15 +297,19 @@ static Error restore_node(const String &p_scene_path, const String &p_node_path,
 		return error;
 	}
 	PackedStringArray lines = text.split("\n");
-	const String archived_path = p_script_path.get_basename() + ".gde";
+	// New conversions archive as `.gds`; `.gde` is the legacy attached archive.
+	String archived_path = p_script_path.get_basename() + ".gds";
+	String archive_id = script_resource_id(lines, archived_path);
+	if (archive_id.is_empty()) {
+		archived_path = p_script_path.get_basename() + ".gde";
+		archive_id = script_resource_id(lines, archived_path);
+	}
 
 	// An entry for the live script may still exist (a shared script keeps it), in
 	// which case it is reused. Otherwise the archive's entry is retargeted when no
-	// other converted node depends on it, and a new entry is created if it is
-	// shared.
+	// other converted node depends on it, and a new entry is created if it is.
 	String id = script_resource_id(lines, p_script_path);
 	if (id.is_empty()) {
-		const String archive_id = script_resource_id(lines, archived_path);
 		if (!archive_id.is_empty() && script_assignment_users(lines, archive_id) == 1) {
 			for (int i = 0; i < lines.size(); i++) {
 				if (lines[i].begins_with("[ext_resource") && lines[i].contains("id=\"" + archive_id + "\"") && lines[i].contains("path=\"" + archived_path + "\"")) {
@@ -368,6 +339,11 @@ static Error restore_node(const String &p_scene_path, const String &p_node_path,
 					break;
 				}
 			}
+		}
+		// Keep the blank line the editor writes under `[gd_scene]`: insert the new
+		// resource after it, not between the header and the gap.
+		while (insert_at < lines.size() && lines[insert_at].strip_edges().is_empty()) {
+			insert_at++;
 		}
 		lines.insert(insert_at, "[ext_resource type=\"Script\" path=\"" + p_script_path + "\" id=\"" + id + "\"]");
 	}
@@ -694,7 +670,7 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 	// node needs the live script anymore it is renamed; when other nodes still use
 	// it, a copy is archived and those nodes keep the `.gd`.
 	const int remaining = count_script_users(p_class.script_path);
-	const String archived = p_class.script_path.get_basename() + ".gde";
+	const String archived = p_class.script_path.get_basename() + ".gds";
 	if (archived != p_class.script_path && FileAccess::exists(p_class.script_path)) {
 		close_editor_script_tabs(p_class.script_path);
 		if (FileAccess::exists(archived)) {
@@ -703,7 +679,11 @@ Error GritGdxApply::finish(const GritGdxClass &p_class, bool p_built, Result &r_
 		Error archive_error = OK;
 		if (remaining == 0) {
 			archive_error = DirAccess::rename_absolute(p_class.script_path, archived);
-			DirAccess::remove_absolute(p_class.script_path + ".uid");
+			// Keep the script's UID with it so a later Convert Back restores the
+			// same resource id.
+			if (FileAccess::exists(p_class.script_path + ".uid")) {
+				DirAccess::rename_absolute(p_class.script_path + ".uid", archived + ".uid");
+			}
 		} else {
 			archive_error = DirAccess::copy_absolute(p_class.script_path, archived);
 		}
@@ -979,24 +959,23 @@ Error GritGdxApply::revert(const String &p_class_name, const String &p_extension
 	r_result.script_path = target.script_path;
 	r_result.archived_script = target.archived_script;
 
-	// Restore the script from the archive when it was archived. Close the tabs
-	// first: both paths change meaning during the rename.
+	// Put the archive back where the script was. A `.gd` at that path is a script
+	// added after the conversion; Convert Back must not silently replace it (the
+	// follow-up step adds delete-or-keep handling).
+	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && FileAccess::exists(target.script_path)) {
+		r_report = vformat("Grit: \"%s\" already exists; Convert Back would replace it. Delete or rename it first.", target.script_path);
+		return ERR_INVALID_PARAMETER;
+	}
 	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && !FileAccess::exists(target.script_path)) {
 		const Error rename_error = DirAccess::rename_absolute(target.archived_script, target.script_path);
 		if (rename_error != OK) {
 			r_report = vformat("Grit: could not restore \"%s\".", target.script_path);
 			return rename_error;
 		}
-	}
-
-	// If the script was re-created next to its archive (the editor can do that),
-	// the archive is a leftover copy of the converted state.
-	if (!target.archived_script.is_empty() && FileAccess::exists(target.archived_script) && FileAccess::exists(target.script_path)) {
-		DirAccess::remove_absolute(target.archived_script);
-	}
-	if (!target.archived_script.is_empty()) {
-		// The `.gde` may have received a UID while it was attached.
-		DirAccess::remove_absolute(target.archived_script + ".uid");
+		// The archive carried the script's UID; restore it with the script.
+		if (FileAccess::exists(target.archived_script + ".uid")) {
+			DirAccess::rename_absolute(target.archived_script + ".uid", target.script_path + ".uid");
+		}
 	}
 
 	// A conversion is class-wide, so Convert Back restores every node of the class
