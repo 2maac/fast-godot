@@ -5,11 +5,13 @@
 #include "grit_gdx_apply.h"
 #include "grit_gdx_job.h"
 #include "grit_gdx_apply.h"
+#include "grit_gdx_builder.h"
 #include "grit_gdx_emitter.h"
 
 #include "grit/compiler/grit_recording_code_generator.h"
 
 #include "core/string/string_builder.h"
+#include "editor/file_system/editor_file_system.h"
 #include "core/object/class_db.h"
 #include "grit/runtime/grit_runtime_access.h"
 
@@ -17,6 +19,7 @@
 #include "modules/gdscript/gdscript_cache.h"
 
 #include "core/config/project_settings.h"
+#include "core/extension/gdextension_manager.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/os/os.h"
@@ -506,7 +509,18 @@ Error GritGdxGenerator::write_extension_files(const String &p_extension_director
 		const Error icon_error = write_file(directory.path_join("icon.svg"), GRIT_GDX_CLASS_ICON_SVG);
 		ERR_FAIL_COND_V_MSG(icon_error != OK, icon_error, "Grit: could not write the extension icon.");
 	}
-	return write_file(directory.path_join(name + ".gdextension"), descriptor.as_string());
+	// Publish the descriptor only once its library exists. The editor's file scan
+	// would otherwise try to load the not-yet-built library and log "Can't open
+	// dynamic library" during the first build.
+	const String descriptor_path = directory.path_join(name + ".gdextension");
+	const String library = GritGdxBuilder::library_path(directory, name, "editor");
+	if (!FileAccess::exists(library)) {
+		if (FileAccess::exists(descriptor_path)) {
+			DirAccess::remove_absolute(descriptor_path);
+		}
+		return OK;
+	}
+	return write_file(descriptor_path, descriptor.as_string());
 }
 
 Error GritGdxGenerator::generate_class(const String &p_extension_directory, const String &p_script_path, GritGdxClass &r_class, String &r_report, const String &p_record_path) {

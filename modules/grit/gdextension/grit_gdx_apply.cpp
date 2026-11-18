@@ -639,6 +639,13 @@ Error GritGdxApply::build(const String &p_extension_directory, const String &p_t
 		r_error = vformat("the build reported success but \"%s\" is missing", r_library);
 		return ERR_CANT_CREATE;
 	}
+	// The descriptor is published only now that the library exists, so the editor's
+	// scan loads it once and without a missing-library error.
+	const Error descriptor_error = GritGdxGenerator::write_extension_files(p_extension_directory);
+	if (descriptor_error != OK) {
+		r_error = "the library was built but the .gdextension descriptor could not be written";
+		return descriptor_error;
+	}
 	return OK;
 }
 
@@ -1318,6 +1325,14 @@ void GritGdxApply::poll_build_source() {
 		ERR_PRINT(report);
 	} else {
 		print_line(report);
+	}
+	// The descriptor was written after the build; make the editor import it and
+	// register its classes (the extension list the game reads is written here too).
+	if (EditorFileSystem::get_singleton()) {
+		EditorFileSystem::get_singleton()->scan_changes();
+	}
+	if (GDExtensionManager::get_singleton()) {
+		GDExtensionManager::get_singleton()->reload_extensions();
 	}
 	if (!OS::get_singleton()->get_environment("GRIT_GDX_BUILD_TEST").is_empty()) {
 		print_line("Grit: build test finished.");
