@@ -26,14 +26,17 @@ the FileSystem dock, **New Script…** offers **GDScript (GDExtension)**: it wri
 a `.gde` script whose template declares the class and its base:
 
 ```gdscript
-@gdextension_class_name("Player")
+class_name Player
 extends CharacterBody2D
 ```
 
-`@gdextension_class_name` is a Grit annotation that GDScript ignores; the name
-becomes the generated class. The script is a **class source**: it cannot be
-attached to a node (the Attach Script dialog does not offer the language and
-rejects `.gde` paths); nodes use the generated class as their type instead.
+The `class_name` becomes the generated class. The script is a **class source**:
+it is never compiled by the engine, never instantiated and never executed — only
+the built GDExtension runs. It cannot be attached to a node (the Attach Script
+dialog does not offer the language and rejects `.gde` paths), a `.gd` file cannot
+`preload` it, and it is not registered as a GDScript global class. It still opens
+in the script editor with normal GDScript syntax highlighting. Nodes use the
+generated class as their type instead.
 
 Creating the script generates the extension next to it:
 

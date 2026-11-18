@@ -4,6 +4,7 @@
 #include "grit_gdx_emitter.h"
 #include "grit_gdx_generator.h"
 #include "grit_gdx_manifest.h"
+#include "modules/grit/grit_gdx_script.h"
 #include "grit_gdx_platform.h"
 
 #include "modules/gdscript/gdscript.h"
@@ -11,6 +12,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
+#include "core/io/resource.h"
 #include "core/os/thread.h"
 
 #include "editor/file_system/editor_file_system.h"
@@ -1258,6 +1260,12 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 	if (!FileAccess::exists(path)) {
 		r_report = vformat("Grit: \"%s\" does not exist.", path);
 		return ERR_FILE_NOT_FOUND;
+	}
+	// The New Script dialog creates a plain GDScript before saving it; drop that
+	// instance so the path loads as the inert Grit source.
+	if (const Ref<Resource> cached = ResourceCache::get_ref(path); cached.is_valid() && Object::cast_to<GritGdxScript>(cached.ptr()) == nullptr) {
+		GDScriptCache::remove_script(path);
+		cached->set_path(String());
 	}
 	const String stem = path.get_file().get_basename();
 	String directory = path.get_base_dir().path_join(stem + "_gdext");

@@ -38,6 +38,7 @@
 #include "core/object/class_db.h"
 #include "core/os/os.h"
 #include "core/string/char_utils.h"
+#include "modules/gdscript/gdscript.h"
 #include "editor/editor_node.h"
 #include "editor/editor_string_names.h"
 #include "editor/file_system/editor_file_system.h"
@@ -453,12 +454,31 @@ void ScriptCreateDialog::_create_new() {
 		scr->set_source_code(vformat(extra_languages[0].annotation_format, annotation_name) + "\n" + body);
 	}
 
+	const String lpath = is_built_in ? String() : ProjectSettings::get_singleton()->localize_path(file_path->get_text());
 	if (is_built_in) {
 		scr->set_name(built_in_name->get_text());
 		// Make sure the script is compiled to make its type recognizable.
 		scr->reload();
+	} else if (is_extra_language) {
+		// A GDExtension source is never a plain GDScript: write the text and load it
+		// back so the project gets the inert Grit source (never compiled/executed).
+		Error err = OK;
+		Ref<FileAccess> file = FileAccess::open(lpath, FileAccess::WRITE, &err);
+		if (file.is_null()) {
+			alert->set_text(TTR("Error - Could not create script in filesystem."));
+			alert->popup_centered();
+			return;
+		}
+		file->store_string(scr->get_source_code());
+		file = Ref<FileAccess>();
+		const Ref<Script> loaded = ResourceLoader::load(lpath, "Script", ResourceFormatLoader::CACHE_MODE_REUSE, &err);
+		if (loaded.is_null()) {
+			alert->set_text(TTR("Error - Could not create script in filesystem."));
+			alert->popup_centered();
+			return;
+		}
+		scr = loaded;
 	} else {
-		String lpath = ProjectSettings::get_singleton()->localize_path(file_path->get_text());
 		scr->set_path(lpath);
 		Error err = ResourceSaver::save(scr, lpath, ResourceSaver::FLAG_CHANGE_PATH);
 		if (err != OK) {
@@ -466,9 +486,9 @@ void ScriptCreateDialog::_create_new() {
 			alert->popup_centered();
 			return;
 		}
-		if (is_extra_language && !extra_languages.is_empty() && extra_languages[0].created) {
-			extra_languages[0].created(lpath);
-		}
+	}
+	if (is_extra_language && !is_built_in && !extra_languages.is_empty() && extra_languages[0].created) {
+		extra_languages[0].created(lpath);
 	}
 
 	emit_signal(SNAME("script_created"), scr);

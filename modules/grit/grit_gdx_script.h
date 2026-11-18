@@ -16,12 +16,17 @@ class GritGdxScript : public GDScript {
 
 	StringName archived_base_type;
 	String archived_class;
+	// A `.gde` source is compiled only while the converter records it; the editor
+	// never compiles or executes it. `.gds` archives are never compiled.
+	bool is_source = false;
 
 protected:
 	static void _bind_methods();
 
 public:
 	void set_archived_metadata(const StringName &p_base_type, const String &p_class);
+	void set_source(bool p_source) { is_source = p_source; }
+	bool is_gdextension_source() const { return is_source; }
 	// True when the archive no longer matches the hash recorded when the library
 	// was built, i.e. the class needs a rebuild. Always false in exported games.
 	bool is_stale() const;
@@ -35,7 +40,7 @@ public:
 	// The archived script shows the red GDScript icon in the scene tree.
 	StringName get_editor_icon() const override;
 #endif
-	Error reload(bool p_keep_state = false) override { return OK; }
+	Error reload(bool p_keep_state = false) override;
 	StringName get_instance_base_type() const override { return archived_base_type; }
 };
 

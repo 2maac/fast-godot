@@ -69,7 +69,7 @@ static void grit_editor_init() {
 
 	// GDExtension sources are created from FileSystem > New Script with the
 	// "GDScript (GDExtension)" language; the scene tree has no Grit actions.
-	ScriptCreateDialog::register_extra_language("GDScript (GDExtension)", "gde", "@gdextension_class_name(\"%s\")", &GritGdxApply::create_source_callback);
+	ScriptCreateDialog::register_extra_language("GDScript (GDExtension)", "gde", "class_name %s", &GritGdxApply::create_source_callback);
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
