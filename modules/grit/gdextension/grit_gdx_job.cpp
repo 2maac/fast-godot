@@ -71,13 +71,12 @@ Error GritGdxJob::start_build_source(const String &p_script_path) {
 	result.script_path = p_script_path;
 	{
 		MutexLock lock(mutex);
-		status = "Generating the native class";
+		status = "Generating the project classes";
 	}
 	progress.store(5);
 	String generate_report;
-	String directory;
-	prepare_error = GritGdxApply::create_source(p_script_path, generate_report, &directory);
-	result.extension_directory = directory;
+	prepare_error = GritGdxApply::refresh_project_extension(generate_report);
+	result.extension_directory = GritGdxApply::project_extension_directory();
 	{
 		MutexLock lock(mutex);
 		report = generate_report;

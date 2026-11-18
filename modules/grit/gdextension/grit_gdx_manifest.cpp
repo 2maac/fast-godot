@@ -1,6 +1,8 @@
 #include "grit_gdx_manifest.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
+#include "core/string/char_utils.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
 
@@ -123,7 +125,27 @@ void GritGdxManifest::upsert(const GritGdxManifestEntry &p_entry) {
 	classes.push_back(p_entry);
 }
 
+String GritGdxManifest::project_extension_name() {
+	String name = ProjectSettings::get_singleton()->get_setting("application/config/name", "grit_project");
+	if (name.is_empty()) {
+		name = "grit_project";
+	}
+	for (int i = 0; i < name.length(); i++) {
+		if (!is_ascii_identifier_char(name[i])) {
+			name[i] = '_';
+		}
+	}
+	if (!name.is_empty() && is_digit(name[0])) {
+		name = "_" + name;
+	}
+	return name;
+}
+
 String GritGdxManifest::extension_name(const String &p_extension_directory) {
+	// One extension per project, at res://gdext/, named after the project.
+	if (p_extension_directory == "res://gdext" || p_extension_directory == "res://gdext/") {
+		return project_extension_name();
+	}
 	String name = p_extension_directory.ends_with("/") ? p_extension_directory.left(-1).get_file() : p_extension_directory.get_file();
 	// Extensions created from a `.gde` source live in `<stem>_gdext/` and are
 	// named after the class (`<stem>.gdextension`).

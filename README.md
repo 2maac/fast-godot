@@ -38,39 +38,34 @@ dialog does not offer the language and rejects `.gde` paths), a `.gd` file canno
 in the script editor with normal GDScript syntax highlighting. Nodes use the
 generated class as their type instead.
 
-Creating the script generates the extension next to it:
+All `.gde` sources in a project share **one** extension, generated at
+`res://gdext/` and named after the project:
 
 ```
 res://player.gde
-res://player_gdext/player.gdextension
-res://player_gdext/SConstruct
-res://player_gdext/src/...
-res://player_gdext/.grit_manifest.json
+res://enemy.gde
+res://gdext/<ProjectName>.gdextension
+res://gdext/SConstruct
+res://gdext/src/...        (every class plus the registry)
+res://gdext/bin/lib<ProjectName>.<platform>.<arch>.<config>.<ext>
 ```
 
-Only the scaffold is generated; building the library is a separate step. With the
-`.gde` source open, the script editor's **Build GDE** button (next to Online
-Docs / Search Help) saves the file (File > Save), copies it to a temporary
-`.gde`, builds from that copy and deletes it; the real `.gde` is never loaded or
-modified by the build. It always rebuilds (there is no up-to-date check) and
-never changes a scene or a node. The class name is always the source's
-`class_name` verbatim — it is never renamed; a clash with another script's class
-is an error. Headlessly the same is
-`--grit-gdx-generate res://player.gde --grit-gdx-build` (the `SConstruct` in the
-folder works too).
-Running `--grit-gdx-generate` again after editing the source regenerates it and
-keeps the same extension folder. A generated class whose source changed since the
-library was built gets the amber badge on its class icon.
+Creating a `.gde` adds its class to that extension and builds the project
+extension for the first time. With any `.gde` open, the script editor's **Build
+GDE** button (next to Online Docs / Search Help) saves the file (File > Save),
+regenerates **every** `.gde` class in the project from temporary copies, and
+builds the single library; it always rebuilds (there is no up-to-date check) and
+never changes a scene, a node or the `.gde` files themselves. Removing a `.gde`
+drops its class on the next build.
 
-An extension folder holds:
+A `class_name` clash between two `.gde` sources is an error; the generated class
+is always the script's `class_name` verbatim (never renamed). The class name is
+also what the descriptor exposes to GDScript.
 
-| file | purpose |
-|---|---|
-| `.grit_manifest.json` | the classes, their `.gde` source, base type and built hash |
-| `<name>.gdextension` | the descriptor the editor loads |
-| `SConstruct` | builds the library against godot-cpp |
-| `src/` | generated class sources and the class registry |
-| `bin/lib<name>.<platform>.<arch>.<config>.<ext>` | the built library |
+Projects converted by an older build have one extension per source. The next
+successful build copies every class into the project extension, removes the old
+folders, and updates the editor's extension list; restart the editor afterwards
+so it unloads the old libraries.
 
 Projects converted by an older build (`.gd` + `.gds` archives and the
 node-context actions) are upgraded once with `--grit-gdx-migrate`: each class

@@ -83,7 +83,7 @@ static void grit_editor_init() {
 			callable_mp_static(&ScriptCreateDialog::run_language_check).call_deferred();
 			break;
 		}
-		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-generate" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-migrate" || argument == "--grit-gdx-plan") {
+		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-generate" || argument == "--grit-gdx-project-check" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-migrate" || argument == "--grit-gdx-plan") {
 			callable_mp_static(&GritGdxGenerator::run_from_command_line).call_deferred();
 			break;
 		}

@@ -35,6 +35,8 @@ public:
 
 	// Extension name = folder name; it is also the library and entry-symbol name.
 	static String extension_name(const String &p_extension_directory);
+	// The single project extension is `res://gdext/` and is named after the project.
+	static String project_extension_name();
 	// Folders under res://gdext that contain a generated extension.
 	static Vector<String> list_extensions();
 };

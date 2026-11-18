@@ -638,6 +638,7 @@ void GritGdxGenerator::run_from_command_line() {
 	bool add_class_name_flag = false;
 	bool build = false;
 	bool allow_partial = false;
+	bool project_check = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
 		const auto next_value = [&]() -> String {
@@ -674,20 +675,32 @@ void GritGdxGenerator::run_from_command_line() {
 			build = true;
 		} else if (argument == "--grit-gdx-partial") {
 			allow_partial = true;
+		} else if (argument == "--grit-gdx-project-check") {
+			project_check = true;
 		}
 	}
 
 	String report;
 	Error error = OK;
-	if (!generate_script.is_empty()) {
-		String generated_directory;
-		error = GritGdxApply::create_source(generate_script, report, &generated_directory);
+	if (project_check) {
+		String refresh;
+		error = GritGdxApply::refresh_project_extension(refresh);
+		String consolidation;
+		GritGdxApply::consolidate_project_extension(consolidation);
+		report = refresh + consolidation;
+	} else if (!generate_script.is_empty()) {
+		error = GritGdxApply::refresh_project_extension(report);
 		if (error == OK && build) {
-			const String directory = generated_directory;
+			const String directory = GritGdxApply::project_extension_directory();
 			String library;
 			String build_error;
 			error = GritGdxApply::build(directory, "editor", GritGdxApply::Progress(), library, build_error);
 			report += error == OK ? vformat("  library: %s\n", library) : "  " + build_error;
+			if (error == OK) {
+				String consolidation;
+				GritGdxApply::consolidate_project_extension(consolidation);
+				report += consolidation;
+			}
 		}
 	} else if (!plan_script.is_empty()) {
 		// Pre-flight only: report what a conversion would produce.

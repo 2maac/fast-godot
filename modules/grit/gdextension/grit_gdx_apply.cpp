@@ -1327,6 +1327,166 @@ void GritGdxApply::poll_build_source() {
 	}
 }
 
+static void _collect_gde_sources(const String &p_directory, Vector<String> &r_sources) {
+	// Generated extension folders own a manifest; never descend into them.
+	if (FileAccess::exists(p_directory.path_join(".grit_manifest.json"))) {
+		return;
+	}
+	for (const String &file : DirAccess::get_files_at(p_directory)) {
+		if (file.get_extension().to_lower() == "gde") {
+			r_sources.push_back(p_directory.path_join(file));
+		}
+	}
+	for (const String &directory : DirAccess::get_directories_at(p_directory)) {
+		if (directory.begins_with(".")) {
+			continue;
+		}
+		_collect_gde_sources(p_directory.path_join(directory), r_sources);
+	}
+}
+
+static void _collect_manifest_dirs(const String &p_directory, Vector<String> &r_dirs, const String &p_skip) {
+	if (FileAccess::exists(p_directory.path_join(".grit_manifest.json")) && p_directory != p_skip) {
+		r_dirs.push_back(p_directory);
+	}
+	for (const String &directory : DirAccess::get_directories_at(p_directory)) {
+		if (directory.begins_with(".") || directory == "src" || directory == "bin") {
+			continue;
+		}
+		_collect_manifest_dirs(p_directory.path_join(directory), r_dirs, p_skip);
+	}
+}
+
+static void _remove_directory(const String &p_directory) {
+	Ref<DirAccess> directory = DirAccess::open(p_directory);
+	if (directory.is_null()) {
+		return;
+	}
+	directory->set_include_hidden(true);
+	directory->list_dir_begin();
+	for (String name = directory->get_next(); !name.is_empty(); name = directory->get_next()) {
+		if (name == "." || name == "..") {
+			continue;
+		}
+		if (directory->current_is_dir()) {
+			_remove_directory(p_directory.path_join(name));
+		} else {
+			DirAccess::remove_absolute(p_directory.path_join(name));
+		}
+	}
+	directory->list_dir_end();
+	DirAccess::remove_absolute(p_directory);
+}
+
+Error GritGdxApply::refresh_project_extension(String &r_report) {
+	Vector<String> sources;
+	_collect_gde_sources("res://", sources);
+	sources.sort();
+	const String directory = project_extension_directory();
+
+	// Classes whose .gde source is gone leave the project extension.
+	GritGdxManifest manifest;
+	if (manifest.load(directory) == OK) {
+		bool changed = false;
+		for (int i = manifest.classes.size() - 1; i >= 0; i--) {
+			const String script = manifest.classes[i].script_path;
+			if (script.ends_with(".gde") && !sources.has(script)) {
+				manifest.classes.remove_at(i);
+				changed = true;
+			}
+		}
+		if (changed) {
+			manifest.save(directory);
+		}
+	}
+
+	StringBuilder report;
+	int failures = 0;
+	for (const String &source : sources) {
+		String one;
+		const Error error = create_source(source, one);
+		report.append(one);
+		if (error != OK) {
+			failures++;
+		}
+	}
+	GritGdxGenerator::write_extension_files(directory);
+	r_report = report.as_string();
+	if (sources.is_empty()) {
+		r_report = "Grit: no .gde sources found in the project.\n" + r_report;
+		return ERR_DOES_NOT_EXIST;
+	}
+	if (failures == sources.size()) {
+		return ERR_INVALID_PARAMETER;
+	}
+	return OK;
+}
+
+void GritGdxApply::consolidate_project_extension(String &r_report) {
+	StringBuilder report;
+	const String project = project_extension_directory();
+	GritGdxManifest project_manifest;
+	project_manifest.load(project);
+	Vector<String> dirs;
+	_collect_manifest_dirs("res://", dirs, project);
+	for (const String &dir : dirs) {
+		GritGdxManifest old;
+		if (old.load(dir) != OK) {
+			continue;
+		}
+		bool subsumed = true;
+		for (const GritGdxManifestEntry &entry : old.classes) {
+			if (!entry.script_path.ends_with(".gde")) {
+				subsumed = false;
+				break;
+			}
+			const GritGdxManifestEntry *match = project_manifest.find_class(entry.class_name);
+			if (!match || match->script_path != entry.script_path) {
+				subsumed = false;
+				break;
+			}
+		}
+		if (!subsumed) {
+			report.append(vformat("Grit: left \"%s\": it has classes that are not in the project extension.\n", dir));
+			continue;
+		}
+		_remove_directory(dir);
+		report.append(vformat("Grit: removed the old extension \"%s\" (its classes now live in \"%s\").\n", dir, project));
+	}
+	// A project rename leaves the old descriptor behind.
+	for (const String &file : DirAccess::get_files_at(project)) {
+		if (file.get_extension().to_lower() == "gdextension" && file != GritGdxManifest::extension_name(project) + ".gdextension") {
+			DirAccess::remove_absolute(project.path_join(file));
+			report.append(vformat("Grit: removed the stale descriptor \"%s\".\n", file));
+		}
+	}
+	// The editor's extension list caches the descriptors; drop the removed ones so
+	// the next launch (and a headless run) does not try to load them.
+	const String extension_list = "res://.godot/extension_list.cfg";
+	if (FileAccess::exists(extension_list)) {
+		Error read_error = OK;
+		const String list_text = FileAccess::get_file_as_string(extension_list, &read_error);
+		if (read_error == OK) {
+			StringBuilder kept;
+			bool changed = false;
+			for (const String &line : list_text.split("\n")) {
+				const String path = line.strip_edges();
+				if (!path.is_empty() && !FileAccess::exists(path)) {
+					changed = true;
+					continue;
+				}
+				kept.append(line);
+				kept.append("\n");
+			}
+			if (changed) {
+				write_text_file(extension_list, kept.as_string());
+				report.append("Grit: updated the editor's extension list.\n");
+			}
+		}
+	}
+	r_report = report.as_string();
+}
+
 Error GritGdxApply::create_source(const String &p_script_path, String &r_report, String *r_extension_directory) {
 	if (p_script_path.is_empty()) {
 		r_report = "Grit: no script path given.";
@@ -1343,23 +1503,12 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 		r_report = vformat("Grit: could not read \"%s\".", path);
 		return read_error;
 	}
-	const String stem = path.get_file().get_basename();
-	// The build's class is always the script's class_name.
 	const String script_class = class_name_of(source);
 	if (script_class.is_empty()) {
 		r_report = vformat("Grit: \"%s\" has no class_name; the generated class always takes the script's class_name.", path);
 		return ERR_INVALID_PARAMETER;
 	}
-	// The extension that already owns this script (even if its class_name changed)
-	// is reused; a new script gets the sibling `<stem>_gdext` directory.
-	String directory = path.get_base_dir().path_join(stem + "_gdext");
-	for (const String &existing : GritGdxManifest::list_extensions()) {
-		GritGdxManifest manifest;
-		if (manifest.load(existing) == OK && manifest.find_script(path)) {
-			directory = existing;
-			break;
-		}
-	}
+	const String directory = project_extension_directory();
 
 	// Compile a temporary copy: the build never loads, compiles or otherwise
 	// touches the `.gde` file itself.
@@ -1401,16 +1550,8 @@ Error GritGdxApply::create_source(const String &p_script_path, String &r_report,
 }
 
 void GritGdxApply::create_source_callback(const String &p_script_path) {
-	String report;
-	const Error error = GritGdxApply::create_source(p_script_path, report);
-	if (error != OK) {
-		ERR_PRINT(report.is_empty() ? String("Grit: could not create the GDExtension source.") : report);
-		return;
-	}
-	print_line(report);
-	if (EditorFileSystem::get_singleton()) {
-		EditorFileSystem::get_singleton()->scan_changes();
-	}
+	// A new .gde joins the project extension and builds it for the first time.
+	build_source_from_editor(p_script_path);
 }
 
 Error GritGdxApply::revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report) {

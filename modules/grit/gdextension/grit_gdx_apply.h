@@ -71,7 +71,14 @@ public:
 	// Creates (or regenerates) the GDExtension for a `.gde` source. The extension
 	// lives next to the source in `<stem>_gdext/<stem>.gdextension`; nothing is
 	// attached to a node and no scene is rewritten.
+	static String project_extension_directory() { return "res://gdext"; }
 	static Error create_source(const String &p_script_path, String &r_report, String *r_extension_directory = nullptr);
+	// Regenerates every `.gde` class in the project into the single extension and
+	// prunes classes whose source is gone. No build.
+	static Error refresh_project_extension(String &r_report);
+	// After a successful build: remove per-source extension folders that are fully
+	// subsumed by the project extension.
+	static void consolidate_project_extension(String &r_report);
 
 	// The Build GDE button in the script editor: generates the open `.gde`
 	// source's extension and builds it. It never touches a scene or a node.
