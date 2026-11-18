@@ -63,10 +63,22 @@ String GritGdxBuilder::api_json_path() {
 		name += "_" + commit.substr(0, 8);
 	}
 	const String path = root.path_join(name + ".json");
-	if (!FileAccess::exists(path)) {
-		print_line(vformat("Grit: dumping the extension API to \"%s\".", path));
-		GDExtensionAPIDump::generate_extension_json_file(path);
+	if (FileAccess::exists(path)) {
+		// An older editor dumped classes registered by loaded GDExtensions into this
+		// file. godot-cpp cannot generate bindings for some of them (a class whose
+		// method has its own name becomes a constructor with a return type), so
+		// rebuild the dump instead of poisoning every later build.
+		Error read_error = OK;
+		const String existing = FileAccess::get_file_as_string(path, &read_error);
+		const bool has_extension_classes = existing.contains("\"api_type\": \"extension\"") || existing.contains("\"api_type\": \"editor_extension\"");
+		if (read_error == OK && !has_extension_classes) {
+			cached_api = path;
+			return path;
+		}
+		print_line("Grit: regenerating the extension API dump (it contained GDExtension classes).");
 	}
+	print_line(vformat("Grit: dumping the extension API to \"%s\".", path));
+	GDExtensionAPIDump::generate_extension_json_file(path);
 	cached_api = path;
 	if (FileAccess::exists(path)) {
 		return path;

@@ -920,6 +920,14 @@ Dictionary GDExtensionAPIDump::generate_extension_api(bool p_include_docs) {
 			if (!ClassDB::is_class_exposed(class_name)) {
 				continue;
 			}
+			// This dump describes the engine API. Classes registered by GDExtensions
+			// are project-specific: when one is loaded in the editor it must not leak
+			// into the JSON that godot-cpp generates its bindings from (a class named
+			// like one of its methods cannot be expressed in C++).
+			const ClassDB::APIType class_api_type = ClassDB::get_api_type(class_name);
+			if (class_api_type == ClassDB::API_EXTENSION || class_api_type == ClassDB::API_EDITOR_EXTENSION) {
+				continue;
+			}
 			Dictionary d;
 			d["name"] = String(class_name);
 			d["is_refcounted"] = ClassDB::is_parent_class(class_name, "RefCounted");
