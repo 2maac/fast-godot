@@ -2401,7 +2401,7 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("#include <godot_cpp/core/object_id.hpp>\n");
 	helpers.append("#include <godot_cpp/variant/utility_functions.hpp>\n");
 	helpers.append("#include <godot_cpp/core/object.hpp>\n\n");
-	helpers.append("#include <initializer_list>\n\n");
+	helpers.append("#include <array>\n#include <initializer_list>\n\n");
 	helpers.append("using namespace godot;\n\n");
 	helpers.append("namespace grit_gdx {\n\n");
 	helpers.append("inline Object *object_of(const Variant &p_value) {\n");
@@ -2535,34 +2535,158 @@ String GritGdxEmitter::emit_helpers(const GritGdxClass &p_class) {
 	helpers.append("inline void set_named(const Variant &p_object, const StringName &p_name, const Variant &p_value) {\n");
 	helpers.append("\tobject_of(p_object)->set(p_name, p_value);\n");
 helpers.append("}\n\n");
-	helpers.append("inline Variant get_keyed(const Variant &p_container, const Variant &p_key) {\n");
-	helpers.append("\tif (p_container.get_type() == Variant::DICTIONARY) {\n");
-	helpers.append("\t\tDictionary dictionary = p_container;\n");
-	helpers.append("\t\treturn dictionary[p_key];\n");
-	helpers.append("\t}\n");
-	helpers.append("\tif (p_container.get_type() == Variant::STRING) {\n");
-	helpers.append("\t\tString text = p_container;\n");
-	helpers.append("\t\treturn text[static_cast<int64_t>(p_key)];\n");
-	helpers.append("\t}\n");
-	helpers.append("\tArray array = p_container;\n");
-	helpers.append("\treturn array[static_cast<int64_t>(p_key)];\n");
-	helpers.append("}\n\n");
-	helpers.append("inline void set_keyed(const Variant &p_container, const Variant &p_key, const Variant &p_value) {\n");
-	helpers.append("\tif (p_container.get_type() == Variant::DICTIONARY) {\n");
-	helpers.append("\t\tDictionary dictionary = p_container;\n");
-	helpers.append("\t\tdictionary[p_key] = p_value;\n");
-	helpers.append("\t\treturn;\n");
-	helpers.append("\t}\n");
-	helpers.append("\tArray array = p_container;\n");
-	helpers.append("\tarray[static_cast<int64_t>(p_key)] = p_value;\n");
-	helpers.append("}\n\n");
-	helpers.append("inline Variant call_method(Variant p_base, const StringName &p_method) {\n");
-	helpers.append("\treturn p_base.call(p_method);\n");
-	helpers.append("}\n\n");
-	helpers.append("template <typename... Args>\n");
-	helpers.append("inline Variant call_method(Variant p_base, const StringName &p_method, const Args &...p_args) {\n");
-	helpers.append("\treturn p_base.call(p_method, p_args...);\n");
-	helpers.append("}\n\n");
+	helpers.append(R"GRIT(inline Variant get_keyed(const Variant &p_container, const Variant &p_key) {
+	switch (p_container.get_type()) {
+		case Variant::OBJECT: {
+			Object *object = p_container;
+			if (object == nullptr) {
+				UtilityFunctions::push_error("Grit: cannot index a null object.");
+				return Variant();
+			}
+			return object->get(StringName(p_key));
+		}
+		case Variant::DICTIONARY: {
+			Dictionary dictionary = p_container;
+			return dictionary[p_key];
+		}
+		case Variant::STRING: {
+			String text = p_container;
+			int64_t index = static_cast<int64_t>(p_key);
+			if (index < 0) {
+				index += text.length();
+			}
+			if (index < 0 || index >= text.length()) {
+				UtilityFunctions::push_error(vformat("Grit: string index %d is out of bounds (length %d).", index, text.length()));
+				return Variant();
+			}
+			return text.substr(index, 1);
+		}
+		case Variant::ARRAY: {
+			Array array = p_container;
+			int64_t index = static_cast<int64_t>(p_key);
+			if (index < 0) {
+				index += array.size();
+			}
+			if (index < 0 || index >= array.size()) {
+				UtilityFunctions::push_error(vformat("Grit: array index %d is out of bounds (size %d).", index, array.size()));
+				return Variant();
+			}
+			return array[index];
+		}
+		default: {
+			// Packed arrays, vectors and other indexed built-ins use the engine's
+			// own indexed getter (negative indices and bounds included).
+			int64_t index = static_cast<int64_t>(p_key);
+			bool valid = false;
+			bool oob = false;
+			Variant result = p_container.get_indexed(index, valid, oob);
+			if (!valid || oob) {
+				UtilityFunctions::push_error(vformat("Grit: invalid index %d for a value of type %s.", index, Variant::get_type_name(p_container.get_type())));
+				return Variant();
+			}
+			return result;
+		}
+	}
+}
+
+inline void set_keyed(const Variant &p_container, const Variant &p_key, const Variant &p_value) {
+	switch (p_container.get_type()) {
+		case Variant::OBJECT: {
+			Object *object = p_container;
+			if (object == nullptr) {
+				UtilityFunctions::push_error("Grit: cannot index a null object.");
+				return;
+			}
+			object->set(StringName(p_key), p_value);
+			return;
+		}
+		case Variant::DICTIONARY: {
+			Dictionary dictionary = p_container;
+			dictionary[p_key] = p_value;
+			return;
+		}
+		case Variant::ARRAY: {
+			Array array = p_container;
+			int64_t index = static_cast<int64_t>(p_key);
+			if (index < 0) {
+				index += array.size();
+			}
+			if (index < 0 || index >= array.size()) {
+				UtilityFunctions::push_error(vformat("Grit: array index %d is out of bounds (size %d).", index, array.size()));
+				return;
+			}
+			array[index] = p_value;
+			return;
+		}
+		default: {
+			Variant container = p_container;
+			int64_t index = static_cast<int64_t>(p_key);
+			bool valid = false;
+			bool oob = false;
+			container.set_indexed(index, p_value, valid, oob);
+			if (!valid || oob) {
+				UtilityFunctions::push_error(vformat("Grit: invalid index %d for a value of type %s.", index, Variant::get_type_name(p_container.get_type())));
+			}
+		}
+	}
+}
+
+inline String call_base_name(const Variant &p_base) {
+	if (p_base.get_type() == Variant::NIL) {
+		return "null";
+	}
+	if (p_base.get_type() == Variant::OBJECT) {
+		Object *object = p_base;
+		return object != nullptr ? String(object->get_class()) : String("null");
+	}
+	return Variant::get_type_name(p_base.get_type());
+}
+
+inline void report_call_error(const Variant &p_base, const StringName &p_method, int p_argcount, const GDExtensionCallError &p_error) {
+	switch (p_error.error) {
+		case GDEXTENSION_CALL_ERROR_INVALID_METHOD:
+			UtilityFunctions::push_error(vformat("Grit: invalid call. Nonexistent function \"%s\" in base \"%s\".", p_method, call_base_name(p_base)));
+			break;
+		case GDEXTENSION_CALL_ERROR_TOO_FEW_ARGUMENTS:
+			UtilityFunctions::push_error(vformat("Grit: too few arguments for \"%s\" call. Expected %d but received %d.", p_method, p_error.expected, p_argcount));
+			break;
+		case GDEXTENSION_CALL_ERROR_TOO_MANY_ARGUMENTS:
+			UtilityFunctions::push_error(vformat("Grit: too many arguments for \"%s\" call. Expected %d but received %d.", p_method, p_error.expected, p_argcount));
+			break;
+		case GDEXTENSION_CALL_ERROR_INVALID_ARGUMENT:
+			UtilityFunctions::push_error(vformat("Grit: invalid argument %d for \"%s\" on \"%s\".", p_error.argument + 1, p_method, call_base_name(p_base)));
+			break;
+		case GDEXTENSION_CALL_ERROR_INSTANCE_IS_NULL:
+			UtilityFunctions::push_error(vformat("Grit: cannot call \"%s\" on a null instance.", p_method));
+			break;
+		case GDEXTENSION_CALL_ERROR_METHOD_NOT_CONST:
+			UtilityFunctions::push_error(vformat("Grit: cannot call \"%s\" on a const instance.", p_method));
+			break;
+		default:
+			UtilityFunctions::push_error(vformat("Grit: call to \"%s\" failed (error %d).", p_method, int(p_error.error)));
+	}
+}
+
+template <typename... Args>
+inline Variant call_method(Variant p_base, const StringName &p_method, const Args &...p_args) {
+	std::array<Variant, sizeof...(Args)> arguments = { Variant(p_args)... };
+	std::array<const Variant *, sizeof...(Args)> argument_pointers;
+	for (size_t i = 0; i < arguments.size(); i++) {
+		argument_pointers[i] = &arguments[i];
+	}
+	Variant result;
+	GDExtensionCallError error;
+	error.error = GDEXTENSION_CALL_OK;
+	error.argument = 0;
+	error.expected = 0;
+	p_base.callp(p_method, argument_pointers.data(), static_cast<int>(arguments.size()), result, error);
+	if (error.error != GDEXTENSION_CALL_OK) {
+		report_call_error(p_base, p_method, static_cast<int>(arguments.size()), error);
+	}
+	return result;
+}
+
+)GRIT");
 	helpers.append("inline Array iterate(const Variant &p_container) {\n");
 	helpers.append("\tif (p_container.get_type() == Variant::DICTIONARY) {\n");
 	helpers.append("\t\tDictionary dictionary = p_container;\n");
