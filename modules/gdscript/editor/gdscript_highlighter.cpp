@@ -457,6 +457,11 @@ Dictionary GDScriptSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_l
 
 			String word = str.substr(j, to - j);
 			Color col;
+			// In a `.gde` source the function or signal name is not a type reference,
+			// even when it matches the generated class's name.
+			const bool declaration_name = is_gdextension_source &&
+					(prev_text == GDScriptTokenizer::get_token_name(GDScriptTokenizer::Token::FUNC) ||
+							prev_text == GDScriptTokenizer::get_token_name(GDScriptTokenizer::Token::SIGNAL));
 			if (global_functions.has(word)) {
 				// "assert" and "preload" are reserved, so highlight even if not followed by a bracket.
 				if (word == GDScriptTokenizer::get_token_name(GDScriptTokenizer::Token::ASSERT) || word == GDScriptTokenizer::get_token_name(GDScriptTokenizer::Token::PRELOAD)) {
@@ -472,7 +477,7 @@ Dictionary GDScriptSyntaxHighlighter::_get_line_syntax_highlighting_impl(int p_l
 						col = global_function_color;
 					}
 				}
-			} else if (class_names.has(word)) {
+			} else if (class_names.has(word) && !declaration_name) {
 				col = class_names[word];
 			} else if (reserved_keywords.has(word)) {
 				col = reserved_keywords[word];
@@ -757,6 +762,12 @@ void GDScriptSyntaxHighlighter::_update_cache() {
 	global_functions.clear();
 	color_regions.clear();
 	color_region_cache.clear();
+
+	// `.gde` class sources are GDScript text, but their `class_name` names the
+	// native class they generate. Only there a method or signal declaration may
+	// share a registered class name; other scripts keep the existing behavior.
+	const Ref<Script> edited_script = _get_edited_resource();
+	is_gdextension_source = edited_script.is_valid() && edited_script->get_path().ends_with(".gde");
 
 	font_color = text_edit->get_theme_color(SceneStringName(font_color));
 	symbol_color = EDITOR_GET("text_editor/theme/highlighting/symbol_color");
