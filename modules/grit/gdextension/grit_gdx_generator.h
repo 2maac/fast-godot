@@ -21,9 +21,6 @@ public:
 	// yet when the descriptor (and its [icons] section) is written.
 	static Error write_extension_files(const String &p_extension_directory, const String &p_extra_class = String());
 
-	// Removes a class from the manifest and its sources, then regenerates.
-	static Error remove_class(const String &p_extension_directory, const String &p_class_name);
-
 	// Handles the command line used for headless testing.
 	static void run_from_command_line();
 
@@ -34,8 +31,7 @@ public:
 	static String snake_case(const String &p_name);
 	static String class_file_stem(const String &p_class_name);
 	static LocalVector<GritGdxSkipped> collect_skipped(const GritGdxClass &p_class);
-	// Records a script and classifies its methods without writing any file: the
-	// pre-flight plan (and the CLI's --grit-gdx-plan) builds on it.
+	// Records a script and classifies its methods without writing any file.
 	static Error collect(const String &p_script_path, const String &p_extension_directory, GritGdxClass &r_class, String &r_error, const String &p_record_path = String());
 
 private:

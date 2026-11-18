@@ -1,9 +1,5 @@
 #include "grit_gdx_generator.h"
 
-#include "grit_gdx_job.h"
-
-#include "grit_gdx_apply.h"
-#include "grit_gdx_job.h"
 #include "grit_gdx_apply.h"
 #include "grit_gdx_builder.h"
 #include "grit_gdx_emitter.h"
@@ -11,7 +7,6 @@
 #include "grit/compiler/grit_recording_code_generator.h"
 
 #include "core/string/string_builder.h"
-#include "editor/file_system/editor_file_system.h"
 #include "core/object/class_db.h"
 #include "grit/runtime/grit_runtime_access.h"
 
@@ -19,7 +14,6 @@
 #include "modules/gdscript/gdscript_cache.h"
 
 #include "core/config/project_settings.h"
-#include "core/extension/gdextension_manager.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/os/os.h"
@@ -620,38 +614,11 @@ Error GritGdxGenerator::generate_class(const String &p_extension_directory, cons
 	return OK;
 }
 
-Error GritGdxGenerator::remove_class(const String &p_extension_directory, const String &p_class_name) {
-	const String directory = p_extension_directory.ends_with("/") ? p_extension_directory.left(-1) : p_extension_directory;
-	GritGdxManifest manifest;
-	const Error load_error = manifest.load(directory);
-	ERR_FAIL_COND_V_MSG(load_error != OK, load_error, "Grit: could not read the extension manifest.");
-	if (!manifest.has_class(p_class_name)) {
-		return ERR_DOES_NOT_EXIST;
-	}
-	const String stem = class_file_stem(p_class_name);
-	DirAccess::remove_absolute(directory.path_join("src").path_join(stem + ".h"));
-	DirAccess::remove_absolute(directory.path_join("src").path_join(stem + ".cpp"));
-	manifest.remove_class(p_class_name);
-	const Error save_error = manifest.save(directory);
-	ERR_FAIL_COND_V_MSG(save_error != OK, save_error, "Grit: could not write the extension manifest.");
-	return write_extension_files(directory);
-}
-
 void GritGdxGenerator::run_from_command_line() {
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
-	String add_script;
 	String generate_script;
-	String plan_script;
-	String revert_class;
-	String extension;
-	String scene;
-	String node_path;
-	bool revert = false;
-	bool rebuild = false;
 	bool migrate = false;
-	bool add_class_name_flag = false;
 	bool build = false;
-	bool allow_partial = false;
 	bool project_check = false;
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
@@ -663,32 +630,12 @@ void GritGdxGenerator::run_from_command_line() {
 			}
 			return String();
 		};
-		if (argument == "--grit-gdx-add" || argument == "--grit-gdx") {
-			add_script = next_value();
-		} else if (argument == "--grit-gdx-generate") {
+		if (argument == "--grit-gdx-generate") {
 			generate_script = next_value();
-		} else if (argument == "--grit-gdx-plan") {
-			plan_script = next_value();
-		} else if (argument == "--grit-gdx-revert") {
-			revert = true;
-		} else if (argument == "--grit-gdx-rebuild") {
-			rebuild = true;
-		} else if (argument == "--grit-gdx-migrate") {
-			migrate = true;
-		} else if (argument == "--grit-gdx-add-class-name") {
-			add_class_name_flag = true;
-		} else if (argument == "--grit-gdx-class") {
-			revert_class = next_value();
-		} else if (argument == "--grit-gdx-extension") {
-			extension = next_value();
-		} else if (argument == "--grit-gdx-scene") {
-			scene = next_value();
-		} else if (argument == "--grit-gdx-node") {
-			node_path = next_value();
 		} else if (argument == "--grit-gdx-build") {
 			build = true;
-		} else if (argument == "--grit-gdx-partial") {
-			allow_partial = true;
+		} else if (argument == "--grit-gdx-migrate") {
+			migrate = true;
 		} else if (argument == "--grit-gdx-project-check") {
 			project_check = true;
 		}
@@ -716,63 +663,9 @@ void GritGdxGenerator::run_from_command_line() {
 				report += consolidation;
 			}
 		}
-	} else if (!plan_script.is_empty()) {
-		// Pre-flight only: report what a conversion would produce.
-		GritGdxApply::Plan plan;
-		String plan_error;
-		error = GritGdxApply::plan(plan_script, plan, plan_error);
-		if (error == OK) {
-			report = vformat("Grit: \"%s\" -> class \"%s\" (%s)\n  %s\n%s", plan.script_path, plan.class_name, plan.base_type, plan.summary(), plan.skipped_text());
-		} else {
-			report = "Grit: " + plan_error;
-		}
 	} else if (migrate) {
 		Vector<String> migrated;
 		error = GritGdxApply::migrate_legacy(migrated, report);
-	} else if (rebuild) {
-		if (revert_class.is_empty()) {
-			report = "Grit: rebuild needs --grit-gdx-class (the extension is found automatically).";
-			error = ERR_INVALID_PARAMETER;
-		} else {
-			GritGdxApply::Result result;
-			error = GritGdxApply::rebuild(revert_class, extension, build, result, report);
-		}
-	} else if (revert) {
-		if (revert_class.is_empty()) {
-			report = "Grit: revert needs --grit-gdx-class (the extension is found automatically).";
-			error = ERR_INVALID_PARAMETER;
-		} else if (OS::get_singleton()->get_environment("GRIT_GDX_REVERT_VIA_JOB") == "1") {
-			// Exercises the editor's worker-thread revert headlessly.
-			Ref<GritGdxJob> job;
-			job.instantiate();
-			job->start_revert(revert_class, extension, scene, node_path);
-			while (!job->is_finished()) {
-				OS::get_singleton()->delay_usec(10000);
-			}
-			error = job->complete(report);
-		} else {
-			GritGdxApply::Result result;
-			error = GritGdxApply::revert(revert_class, extension, scene, node_path, build, GritGdxApply::Progress(), result, report);
-		}
-	} else if (!add_script.is_empty()) {
-		if (extension.is_empty()) {
-			report = "Grit: adding a class needs --grit-gdx-extension.";
-			error = ERR_INVALID_PARAMETER;
-		} else {
-			if (add_class_name_flag) {
-				String class_name;
-				String add_error;
-				const Error add_status = GritGdxApply::add_class_name(add_script, class_name, add_error);
-				if (add_status != OK) {
-					report = "Grit: " + add_error;
-					error = add_status;
-				}
-			}
-			if (error == OK) {
-				GritGdxApply::Result result;
-				error = GritGdxApply::run(add_script, extension, scene, node_path, build, allow_partial, result, report);
-			}
-		}
 	} else {
 		return;
 	}

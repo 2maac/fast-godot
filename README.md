@@ -7,7 +7,7 @@ Fast Godot is a custom build of Godot **4.7.2** with two additions:
 - **Grit** — compiles a project's GDScript into C++ and links it into a
   per-project export template, so game logic runs as native code instead of
   bytecode. Native code can be up to 80x faster in some cases. The editor can
-  also turn a node's script into a GDExtension class on demand (see
+  also turn a script file into a native GDExtension class (see
   [GDExtension classes from scripts](#gdextension-classes-from-scripts)).
   
 - **CFFI** — lets GDScript call into C libraries directly.
@@ -74,16 +74,18 @@ successful build copies every class into the project extension, removes the old
 folders, and updates the editor's extension list; restart the editor afterwards
 so it unloads the old libraries.
 
-Projects converted by an older build (`.gd` + `.gds` archives and the
+Projects converted by an older build (`.gd` + `.gds` archives and the retired
 node-context actions) are upgraded once with `--grit-gdx-migrate`: each class
 gets a `.gde` source in place of its script/archive and keeps its extension. The
-old node-context actions are gone; generation and migration are driven from the
-CLI, and creation from the New Script dialog.
+node-context actions no longer exist; headless builds use
+`--grit-gdx-generate res://player.gde --grit-gdx-build` (generation only without
+`--grit-gdx-build`), and creation starts in the New Script dialog.
 
 Generated classes are ordinary godot-cpp classes: exported variables become
 properties, `signal` declarations become signals, and a script-defined `_ready`
 or `_process` overrides the native virtual. The class name is taken from the
-annotation; a name that hides a native class is refused rather than renamed.
+source's `class_name`; a name that hides a native class is refused rather than
+renamed.
 
 What converts: functions, exported variables, signals, virtual overrides,
 `is`/`as` (built-in, native and preloaded script types), `assert`, optional
@@ -93,11 +95,10 @@ and lambdas (`func(...): ...`, including captured values). What does not:
 is reported and stays behind — rest parameters (`...args`), `static var`, and
 `is`/`as` on an inner-class script type.
 
-Every action reloads the edited scene and, when a library changed, the extension
-itself (the descriptors set `reloadable = true` and the libraries are built with
-hot reload support), so the scene tree shows the new node type immediately and no
-editor restart is needed. Adding a class to an extension reloads the shared
-library in place.
+After a build the editor rescans the filesystem and reloads the loaded
+GDExtensions (the descriptors set `reloadable = true` and the libraries are built
+with hot reload support), so the new class is available to GDScript and no
+editor restart is needed. A build never edits a scene, a node or a `.gde` source.
 
 godot-cpp ships with the toolchain (`10.0.0-stable`, the release that targets
 this engine's GDExtension API, which also fixed a crash when the editor quit with
@@ -132,7 +133,7 @@ centered **Download Build Tools** button. Pressing it:
 2. downloads every toolchain component from its original source into
    `~/fast_godot_toolchain` (Windows: `%USERPROFILE%\fast_godot_toolchain`), with
    progress and a SHA-256 check for each file, and fetches godot-cpp
-   (`10.0.0-stable`) so GDExtension conversions need no network access,
+   (`10.0.0-stable`) so GDExtension builds need no network access,
 3. validates the folder and points `grit/settings/toolchain_root_folder_path` at
    it.
 
@@ -192,10 +193,9 @@ with `load_threaded_request(..., use_sub_threads = true)`.
 ## Status
 
 - macOS, Linux and Windows editors build locally.
-- Scripted nodes convert to GDExtension classes on macOS and Linux (the library
-  is built by the toolchain's godot-cpp); conversion, conversion back and a
-  fixture project suite are exercised, and the generated sources were also built
-  and run with the Windows toolchain.
+- GDExtension classes are generated from `.gde` sources on macOS (the library is
+  built by the toolchain's godot-cpp); the fixture project suite builds and runs
+  them there. Linux and Windows runs predate the `.gde` flow.
 - Linux, Windows, macOS and HTML5 Fast templates build; the Linux and HTML5
   exports have been run and benchmarked, the Windows export has not been run on
   Windows yet.

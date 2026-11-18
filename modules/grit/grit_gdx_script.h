@@ -5,28 +5,23 @@
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 
-// The archived source of a converted script: a GDScript that is never compiled
-// and never instantiated. `can_instantiate()` returning false makes
-// `Object::set_script` create a placeholder in the editor and nothing at runtime,
-// so the node keeps showing its script while only the generated GDExtension class
-// runs. The archive stays at the script's path with a `.gde` extension and can be
-// edited in the script editor; Convert Back turns it into a normal `.gd` again.
+// A GDExtension class source (`.gde`) or the archive the retired conversion flow
+// left behind (`.gds`): a GDScript that is never compiled and never instantiated.
+// `can_instantiate()` returning false makes `Object::set_script` create a
+// placeholder in the editor and nothing at runtime, so a scene keeps loading
+// while only the generated GDExtension class runs. The source is edited through
+// the script editor like any other GDScript text.
 class GritGdxScript : public GDScript {
 	GDCLASS(GritGdxScript, GDScript);
 
 	StringName archived_base_type;
 	String archived_class;
-	// A `.gde` source is compiled only while the converter records it; the editor
-	// never compiles or executes it. `.gds` archives are never compiled.
-	bool is_source = false;
 
 protected:
 	static void _bind_methods();
 
 public:
 	void set_archived_metadata(const StringName &p_base_type, const String &p_class);
-	void set_source(bool p_source) { is_source = p_source; }
-	bool is_gdextension_source() const { return is_source; }
 	// True when the archive no longer matches the hash recorded when the library
 	// was built, i.e. the class needs a rebuild. Always false in exported games.
 	bool is_stale() const;
@@ -44,8 +39,8 @@ public:
 	StringName get_instance_base_type() const override { return archived_base_type; }
 };
 
-// `.gde` files are plain GDScript text. Loading one builds an inert GritGdxScript
-// instead of compiling a GDScript.
+// `.gde` and `.gds` files are plain GDScript text. Loading one builds an inert
+// GritGdxScript instead of compiling a GDScript.
 class GritGdxScriptLoader : public ResourceFormatLoader {
 	GDSOFTCLASS(GritGdxScriptLoader, ResourceFormatLoader);
 

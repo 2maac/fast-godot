@@ -16,7 +16,6 @@
 #include "editor/grit_settings_editor.h"
 #include "editor/grit_provisioner.h"
 #include "gdextension/grit_gdx_apply.h"
-#include "gdextension/grit_gdx_context_menu.h"
 #include "gdextension/grit_gdx_generator.h"
 
 #include "core/config/project_settings.h"
@@ -26,7 +25,6 @@
 #include "editor/editor_node.h"
 #include "editor/script/script_create_dialog.h"
 #include "editor/script/script_editor_plugin.h"
-#include "editor/inspector/editor_context_menu_plugin.h"
 #include "editor/export/editor_export.h"
 #endif
 
@@ -83,7 +81,7 @@ static void grit_editor_init() {
 			callable_mp_static(&ScriptCreateDialog::run_language_check).call_deferred();
 			break;
 		}
-		if (argument == "--grit-gdx" || argument == "--grit-gdx-add" || argument == "--grit-gdx-generate" || argument == "--grit-gdx-project-check" || argument == "--grit-gdx-apply" || argument == "--grit-gdx-revert" || argument == "--grit-gdx-rebuild" || argument == "--grit-gdx-migrate" || argument == "--grit-gdx-plan") {
+		if (argument == "--grit-gdx-generate" || argument == "--grit-gdx-project-check" || argument == "--grit-gdx-migrate") {
 			callable_mp_static(&GritGdxGenerator::run_from_command_line).call_deferred();
 			break;
 		}
@@ -99,9 +97,10 @@ static Ref<GritGdxScriptSaver> grit_gdx_script_saver;
 
 void initialize_grit_module(ModuleInitializationLevel p_level) {
 	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
-		// Converted nodes keep their archived source attached as a `.gde` script.
-		// It never instantiates, so it must exist in exported games too: the scene
-		// references it and the loader is what makes that reference resolvable.
+		// `.gde` class sources and legacy `.gds` archives are GritGdxScript
+		// resources. A legacy archive is referenced by the scenes converted by the
+		// retired flow, so the loader has to exist in exported games too; `.gde`
+		// sources are only opened by the editor and the generator.
 		GDREGISTER_CLASS(GritGdxScript);
 		grit_gdx_script_loader.instantiate();
 		ResourceLoader::add_resource_format_loader(grit_gdx_script_loader);

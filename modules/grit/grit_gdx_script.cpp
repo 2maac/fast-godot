@@ -5,9 +5,6 @@
 #include "core/io/resource_saver.h"
 #include "core/object/class_db.h"
 #ifdef TOOLS_ENABLED
-#include "modules/grit/compiler/grit_recording_code_generator.h"
-#endif
-#ifdef TOOLS_ENABLED
 #include "modules/grit/gdextension/grit_gdx_manifest.h"
 #endif
 
@@ -54,13 +51,8 @@ StringName GritGdxScript::get_editor_icon() const {
 #endif
 
 Error GritGdxScript::reload(bool p_keep_state) {
-#ifdef TOOLS_ENABLED
-	// Only the editor converter compiles a `.gde` source (to record it). Exported
-	// games never compile it, and the class can never be instantiated.
-	if (is_source && GritScriptRecording::get_current()) {
-		return GDScript::reload(p_keep_state);
-	}
-#endif
+	// A class source is text for the generator, never a running script: the
+	// generator records a temporary copy under its own path.
 	return OK;
 }
 
@@ -109,7 +101,6 @@ Ref<Resource> GritGdxScriptLoader::load(const String &p_path, const String &p_or
 	// instance (ignore/replace cache modes) fight the cached one over the path.
 	script->set_name(path.get_file());
 	script->set_source_code(source);
-	script->set_source(path.get_extension().to_lower() == "gde");
 	script->set_archived_metadata(grit_gdx_archived_base_type(source), String());
 	return script;
 }

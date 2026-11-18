@@ -8,49 +8,27 @@
 
 #include <atomic>
 
-// Runs the slow part of an extension action on a worker thread so the editor
-// keeps painting behind the progress dialog.
-//
-//   add:    prepare() on the main thread, build() + finish() staged
-//   revert: the whole revert runs on the worker (file IO plus build)
+// Runs the GDExtension library build on a worker thread so the editor keeps
+// painting behind the progress dialog. Generation happens on the main thread.
 class GritGdxJob : public RefCounted {
 public:
 	~GritGdxJob();
 
-	// Main thread. Adding a class: generation happens here, the build in run().
-	// `p_allow_partial` converts the methods that work even when some cannot be
-	// translated (they are reported and missing from the class).
-	Error start(const String &p_script_path, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_allow_partial);
-	// Main thread. Reverting a class: everything happens on the worker.
-	Error start_revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path);
-	// Main thread. Rebuilding a class from its archive: generation happens here,
-	// the build in run(), the new hash in complete().
-	Error start_rebuild(const String &p_class_name, const String &p_extension_directory);
-	// Main thread. Generates a `.gde` source's extension (no scene is touched) and
-	// builds it on the worker.
+	// Main thread. Regenerates the project extension's classes from the `.gde`
+	// sources (no scene is touched) and starts the build on the worker.
 	Error start_build_source(const String &p_script_path);
 
 	bool is_finished() const { return finished.load(); }
 	int get_progress() const { return progress.load(); }
 	String get_status() const;
-	String get_extension_directory() const;
-	String get_report() const;
 
 	// Main thread, once is_finished(): joins and returns the action result.
 	Error complete(String &r_report);
 
 private:
-	enum class Mode {
-		ADD,
-		REVERT,
-		REBUILD,
-		BUILD_SOURCE,
-	};
-
 	static void _thread(void *p_userdata);
 	void run();
 
-	Mode mode = Mode::ADD;
 	Thread thread;
 	bool joined = false;
 	std::atomic<bool> finished{ false };
@@ -60,8 +38,5 @@ private:
 	String report;
 	Error prepare_error = OK;
 	Error build_error = OK;
-	GritGdxClass klass;
 	GritGdxApply::Result result;
-	GritGdxApply::Rebuild rebuild_state;
-	String revert_class;
 };
