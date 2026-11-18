@@ -111,8 +111,6 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 		if (selected.size() == 1) {
 			Node *node = selected.front()->get();
 			makeable = can_make_gdextension(node);
-			const Ref<Script> node_script = node->get_script();
-			rebuildable = node_script.is_valid() && Object::cast_to<GritGdxScript>(node_script.ptr()) != nullptr;
 			// The editor may still hold the scene it loaded before a conversion, so
 			// the node's in-memory type can be stale; trust the scene file.
 			String node_class = String(node->get_class_name());
@@ -129,6 +127,9 @@ void GritGdxContextMenuPlugin::get_options(const Vector<String> &p_paths) {
 				revert_class = node_class;
 				revert_extension = target.extension_directory;
 				legacy = GritGdxApply::has_legacy_archive(node_class);
+				// The archive is detached from the node, so the class (not the node's
+				// script) decides whether a rebuild is possible.
+				rebuildable = !target.archived_script.is_empty() && FileAccess::exists(target.archived_script);
 				// Offered for any generated node; the class itself is only dropped
 				// when no other node uses it.
 				revertable = true;
@@ -381,17 +382,20 @@ void GritGdxContextMenuPlugin::_rebuild(const Array &p_selection) {
 	if (!node) {
 		return;
 	}
-	const Ref<Script> script = node->get_script();
-	if (script.is_null() || Object::cast_to<GritGdxScript>(script.ptr()) == nullptr) {
-		return;
-	}
-	const String class_name = String(node->get_class_name());
+	String class_name = String(node->get_class_name());
 	String scene;
 	String path;
 	node_location(node, scene, path);
+	if (!is_generated_class(class_name) && !scene.is_empty() && !path.is_empty()) {
+		// The editor may still hold the scene it loaded before the conversion.
+		const String file_type = GritGdxApply::scene_node_type(scene, path);
+		if (!file_type.is_empty()) {
+			class_name = file_type;
+		}
+	}
 	GritGdxApply::RevertTarget target;
-	if (class_name.is_empty() || !GritGdxApply::find_revert_target(class_name, target)) {
-		_show_message("Could not find the extension that owns this class.");
+	if (class_name.is_empty() || !GritGdxApply::find_revert_target(class_name, target) || target.archived_script.is_empty() || !FileAccess::exists(target.archived_script)) {
+		_show_message("Grit: this node has no generated class with an archived source to rebuild.");
 		return;
 	}
 	_close_dialog();
@@ -741,6 +745,15 @@ static void _sync_extensions_after_action(const String &p_descriptor) {
 // GUI autotest harness
 // ---------------------------------------------------------------------------
 
+static void _autotest_print_menu() {
+	PopupMenu *popup = memnew(PopupMenu);
+	EditorContextMenuPluginManager::get_singleton()->add_options_from_plugins(popup, EditorContextMenuPlugin::CONTEXT_SLOT_SCENE_TREE, Vector<String>());
+	for (int i = 0; i < popup->get_item_count(); i++) {
+		print_line(vformat("Grit autotest menu: \"%s\" disabled=%s", popup->get_item_text(i), popup->is_item_disabled(i) ? "yes" : "no"));
+	}
+	memdelete(popup);
+}
+
 static String _autotest_state(Node *p_node) {
 	if (!p_node) {
 		return "no node";
@@ -816,6 +829,7 @@ void GritGdxContextMenuPlugin::_autotest_tick() {
 		} break;
 		case 2: {
 			print_line("Grit autotest [4] both converted; in-memory tree says: root " + _autotest_state(root) + " | child " + _autotest_state(root->get_node_or_null(NodePath("Child"))));
+			_autotest_print_menu();
 			print_line(vformat("Grit autotest [5] file says: root type=%s", GritGdxApply::scene_node_type(autotest_scene, ".")));
 			const String root_type = GritGdxApply::scene_node_type(autotest_scene, ".");
 			print_line(vformat("Grit autotest [6] scene reload; \"%s\" registered=%s", root_type, ClassDB::class_exists(root_type) ? "yes" : "no"));
