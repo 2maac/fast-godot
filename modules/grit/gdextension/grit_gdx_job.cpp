@@ -65,6 +65,32 @@ Error GritGdxJob::start_rebuild(const String &p_class_name, const String &p_exte
 	return OK;
 }
 
+Error GritGdxJob::start_build_source(const String &p_script_path) {
+	mode = Mode::BUILD_SOURCE;
+	result = GritGdxApply::Result();
+	result.script_path = p_script_path;
+	{
+		MutexLock lock(mutex);
+		status = "Generating the native class";
+	}
+	progress.store(5);
+	String generate_report;
+	String directory;
+	prepare_error = GritGdxApply::create_source(p_script_path, generate_report, &directory);
+	result.extension_directory = directory;
+	{
+		MutexLock lock(mutex);
+		report = generate_report;
+	}
+	if (prepare_error != OK) {
+		finished.store(true);
+		return prepare_error;
+	}
+	progress.store(20);
+	thread.start(_thread, this);
+	return OK;
+}
+
 void GritGdxJob::_thread(void *p_userdata) {
 	static_cast<GritGdxJob *>(p_userdata)->run();
 }
@@ -77,13 +103,16 @@ void GritGdxJob::run() {
 	};
 
 	String action_report;
-	if (mode == Mode::ADD || mode == Mode::REBUILD) {
+	if (mode == Mode::ADD || mode == Mode::REBUILD || mode == Mode::BUILD_SOURCE) {
+		const String target = mode == Mode::BUILD_SOURCE ? "editor" : "template_debug";
 		String build_output;
 		String library;
-		const Error build_status = GritGdxApply::build(result.extension_directory, "template_debug", progress_callback, library, build_output);
+		const Error build_status = GritGdxApply::build(result.extension_directory, target, progress_callback, library, build_output);
 		if (build_status == OK) {
 			result.built = true;
 			result.library_path = library;
+			MutexLock lock(mutex);
+			report = report + vformat("\n  library: %s\n", library);
 		} else {
 			build_error = build_status;
 			MutexLock lock(mutex);

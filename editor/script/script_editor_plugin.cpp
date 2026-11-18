@@ -169,6 +169,24 @@ ScriptEditorQuickOpen::ScriptEditorQuickOpen() {
 /////////////////////////////////
 
 ScriptEditor *ScriptEditor::script_editor = nullptr;
+Callable ScriptEditor::build_gde_handler;
+
+void ScriptEditor::set_build_gde_handler(const Callable &p_handler) {
+	build_gde_handler = p_handler;
+}
+
+void ScriptEditor::_build_gde() {
+	const Ref<Script> script = _get_current_script();
+	if (script.is_null() || !script->get_path().ends_with(".gde")) {
+		EditorNode::get_singleton()->show_warning(TTR("Open a GDExtension source (.gde) first."), TTR("Build GDE"));
+		return;
+	}
+	if (!build_gde_handler.is_valid()) {
+		EditorNode::get_singleton()->show_warning(TTR("GDExtension tools are not available."), TTR("Build GDE"));
+		return;
+	}
+	build_gde_handler.call(script->get_path());
+}
 
 /*** SCRIPT EDITOR ******/
 
@@ -1450,6 +1468,7 @@ void ScriptEditor::_notification(int p_what) {
 
 			help_search->set_button_icon(get_editor_theme_icon(SNAME("HelpSearch")));
 			site_search->set_button_icon(get_editor_theme_icon(SNAME("ExternalLink")));
+			build_gde->set_button_icon(get_editor_theme_icon(SNAME("GritBuildGDE")));
 
 			if (is_layout_rtl()) {
 				script_forward->set_button_icon(get_editor_theme_icon(SNAME("Back")));
@@ -4063,6 +4082,13 @@ ScriptEditor::ScriptEditor(WindowWrapper *p_wrapper) {
 	help_search->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditor::_menu_option).bind(SEARCH_HELP));
 	menu_hb->add_child(help_search);
 	help_search->set_tooltip_text(TTRC("Search the reference documentation."));
+
+	build_gde = memnew(Button);
+	build_gde->set_theme_type_variation(SceneStringName(FlatButton));
+	build_gde->set_text(TTRC("Build GDE"));
+	build_gde->set_tooltip_text(TTRC("Generate and build the GDExtension from the open .gde source."));
+	build_gde->connect(SceneStringName(pressed), callable_mp(this, &ScriptEditor::_build_gde));
+	menu_hb->add_child(build_gde);
 
 	menu_hb->add_child(memnew(VSeparator));
 

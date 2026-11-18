@@ -48,9 +48,13 @@ res://player_gdext/src/...
 res://player_gdext/.grit_manifest.json
 ```
 
-Only the scaffold is generated; building the library is a separate step:
-`--grit-gdx-generate res://player.gde --grit-gdx-build` builds it with the
-configured SCons/godot-cpp toolchain (the `SConstruct` in the folder works too).
+Only the scaffold is generated; building the library is a separate step. With the
+`.gde` source open, the script editor's **Build GDE** button (next to Online
+Docs / Search Help) regenerates the `.gdextension` descriptor and builds the
+library for it; it never changes a scene or a node, and the class is ready for
+GDScript once the build finishes. Headlessly the same is
+`--grit-gdx-generate res://player.gde --grit-gdx-build` (the `SConstruct` in the
+folder works too).
 Running `--grit-gdx-generate` again after editing the source regenerates it and
 keeps the same extension folder. A generated class whose source changed since the
 library was built gets the amber badge on its class icon.

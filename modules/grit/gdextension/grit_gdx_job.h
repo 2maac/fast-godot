@@ -26,6 +26,9 @@ public:
 	// Main thread. Rebuilding a class from its archive: generation happens here,
 	// the build in run(), the new hash in complete().
 	Error start_rebuild(const String &p_class_name, const String &p_extension_directory);
+	// Main thread. Generates a `.gde` source's extension (no scene is touched) and
+	// builds it on the worker.
+	Error start_build_source(const String &p_script_path);
 
 	bool is_finished() const { return finished.load(); }
 	int get_progress() const { return progress.load(); }
@@ -41,6 +44,7 @@ private:
 		ADD,
 		REVERT,
 		REBUILD,
+		BUILD_SOURCE,
 	};
 
 	static void _thread(void *p_userdata);

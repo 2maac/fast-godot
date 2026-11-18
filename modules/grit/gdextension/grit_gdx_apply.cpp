@@ -4,6 +4,7 @@
 #include "grit_gdx_emitter.h"
 #include "grit_gdx_generator.h"
 #include "grit_gdx_manifest.h"
+#include "grit_gdx_job.h"
 #include "modules/grit/grit_gdx_script.h"
 #include "grit_gdx_platform.h"
 
@@ -13,8 +14,14 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/resource.h"
+#include "core/object/callable_mp.h"
+#include "core/os/os.h"
 #include "core/os/thread.h"
+#include "scene/gui/dialogs.h"
+#include "scene/main/scene_tree.h"
 
+#include "core/extension/gdextension_manager.h"
+#include "editor/editor_node.h"
 #include "editor/file_system/editor_file_system.h"
 #include "editor/script/script_editor_plugin.h"
 #include "core/io/file_access.h"
@@ -1250,6 +1257,81 @@ bool GritGdxApply::find_revert_target(const String &p_class_name, RevertTarget &
 // ---------------------------------------------------------------------------
 
 
+
+static Ref<GritGdxJob> build_source_job;
+static AcceptDialog *build_source_dialog = nullptr;
+
+static void _schedule_build_source_poll() {
+	if (SceneTree *tree = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop())) {
+		tree->create_timer(0.25)->connect(SNAME("timeout"), callable_mp_static(&GritGdxApply::poll_build_source));
+	}
+}
+
+void GritGdxApply::build_source_from_editor(const String &p_script_path) {
+	if (build_source_job.is_valid()) {
+		EditorNode::get_singleton()->show_accept("A GDExtension build is already running.", "Build GDE");
+		return;
+	}
+	if (!p_script_path.ends_with(".gde")) {
+		EditorNode::get_singleton()->show_accept("Open a GDExtension source (.gde) first.", "Build GDE");
+		return;
+	}
+	build_source_job.instantiate();
+	const Error start_error = build_source_job->start_build_source(p_script_path);
+	if (start_error != OK) {
+		String report;
+		build_source_job->complete(report);
+		build_source_job.unref();
+		EditorNode::get_singleton()->show_accept(report, "Build GDE");
+		return;
+	}
+	if (build_source_dialog == nullptr) {
+		build_source_dialog = memnew(AcceptDialog);
+		build_source_dialog->set_title("Build GDE");
+		build_source_dialog->set_min_size(Size2i(560, 180));
+		EditorNode::get_singleton()->get_gui_base()->add_child(build_source_dialog);
+	}
+	build_source_dialog->set_text(vformat("Building %s...", p_script_path.get_file()));
+	build_source_dialog->popup_centered();
+	_schedule_build_source_poll();
+}
+
+void GritGdxApply::poll_build_source() {
+	if (build_source_job.is_null()) {
+		return;
+	}
+	if (!build_source_job->is_finished()) {
+		if (build_source_dialog) {
+			build_source_dialog->set_text(vformat("Building... %d%%\n%s", build_source_job->get_progress(), build_source_job->get_status()));
+		}
+		_schedule_build_source_poll();
+		return;
+	}
+	String report;
+	const Error error = build_source_job->complete(report);
+	build_source_job.unref();
+	if (build_source_dialog) {
+		build_source_dialog->set_text(report);
+		build_source_dialog->popup_centered();
+	}
+	if (error != OK) {
+		ERR_PRINT(report);
+	} else {
+		print_line(report);
+	}
+	if (EditorFileSystem::get_singleton()) {
+		EditorFileSystem::get_singleton()->scan_changes();
+	}
+	if (error == OK) {
+		GDExtensionManager::get_singleton()->reload_extensions();
+	}
+	if (!OS::get_singleton()->get_environment("GRIT_GDX_BUILD_TEST").is_empty()) {
+		print_line("Grit: build test finished.");
+		if (SceneTree *tree = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop())) {
+			tree->quit();
+		}
+	}
+}
 
 Error GritGdxApply::create_source(const String &p_script_path, String &r_report, String *r_extension_directory) {
 	if (p_script_path.is_empty()) {

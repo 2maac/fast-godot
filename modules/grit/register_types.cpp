@@ -25,6 +25,7 @@
 #include "core/os/os.h"
 #include "editor/editor_node.h"
 #include "editor/script/script_create_dialog.h"
+#include "editor/script/script_editor_plugin.h"
 #include "editor/inspector/editor_context_menu_plugin.h"
 #include "editor/export/editor_export.h"
 #endif
@@ -70,9 +71,14 @@ static void grit_editor_init() {
 	// GDExtension sources are created from FileSystem > New Script with the
 	// "GDScript (GDExtension)" language; the scene tree has no Grit actions.
 	ScriptCreateDialog::register_extra_language("GDScript (GDExtension)", "gde", "class_name %s", &GritGdxApply::create_source_callback);
+	ScriptEditor::set_build_gde_handler(callable_mp_static(&GritGdxApply::build_source_from_editor));
 	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
 	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
 		const String &argument = element->get();
+		if (argument == "--grit-gdx-build-source" && element->next()) {
+			callable_mp_static(&GritGdxApply::build_source_from_editor).bind(element->next()->get()).call_deferred();
+			break;
+		}
 		if (argument == "--grit-gdx-dialog-check") {
 			callable_mp_static(&ScriptCreateDialog::run_language_check).call_deferred();
 			break;

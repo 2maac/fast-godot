@@ -72,6 +72,11 @@ public:
 	// lives next to the source in `<stem>_gdext/<stem>.gdextension`; nothing is
 	// attached to a node and no scene is rewritten.
 	static Error create_source(const String &p_script_path, String &r_report, String *r_extension_directory = nullptr);
+
+	// The Build GDE button in the script editor: generates the open `.gde`
+	// source's extension and builds it. It never touches a scene or a node.
+	static void build_source_from_editor(const String &p_script_path);
+	static void poll_build_source();
 	static void create_source_callback(const String &p_script_path);
 
 	static Error revert(const String &p_class_name, const String &p_extension_directory, const String &p_scene_path, const String &p_node_path, bool p_build, const Progress &p_progress, Result &r_result, String &r_report);
