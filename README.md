@@ -52,7 +52,9 @@ Only the scaffold is generated; building the library is a separate step. With th
 `.gde` source open, the script editor's **Build GDE** button (next to Online
 Docs / Search Help) regenerates the `.gdextension` descriptor and builds the
 library for it; it never changes a scene, a node or the `.gde` source itself,
-and the class is ready for GDScript once the build finishes. Headlessly the same is
+and the class is ready for GDScript once the build finishes. If the source has
+not changed since the last build and the library exists, the button reports that
+it is up to date instead of running SCons again. Headlessly the same is
 `--grit-gdx-generate res://player.gde --grit-gdx-build` (the `SConstruct` in the
 folder works too).
 Running `--grit-gdx-generate` again after editing the source regenerates it and

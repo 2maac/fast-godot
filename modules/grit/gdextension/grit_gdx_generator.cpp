@@ -124,6 +124,15 @@ String GritGdxGenerator::class_name_for(const Ref<GDScript> &p_script) {
 }
 
 Error GritGdxGenerator::write_file(const String &p_path, const String &p_content) {
+	// Preserve unchanged files: Build GDE must not force a full rebuild (SCons
+	// keys off mtimes) when the generated sources are the same.
+	if (FileAccess::exists(p_path)) {
+		Error read_error = OK;
+		const String existing = FileAccess::get_file_as_string(p_path, &read_error);
+		if (read_error == OK && existing == p_content) {
+			return OK;
+		}
+	}
 	const Error error = DirAccess::make_dir_recursive_absolute(p_path.get_base_dir());
 	ERR_FAIL_COND_V_MSG(error != OK, error, vformat("Grit: could not create \"%s\".", p_path.get_base_dir()));
 	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::WRITE);

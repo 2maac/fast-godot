@@ -1276,6 +1276,33 @@ void GritGdxApply::build_source_from_editor(const String &p_script_path) {
 		EditorNode::get_singleton()->show_accept("Open a GDExtension source (.gde) first.", "Build GDE");
 		return;
 	}
+	// Nothing changed since the last successful build: do not run SCons again
+	// (the generated sources are already up to date and the library exists).
+	for (const String &directory : GritGdxManifest::list_extensions()) {
+		GritGdxManifest manifest;
+		if (manifest.load(directory) != OK) {
+			continue;
+		}
+		const GritGdxManifestEntry *entry = manifest.find_script(p_script_path);
+		if (!entry) {
+			continue;
+		}
+		Error hash_error = OK;
+		const String source = FileAccess::get_file_as_string(p_script_path, &hash_error);
+		const String extension_name = GritGdxManifest::extension_name(directory);
+		const String library = GritGdxBuilder::library_path(directory, extension_name, "editor");
+		const String descriptor = directory.path_join(extension_name + ".gdextension");
+		if (hash_error == OK && !entry->source_hash.is_empty() && source.sha256_text() == entry->source_hash && FileAccess::exists(library) && FileAccess::exists(descriptor)) {
+			EditorNode::get_singleton()->show_accept(vformat("%s is up to date; its library is already built.", p_script_path.get_file()), "Build GDE");
+			if (!OS::get_singleton()->get_environment("GRIT_GDX_BUILD_TEST").is_empty()) {
+				if (SceneTree *tree = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop())) {
+					tree->quit();
+				}
+			}
+			return;
+		}
+		break;
+	}
 	build_source_job.instantiate();
 	const Error start_error = build_source_job->start_build_source(p_script_path);
 	if (start_error != OK) {
@@ -1318,12 +1345,6 @@ void GritGdxApply::poll_build_source() {
 		ERR_PRINT(report);
 	} else {
 		print_line(report);
-	}
-	if (EditorFileSystem::get_singleton()) {
-		EditorFileSystem::get_singleton()->scan_changes();
-	}
-	if (error == OK) {
-		GDExtensionManager::get_singleton()->reload_extensions();
 	}
 	if (!OS::get_singleton()->get_environment("GRIT_GDX_BUILD_TEST").is_empty()) {
 		print_line("Grit: build test finished.");
