@@ -3657,7 +3657,13 @@ void RenderingServer::init() {
 	// import the texture formats that the host platform needs.
 	// See `const bool can_s3tc_bptc` in the resource importer.
 	GLOBAL_DEF_RST("rendering/textures/vram_compression/import_s3tc_bptc", false);
+#ifdef MACOS_ENABLED
+	// A macOS Fast export is arm64, and its exporter refuses to build one unless
+	// ETC2/ASTC is enabled. Default it on so a fresh project exports out of the box.
+	GLOBAL_DEF_RST("rendering/textures/vram_compression/import_etc2_astc", true);
+#else
 	GLOBAL_DEF_RST("rendering/textures/vram_compression/import_etc2_astc", false);
+#endif
 	GLOBAL_DEF("rendering/textures/vram_compression/compress_with_gpu", true);
 	GLOBAL_DEF("rendering/textures/vram_compression/cache_gpu_compressor", true);
 

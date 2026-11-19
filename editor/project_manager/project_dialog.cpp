@@ -595,6 +595,12 @@ void ProjectDialog::ok_pressed() {
 		initial_settings["application/config/features"] = project_features;
 		initial_settings["application/config/name"] = project_name->get_text().strip_edges();
 		initial_settings["application/config/icon"] = "res://icon.svg";
+#ifdef MACOS_ENABLED
+		// A macOS Fast export is arm64 and requires ETC2/ASTC. Record it in the new
+		// project's settings so the project keeps it when opened on another host,
+		// rather than relying on the editor's default.
+		initial_settings["rendering/textures/vram_compression/import_etc2_astc"] = true;
+#endif
 		ProjectSettings::CustomMap extra_settings = EditorNode::get_initial_settings();
 		for (const KeyValue<String, Variant> &extra_setting : extra_settings) {
 			// Merge with other initial settings defined above.
