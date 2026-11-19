@@ -6,22 +6,17 @@ class Button;
 class EditorFileDialog;
 class LineEdit;
 
-// A settings row that is a path plus the buttons to use it: pick an existing folder,
-// or download the thing into one. The same row serves both the source and the
-// toolchain; the mode decides what the download fetches.
+// A settings row that is a path plus a button to pick an existing folder. The same
+// row serves the source override and the toolchain; the mode decides the text.
 class GritPathEditor : public EditorProperty {
 	GDCLASS(GritPathEditor, EditorProperty);
 
 	bool toolchain = false;
 	LineEdit *path_edit = nullptr;
 	Button *browse_button = nullptr;
-	Button *download_button = nullptr;
 	EditorFileDialog *browse_dialog = nullptr;
-	EditorFileDialog *dest_dialog = nullptr;
 
 	void _browse_pressed();
-	void _download_pressed();
-	void _dest_chosen(const String &p_dir);
 	void _browse_chosen(const String &p_dir);
 	void _text_submitted(const String &p_text);
 	void _text_changed(const String &p_text);

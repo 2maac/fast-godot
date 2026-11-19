@@ -41,17 +41,19 @@ The first export of a project compiles the engine for that project's template
 A fresh editor has no build tools, so the export window shows no presets — only a
 centered **Download Build Tools** button. Pressing it:
 
-1. fetches the engine source for this editor's commit once and keeps a copy
-   inside the toolchain (`<toolchain>/engine/<revision>/`), so later exports and
-   editor builds use it instead of downloading again,
+1. fetches the engine source for this editor's commit once (only to run the
+   downloader) and keeps a copy inside the new toolchain at
+   `<toolchain>/engine/<revision>/`,
 2. downloads every toolchain component from its original source into
    `~/fast_godot_toolchain` (Windows: `%USERPROFILE%\fast_godot_toolchain`), with
    progress and a SHA-256 check for each file,
 3. validates the folder and points `grit/settings/toolchain_root_folder_path` at
    it.
 
-After that the presets appear and the button never comes back; the export reuses
-the toolchain and source.
+After that the presets appear and the button never comes back. **Nothing is
+downloaded after the toolchain is installed**: editor builds and exports use the
+toolchain's engine source, and a toolchain without one fails with an error
+instead of fetching the archive.
 
 The downloader scripts live in the engine source and use only the tools that ship
 with the OS:
@@ -81,8 +83,8 @@ The downloaders finish by copying the engine source tree they run from into
 `<toolchain>/engine/<revision>/` (the working tree, without `.git`, `bin/` or
 `out/`), and record it under the `engine` key in `toolchain.json`. A bundle is
 therefore self-contained: editor builds and export templates use that copy, and
-the editor only downloads the archive when the toolchain has no source (older
-bundles).
+an older bundle without it is reported as an error (press Download Build Tools
+again to get a source-carrying one) — never downloaded at export time.
 
 ## Building the editor itself
 

@@ -26,10 +26,16 @@ public:
 	// otherwise show up as orphaned entries in the settings trees.
 	static void purge_obsolete_settings();
 
-	// Returns the engine source tree, fetching it for this editor's commit when it is
-	// not on disk. Empty on failure, with r_error set. With p_show_progress the
-	// download is shown and can be cancelled with Esc.
-	static String ensure_engine(bool p_show_progress, String *r_error = nullptr);
+	// The engine source tree this build must use: a configured folder, a checkout
+	// next to the editor, or the copy the toolchain bundle carries. It never
+	// downloads anything. Empty on failure, with r_error set.
+	static String ensure_engine(String *r_error = nullptr);
+
+	// Only used while building a toolchain: ensure_engine(), but if no source is on
+	// disk it downloads this editor's source archive so the toolchain downloader
+	// (which lives in the source tree) can run. That tree is then copied into the
+	// new toolchain and deleted from the cache.
+	static String ensure_engine_for_toolchain(String *r_error = nullptr);
 
 	// The source folder chosen in Editor Settings, when it holds a tree.
 	static String configured_source();
@@ -41,11 +47,6 @@ public:
 
 	// The toolchain folder chosen in the editor settings, or empty when unusable.
 	static String configured_toolchain();
-
-	// Downloads this editor's engine source into p_folder (or reuses a tree that is
-	// already there) and returns the tree path, or an empty string with r_error set.
-	// This is what the "Fetch Source" button calls.
-	static String fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error = nullptr);
 
 	// True when the configured toolchain folder has everything this platform needs.
 	static bool toolchain_ready();

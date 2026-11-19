@@ -179,31 +179,6 @@ static String _engine_tree_at(const String &p_dir) {
 	return found;
 }
 
-static bool _download(const String &p_url, const String &p_dest, String &r_error) {
-	List<String> args;
-	args.push_back("-L");
-	args.push_back("--fail");
-	args.push_back("--retry");
-	args.push_back("2");
-	args.push_back("--connect-timeout");
-	args.push_back("30");
-	args.push_back("-o");
-	args.push_back(p_dest);
-	args.push_back(p_url);
-	String output;
-	int code = -1;
-	OS::get_singleton()->execute("curl", args, &output, &code);
-	if (code != 0) {
-		r_error = vformat("curl exit %d: %s", code, output.strip_edges().right(300));
-		return false;
-	}
-	if (!FileAccess::exists(p_dest)) {
-		r_error = "no file was written";
-		return false;
-	}
-	return true;
-}
-
 // tar handles .tar and (via bsdtar) .zip on Windows and macOS; it is the fallback
 // when the interpreter cannot unpack.
 static bool _extract(const String &p_archive, const String &p_dest, String &r_error) {
@@ -221,110 +196,6 @@ static bool _extract(const String &p_archive, const String &p_dest, String &r_er
 		return false;
 	}
 	return true;
-}
-
-// Python's zipfile extraction does not restore the executable bits stored in the
-// archive. A toolchain unpacked that way has a python that cannot run (exit 126),
-// and every later download fails; emsdk's emcc and node lose their bits too.
-// Extract through this script instead: it restores the recorded mode and
-// recreates symlinks, which is what unzip(1) does.
-static const char *GRIT_UNZIP_SCRIPT = R"GRITUNZIP(
-import os
-import stat
-import sys
-import zipfile
-
-archive, destination = sys.argv[1], sys.argv[2]
-root = os.path.abspath(destination)
-with zipfile.ZipFile(archive) as bundle:
-    for info in bundle.infolist():
-        name = info.filename
-        if not name:
-            continue
-        out = os.path.abspath(os.path.join(root, name))
-        if out != root and not out.startswith(root + os.sep):
-            continue
-        if name.endswith("/"):
-            os.makedirs(out, exist_ok=True)
-            continue
-        parent = os.path.dirname(out)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        mode = (info.external_attr >> 16) & 0xFFFF
-        if stat.S_ISLNK(mode):
-            target = bundle.read(info).decode("utf-8")
-            if os.path.lexists(out):
-                os.remove(out)
-            try:
-                os.symlink(target, out)
-                continue
-            except OSError:
-                pass
-        with bundle.open(info) as source, open(out, "wb") as sink:
-            while True:
-                chunk = source.read(1 << 20)
-                if not chunk:
-                    break
-                sink.write(chunk)
-        if mode:
-            os.chmod(out, mode)
-)GRITUNZIP";
-
-static bool _extract_zip_with_python(const String &p_python, const String &p_archive, const String &p_dest, String &r_error) {
-	const String script = OS::get_singleton()->get_cache_path().path_join("grit_unzip.py");
-	{
-		Ref<FileAccess> file = FileAccess::open(script, FileAccess::WRITE);
-		if (file.is_null()) {
-			r_error = "could not write " + script;
-			return false;
-		}
-		file->store_string(GRIT_UNZIP_SCRIPT);
-		file->close();
-	}
-	List<String> args;
-	args.push_back(script);
-	args.push_back(p_archive);
-	args.push_back(p_dest);
-	String output;
-	int code = -1;
-	const Error ran = OS::get_singleton()->execute(p_python, args, &output, &code);
-	if (ran != OK || code != 0) {
-		r_error = vformat("python %s exited %d: %s", p_python, code, output.strip_edges().right(160));
-		return false;
-	}
-	return true;
-}
-
-// Unpacks a zip with mode restoration, trying the toolchain interpreter first and
-// a system one after it (a toolchain unpacked by an older editor has a python
-// that cannot run, and that would otherwise make recovery impossible), then tar.
-static bool _unpack_zip(const String &p_archive, const String &p_dest, String &r_error) {
-	Vector<String> candidates;
-	const String bundled = GritProvisioner::python_for_build();
-	if (!bundled.is_empty()) {
-		candidates.push_back(bundled);
-	}
-	if (!candidates.has("python3")) {
-		candidates.push_back("python3");
-	}
-	if (!candidates.has("python")) {
-		candidates.push_back("python");
-	}
-	String errors;
-	for (const String &python : candidates) {
-		String error;
-		if (_extract_zip_with_python(python, p_archive, p_dest, error)) {
-			return true;
-		}
-		errors += (errors.is_empty() ? "" : "; ") + error;
-	}
-	String tar_error;
-	if (_extract(p_archive, p_dest, tar_error)) {
-		return true;
-	}
-	errors += (errors.is_empty() ? "" : "; ") + tar_error;
-	r_error = errors;
-	return false;
 }
 
 // Content-Length of a URL, or 0 when the server does not say.
@@ -407,36 +278,6 @@ static bool _download_engine_archive(const String &p_url, const String &p_dest, 
 	return true;
 }
 
-// Unpacks p_archive into p_dest and returns the tree inside it, or empty.
-static String _unpack_engine(const String &p_archive, const String &p_dest, const String &p_url, String &r_error) {
-	DirAccess::remove_absolute(p_dest);
-	DirAccess::make_dir_recursive_absolute(p_dest);
-
-	String unpack_error;
-	if (!_unpack_zip(p_archive, p_dest, unpack_error)) {
-		r_error = vformat("could not unpack the engine source downloaded from %s (%s).", p_url, unpack_error);
-		return String();
-	}
-	// The archive extracts to a single fast-godot-<commit>/ directory.
-	String tree = p_dest;
-	Ref<DirAccess> dir = DirAccess::open(p_dest);
-	if (dir.is_valid()) {
-		dir->list_dir_begin();
-		for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
-			if (dir->current_is_dir() && FileAccess::exists(p_dest.path_join(name).path_join("SConstruct"))) {
-				tree = p_dest.path_join(name);
-				break;
-			}
-		}
-		dir->list_dir_end();
-	}
-	if (!_engine_present(tree)) {
-		r_error = vformat("the engine source downloaded from %s is not a usable Fast_Godot tree.", p_url);
-		return String();
-	}
-	return tree;
-}
-
 static bool _toolchain_complete(const String &p_root) {
 	if (p_root.is_empty() || !FileAccess::exists(p_root.path_join("toolchain.json"))) {
 		return false;
@@ -483,7 +324,7 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	const String engine = ensure_engine(false, &error);
+	const String engine = ensure_engine_for_toolchain(&error);
 	if (engine.is_empty()) {
 		return false;
 	}
@@ -567,52 +408,16 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 		}
 		return false;
 	}
+	// A bootstrap checkout was only needed to run the downloader; the new toolchain
+	// carries its own copy, so the cache of it can go.
+	const String cache_root = OS::get_singleton()->get_data_path().path_join("grit-tools");
+	if (engine.begins_with(cache_root)) {
+		DirAccess::remove_absolute(engine);
+	}
 	EditorSettings *settings = EditorSettings::get_singleton();
 	settings->set_setting(SETTING_TOOLCHAIN_ROOT, p_dest);
 	settings->save();
 	return true;
-}
-
-String GritProvisioner::fetch_source_to(const String &p_folder, bool p_show_progress, String *r_error) {
-	String local_error;
-	String &error = r_error ? *r_error : local_error;
-
-	const String folder = p_folder.strip_edges();
-	if (folder.is_empty()) {
-		error = "no destination folder was chosen.";
-		return String();
-	}
-	const String commit = engine_commit();
-	if (commit.is_empty()) {
-		error = "this editor does not report its revision, so the source cannot be matched to it.";
-		return String();
-	}
-	// A tree already sitting in the chosen folder is used as-is.
-	if (_engine_present(folder)) {
-		return folder;
-	}
-	const String url = _engine_archive_url(commit);
-	String archive = OS::get_singleton()->get_cache_path().path_join("grit-engine-" + commit + ".zip");
-	if (OS::get_singleton()->get_name() == "Windows") {
-		archive = archive.replace("/", "\\");
-	}
-	String download_error;
-	if (p_show_progress) {
-		if (!_download_engine_archive(url, archive, download_error)) {
-			error = vformat("could not download the engine source for %s from %s (%s).", commit, url, download_error);
-			return String();
-		}
-	} else if (!_download(url, archive, download_error)) {
-		error = vformat("could not download the engine source for %s from %s (%s).", commit, url, download_error);
-		return String();
-	}
-	String unpack_error;
-	const String tree = _unpack_engine(archive, folder, url, unpack_error);
-	DirAccess::remove_absolute(archive);
-	if (tree.is_empty()) {
-		error = unpack_error;
-	}
-	return tree;
 }
 
 String GritProvisioner::configured_source() {
@@ -663,10 +468,12 @@ String GritProvisioner::toolchain_engine() {
 	return _engine_tree_at(engine);
 }
 
-String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
+String GritProvisioner::ensure_engine(String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
+	// A configured folder and a checkout next to the editor describe the tree the
+	// running build belongs to; otherwise the toolchain is the source of truth.
 	const String configured = configured_source();
 	if (!configured.is_empty()) {
 		return configured;
@@ -681,24 +488,30 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 		print_line("Grit: using the engine source in the toolchain at " + in_toolchain);
 		return in_toolchain;
 	}
-	const String existing = _engine_tree_at(_engine_root_dir());
+	// Once the build tools exist everything must come from them: nothing is
+	// downloaded on an export or an editor build.
+	const String toolchain = configured_toolchain();
+	if (toolchain.is_empty()) {
+		error = "no Fast_Godot build tools are installed. Open the export window and press Download Build Tools; the toolchain carries the engine source, so an export never downloads anything.";
+	} else {
+		error = vformat("the toolchain at \"%s\" has no engine source. Use a toolchain built by tools/toolchain/download_toolchain.{sh,cmd} (they copy the engine source in), or set Editor Settings > Grit > Settings > Source Code Root Folder Path to a checkout.", toolchain);
+	}
+	return String();
+}
+
+String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
+	String local_error;
+	String &error = r_error ? *r_error : local_error;
+
+	// Only a toolchain download needs a checkout to run the downloader from; the
+	// resulting bundle carries it, and afterwards ensure_engine() never downloads.
+	const String existing = ensure_engine(&error);
 	if (!existing.is_empty()) {
 		return existing;
 	}
+	error = String();
 
 	const String commit = engine_commit();
-	// The source is fetched before a toolchain exists (the downloader script lives in
-	// it), and at that point it lands in the global grit-tools cache. Once a toolchain
-	// is chosen the preferred location moves inside it, so without this check the next
-	// export downloaded the very same source again.
-	if (!commit.is_empty()) {
-		const String fetched_root = OS::get_singleton()->get_data_path().path_join("grit-tools").path_join("engine").path_join(commit);
-		const String fetched = _engine_tree_at(fetched_root);
-		if (!fetched.is_empty()) {
-			print_line("Grit: reusing the engine source already fetched at " + fetched);
-			return fetched;
-		}
-	}
 	if (commit.is_empty()) {
 		error = "this editor does not report its revision, so the engine source cannot be matched to it. Choose a source folder in Editor Settings > Grit > Settings.";
 		return String();
@@ -709,15 +522,9 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 		archive = archive.replace("/", "\\");
 	}
 	print_line("Grit: downloading the engine source for " + commit + " from " + url);
-
 	String download_error;
-	if (p_show_progress) {
-		if (!_download_engine_archive(url, archive, download_error)) {
-			error = vformat("could not download the engine source for %s from %s (%s). If this machine has no internet access, choose a local source folder in Editor Settings > Grit > Settings instead.", commit, url, download_error);
-			return String();
-		}
-	} else if (!_download(url, archive, download_error)) {
-		error = vformat("could not download the engine source for %s from %s (%s). No internet access? Choose a local source folder in Editor Settings > Grit > Settings.", commit, url, download_error);
+	if (!_download_engine_archive(url, archive, download_error)) {
+		error = vformat("could not download the engine source for %s from %s (%s). If this machine has no internet access, choose a local source folder in Editor Settings > Grit > Settings instead.", commit, url, download_error);
 		return String();
 	}
 
@@ -753,12 +560,11 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
 		}
 	}
+	DirAccess::remove_absolute(archive);
 	if (!unpacked) {
-		DirAccess::remove_absolute(archive);
 		error = vformat("could not unpack the engine source downloaded from %s (%s).", url, unpack_error);
 		return String();
 	}
-	DirAccess::remove_absolute(archive);
 
 	String tree = dest;
 	Ref<DirAccess> dir = DirAccess::open(dest);
@@ -871,7 +677,7 @@ void GritProvisioner::run_probe() {
 	ran = true;
 
 	String error;
-	if (!ensure_engine(true, &error).is_empty()) {
+	if (!ensure_engine(&error).is_empty()) {
 		print_line("Grit: build tools ready.");
 	} else {
 		ERR_PRINT("Grit: " + error);

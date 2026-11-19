@@ -181,10 +181,10 @@ String GritExportPlugin::_resolve_engine_root() const {
 		dir = dir.get_base_dir();
 	}
 
-	// Nothing local: fetch the source for this build's commit. A command-line export
-	// never opens the export window or adds a preset, so this is its only chance.
+	// Nothing local: use the engine source the toolchain carries. Nothing is
+	// downloaded here; a toolchain without source is an error.
 	String fetch_error;
-	const String fetched = GritProvisioner::ensure_engine(false, &fetch_error);
+	const String fetched = GritProvisioner::ensure_engine(&fetch_error);
 	if (!fetched.is_empty()) {
 		resolved_engine_root = fetched;
 		return resolved_engine_root;
@@ -244,8 +244,8 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 
 void GritExportPlugin::export_dialog_opened() {
 	// The preset for this editor's own platform is created here so the window shows
-	// something usable. Nothing is downloaded: the source is fetched when an export
-	// is actually started.
+	// something usable. Nothing is downloaded: the toolchain carries the engine
+	// source.
 	_ensure_native_preset();
 }
 
@@ -345,7 +345,7 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path) {
 	const String engine_root = _resolve_engine_root();
 	if (engine_root.is_empty()) {
-		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Open Editor Settings > Grit > Settings and choose or download a source folder, then export again.", OS::get_singleton()->get_executable_path()));
+		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Install the build tools from the export window (the toolchain carries the engine source), or set Editor Settings > Grit > Settings > Source Code Root Folder Path to a checkout, then export again.", OS::get_singleton()->get_executable_path()));
 		return ERR_UNCONFIGURED;
 	}
 	const String script = engine_root.path_join("tools/grit_build.py");
@@ -708,7 +708,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 	// The source is fetched now, not when the window opened: this is the point where
 	// a build is actually going to happen, so a progress dialog belongs here.
 	String engine_error;
-	if (GritProvisioner::ensure_engine(true, &engine_error).is_empty()) {
+	if (GritProvisioner::ensure_engine(&engine_error).is_empty()) {
 		ERR_PRINT("Grit: " + engine_error);
 		return ERR_CANT_CREATE;
 	}

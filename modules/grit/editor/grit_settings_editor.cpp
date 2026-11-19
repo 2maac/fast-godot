@@ -21,7 +21,7 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 
 	path_edit = memnew(LineEdit);
 	path_edit->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	path_edit->set_placeholder(toolchain ? TTR("Folder containing the Fast_Godot toolchain") : TTR("Folder containing the Fast_Godot source"));
+	path_edit->set_placeholder(toolchain ? TTR("Folder containing the Fast_Godot toolchain") : TTR("Optional source checkout (the toolchain normally carries the source)"));
 	path_edit->connect("text_submitted", callable_mp(this, &GritPathEditor::_text_submitted));
 	path_edit->connect("text_changed", callable_mp(this, &GritPathEditor::_text_changed));
 	path_edit->connect("focus_exited", callable_mp(this, &GritPathEditor::_focus_exited));
@@ -32,26 +32,6 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 	browse_button->set_tooltip_text(TTR("Choose an existing folder."));
 	browse_button->connect("pressed", callable_mp(this, &GritPathEditor::_browse_pressed));
 	row->add_child(browse_button);
-
-	// The source can still be fetched from the GitHub archive of this commit; the
-	// toolchain is built locally and picked with the folder button.
-	if (!toolchain) {
-		download_button = memnew(Button);
-		download_button->set_text(TTR("Download"));
-		download_button->set_tooltip_text(TTR("Download this editor's Fast_Godot source into a folder."));
-		download_button->connect("pressed", callable_mp(this, &GritPathEditor::_download_pressed));
-		row->add_child(download_button);
-
-		dest_dialog = memnew(EditorFileDialog);
-		dest_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
-		dest_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
-		dest_dialog->set_title(TTR("Choose a folder for the Fast_Godot source"));
-		// Never start inside the project: the source inside res:// would be scanned,
-		// imported and exported as game content.
-		dest_dialog->set_current_dir(OS::get_singleton()->get_system_dir(OS::SYSTEM_DIR_DOCUMENTS));
-		dest_dialog->connect("dir_selected", callable_mp(this, &GritPathEditor::_dest_chosen));
-		add_child(dest_dialog);
-	}
 
 	browse_dialog = memnew(EditorFileDialog);
 	browse_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
@@ -89,33 +69,9 @@ void GritPathEditor::_browse_pressed() {
 	browse_dialog->popup_centered_ratio(0.5);
 }
 
-void GritPathEditor::_download_pressed() {
-	dest_dialog->popup_centered_ratio(0.5);
-}
-
 void GritPathEditor::_browse_chosen(const String &p_dir) {
 	path_edit->set_text(p_dir);
 	emit_changed(get_edited_property(), p_dir);
-}
-
-void GritPathEditor::_dest_chosen(const String &p_dir) {
-	// A source tree or toolchain inside res:// is not game content: the editor would
-	// scan it, Grit would try to compile its scripts and the export would pack it.
-	const String project_root = ProjectSettings::get_singleton()->globalize_path("res://").simplify_path().trim_suffix("/");
-	const String chosen = p_dir.simplify_path().trim_suffix("/");
-	if (chosen == project_root || chosen.begins_with(project_root + "/")) {
-		ERR_PRINT(vformat("Grit: choose a folder outside the project. \"%s\" is inside the project, so the downloaded tree would be scanned and exported as game content.", p_dir));
-		return;
-	}
-	String error;
-	// The archive is unpacked into the chosen folder and discarded.
-	const String root = GritProvisioner::fetch_source_to(p_dir, true, &error);
-	if (root.is_empty()) {
-		ERR_PRINT("Grit: " + error);
-		return;
-	}
-	path_edit->set_text(root);
-	emit_changed(get_edited_property(), root);
 }
 
 bool GritSettingsPlugin::can_handle(Object *p_object) {
