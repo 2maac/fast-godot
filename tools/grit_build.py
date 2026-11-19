@@ -458,9 +458,13 @@ def export_main(argv):
         child_env.pop("SCRIPT_AES256_ENCRYPTION_KEY", None)
     if encryption_key and wrapped_key:
         child_env["GRIT_WRAPPED_KEY"] = wrapped_key
+        # Randomizes the white-box table encodings, so every export has a
+        # different table network for the same user key.
+        child_env["GRIT_WB_SEED"] = secrets.token_hex(16)
         announce("Grit: template will unwrap the per-export PCK data key")
     else:
         child_env.pop("GRIT_WRAPPED_KEY", None)
+        child_env.pop("GRIT_WB_SEED", None)
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
     mingw_prefix = os.path.join(env.get("toolchain_root") or "", "mingw64")
