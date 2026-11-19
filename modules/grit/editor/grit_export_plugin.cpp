@@ -8,6 +8,7 @@
 #include "modules/gdscript/gdscript_tokenizer_buffer.h"
 
 #include "core/config/project_settings.h"
+#include "core/crypto/crypto_core.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
 #include "core/io/json.h"
@@ -320,20 +321,25 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 
 
 Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path) {
-	// PCK encryption: the template must be built with the same 256-bit AES key the
-	// exporter encrypts the pack with, because the runtime decrypts it with the key
-	// compiled into the binary. `GODOT_SCRIPT_ENCRYPTION_KEY` wins over the preset,
-	// matching EditorExportPlatform::_get_script_encryption_key().
+	// PCK encryption (hybrid): the export encrypts the pack with a random data key
+	// generated here, and the template only carries that data key wrapped with the
+	// user's 256-bit key. At pack-open the template unwraps it, so neither the pack
+	// key nor an encoded copy of it is embedded in the game. The user key comes
+	// from the preset, or from GODOT_SCRIPT_ENCRYPTION_KEY for CI (which wins, like
+	// EditorExportPlatform::_get_script_encryption_key()).
 	String script_encryption_key;
+	bool encrypt_pck = false;
 	{
 		const Ref<EditorExportPreset> key_preset = get_export_preset();
 		if (key_preset.is_valid()) {
-			script_encryption_key = OS::get_singleton()->get_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
+			encrypt_pck = key_preset->get_enc_pck();
+			// Read the user's key, not the data key this plugin injected for the export.
+			script_encryption_key = script_key_env_injected ? previous_script_key_env : OS::get_singleton()->get_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
 			if (script_encryption_key.is_empty()) {
 				script_encryption_key = key_preset->get_script_encryption_key();
 			}
 			script_encryption_key = script_encryption_key.strip_edges().to_lower();
-			if (key_preset->get_enc_pck() && script_encryption_key.length() != 64) {
+			if (encrypt_pck && script_encryption_key.length() != 64) {
 				ERR_PRINT("Grit: PCK encryption is on but there is no 256-bit AES key. Set the 64-character hexadecimal key in the export window's Encryption section (or GODOT_SCRIPT_ENCRYPTION_KEY).");
 				return ERR_INVALID_PARAMETER;
 			}
@@ -343,9 +349,43 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			}
 		}
 	}
-	// The helper reads it as a file (the export build does not inherit the editor's
-	// environment); its contents also key the isolated template tree, so changing
-	// the key rebuilds the template instead of reusing a keyless one.
+	String wrapped_key_hex;
+	if (encrypt_pck) {
+		const Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
+		if (user_key_bytes.size() != 32) {
+			ERR_PRINT("Grit: could not decode the script encryption key.");
+			return ERR_INVALID_PARAMETER;
+		}
+		uint8_t data_key[32];
+		uint8_t wrapped[32];
+		CryptoCore::RandomGenerator random;
+		if (random.init() != OK || random.get_random_bytes(data_key, sizeof(data_key)) != OK) {
+			ERR_PRINT("Grit: could not generate the PCK data key.");
+			return ERR_CANT_CREATE;
+		}
+		CryptoCore::AESContext key_wrapper;
+		if (key_wrapper.set_decode_key(user_key_bytes.ptr(), 256) != OK) {
+			ERR_PRINT("Grit: could not prepare the PCK key wrapping (AES-256).");
+			return ERR_CANT_CREATE;
+		}
+		for (int block = 0; block < 2; block++) {
+			if (key_wrapper.decrypt_ecb(data_key + block * 16, wrapped + block * 16) != OK) {
+				ERR_PRINT("Grit: could not wrap the PCK data key.");
+				return ERR_CANT_CREATE;
+			}
+		}
+		wrapped_key_hex = String::hex_encode_buffer(wrapped, 32);
+		// The stock exporter encrypts the pack with the data key; the template
+		// rebuilds it from `wrapped` when it opens the pack.
+		if (!script_key_env_injected) {
+			previous_script_key_env = OS::get_singleton()->get_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
+			script_key_env_injected = true;
+		}
+		OS::get_singleton()->set_environment("GODOT_SCRIPT_ENCRYPTION_KEY", String::hex_encode_buffer(data_key, 32));
+	}
+	// The helper reads both as files (the export build does not inherit the editor's
+	// environment). The user key also keys the isolated template tree; the wrapped
+	// key changes per export and only triggers a rebuild of the generated file.
 	const String key_path = p_generated_dir.path_join("script_encryption_key.txt");
 	{
 		Ref<FileAccess> key_file = FileAccess::open(key_path, FileAccess::WRITE);
@@ -355,6 +395,16 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		}
 		key_file->store_string(script_encryption_key);
 		key_file->close();
+	}
+	const String wrapped_key_path = p_generated_dir.path_join("script_wrapped_key.txt");
+	{
+		Ref<FileAccess> wrapped_file = FileAccess::open(wrapped_key_path, FileAccess::WRITE);
+		if (wrapped_file.is_null()) {
+			ERR_PRINT("Grit: could not write the wrapped PCK data key next to the generated sources.");
+			return ERR_CANT_CREATE;
+		}
+		wrapped_file->store_string(wrapped_key_hex);
+		wrapped_file->close();
 	}
 	const String engine_root = _resolve_engine_root();
 	if (engine_root.is_empty()) {
@@ -375,7 +425,7 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// building a template that cannot decrypt its own pack.
 	if (!script_encryption_key.is_empty()) {
 		const String helper_source = FileAccess::get_file_as_string(script);
-		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1) {
+		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1 || (encrypt_pck && helper_source.find("GRIT_WRAPPED_KEY") == -1)) {
 			ERR_PRINT("Grit: the toolchain's build helper does not support PCK encryption. Re-download the build tools with this editor; an older toolchain builds a template that cannot decrypt its own pack.");
 			return ERR_UNAVAILABLE;
 		}
@@ -500,6 +550,7 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	args.push_back(web_optimization);
 
 	args.push_back(key_path);
+	args.push_back(wrapped_key_path);
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 
@@ -853,6 +904,17 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 }
 
 void GritExportPlugin::_export_end() {
+	// Restore GODOT_SCRIPT_ENCRYPTION_KEY: the data key we injected for this export
+	// must not leak into the next one (the user's key/preset stays as it was).
+	if (script_key_env_injected) {
+		if (previous_script_key_env.is_empty()) {
+			OS::get_singleton()->unset_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
+		} else {
+			OS::get_singleton()->set_environment("GODOT_SCRIPT_ENCRYPTION_KEY", previous_script_key_env);
+		}
+		script_key_env_injected = false;
+		previous_script_key_env = String();
+	}
 	// Put the preset back exactly as it was found: a compiled export must not
 	// change how a later VM export behaves, and the compiled template path must
 	// never survive in export_presets.cfg.

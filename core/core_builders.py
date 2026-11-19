@@ -3,6 +3,10 @@
 from collections import OrderedDict
 from io import TextIOWrapper
 
+import hashlib
+import os
+import random
+
 import methods
 
 
@@ -60,14 +64,76 @@ def encryption_key_builder(target, source, env):
         )
         raise
 
+    # Do not emit the key as a plaintext array. Every byte is written as three
+    # XOR shares that only exist as instruction immediates, in a key-derived
+    # pseudo-random order and through a volatile pointer, so the stores are not
+    # merged into a contiguous 32-byte blob in .data/.rodata.
+    seed = hashlib.sha256(b"grit-encryption-key-shares-v1" + buffer).digest()
+    rng = random.Random(int.from_bytes(seed, "big"))
+    share1 = bytes(rng.randrange(256) for _ in range(32))
+    share2 = bytes(rng.randrange(256) for _ in range(32))
+    share0 = bytes(a ^ b ^ c for a, b, c in zip(buffer, share1, share2))
+    order = list(range(32))
+    rng.shuffle(order)
+    stores = []
+    for index in order:
+        stores.append(
+            "\tp[%d] = uint8_t(0x%02x ^ 0x%02x ^ 0x%02x);\n"
+            % (index, share0[index], share1[index], share2[index])
+        )
+
+    # Hybrid mode: GRIT_WRAPPED_KEY is the per-export pack data key, wrapped with
+    # the user key above (AES-256-ECB decrypt at export time). Encrypting the
+    # wrapped value back with the user key at pack-open rebuilds the data key, so
+    # the key the pack was actually encrypted with never exists in the binary.
+    wrapped_hex = (os.environ.get("GRIT_WRAPPED_KEY") or "").strip().lower()
+    wrapped = None
+    if wrapped_hex:
+        try:
+            wrapped = bytes.fromhex(wrapped_hex)
+            if len(wrapped) != 32:
+                raise ValueError
+        except ValueError:
+            methods.print_error(
+                f'Invalid wrapped PCK data key (expected 64 hexadecimal characters): "{wrapped_hex}".'
+            )
+            raise
+
+    includes = "#include <cstdint>\n"
+    unwrap = ""
+    if wrapped is not None:
+        includes = '#include <cstdint>\n#include <cstring>\n\n#include "core/crypto/crypto_core.h"\n'
+        wrapped_values = ", ".join("0x%02x" % b for b in wrapped)
+        unwrap = f"""
+	// The game is encrypted with a random per-export data key; this is that data
+	// key wrapped with the user key (AES-256-ECB). Encrypting it back rebuilds the
+	// key the pack was written with, so the pack key is never in the binary.
+	static const uint8_t grit_wrapped_pck_key[32] = {{{wrapped_values}}};
+	uint8_t user_key[32];
+	memcpy(user_key, p_key, 32);
+	CryptoCore::AESContext aes;
+	if (aes.set_encode_key(user_key, 256) == OK) {{
+		uint8_t data_key[32];
+		if (aes.encrypt_ecb(grit_wrapped_pck_key, data_key) == OK && aes.encrypt_ecb(grit_wrapped_pck_key + 16, data_key + 16) == OK) {{
+			memcpy(p_key, data_key, 32);
+		}}
+		memset(data_key, 0, sizeof(data_key));
+	}}
+	memset(user_key, 0, sizeof(user_key));
+"""
+
     with methods.generated_wrapper(str(target[0])) as file:
         file.write(
             f"""\
-#include <cstdint>
+{includes}
+// Rebuilds the script/PCK encryption key compiled into this build. The key is
+// split into XOR shares (no plaintext array); in hybrid mode the pack data key
+// is unwrapped here with it. Called only when a pack is opened.
+void script_encryption_key_get(uint8_t *p_key) {{
+	volatile uint8_t *p = p_key;
+{''.join(stores)}{unwrap}}}
 
-uint8_t script_encryption_key[32] = {{
-{methods.format_buffer(buffer, 1)}
-}};"""
+"""
         )
 
 

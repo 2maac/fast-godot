@@ -473,7 +473,9 @@ public:
 
 VARIANT_ENUM_CAST(ScriptLanguage::ScriptNameCasing);
 
-extern uint8_t script_encryption_key[32];
+// Rebuilds the script/PCK encryption key compiled into this build into p_key.
+// The key is not stored as a plaintext array in the binary.
+void script_encryption_key_get(uint8_t p_key[32]);
 
 class PlaceHolderScriptInstance : public ScriptInstance {
 	Object *owner = nullptr;

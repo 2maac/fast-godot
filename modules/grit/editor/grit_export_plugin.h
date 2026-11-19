@@ -38,6 +38,12 @@ class GritExportPlugin : public EditorExportPlugin {
 	// One install attempt per editor session: the export dialog re-validates
 	// often, and a failed build must not be retried on every refresh.
 	mutable bool template_install_tried = false;
+	// Hybrid PCK encryption: the exporter encrypts the pack with a random data key
+	// generated for each export, and the template unwraps it with the user's key.
+	// The GODOT_SCRIPT_ENCRYPTION_KEY override that makes the stock exporter use
+	// the data key is restored in _export_end().
+	String previous_script_key_env;
+	bool script_key_env_injected = false;
 
 	Error _build_template(const String &p_generated_dir, bool p_debug, String &r_template_path);
 	uint64_t customization_hash = 0;

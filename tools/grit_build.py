@@ -291,6 +291,19 @@ def export_main(argv):
             encryption_key = ""
     if encryption_key and (len(encryption_key) != 64 or any(c not in "0123456789abcdef" for c in encryption_key)):
         fail("Grit: invalid script encryption key; expected 64 hexadecimal characters.", 7)
+    # Optional 11th argument: the per-export pack data key wrapped with the user
+    # key. Only this wrapped form is handed to the template build; the pack key
+    # itself never leaves the editor.
+    wrapped_key_file = argv[10] if len(argv) > 10 else ""
+    wrapped_key = ""
+    if wrapped_key_file:
+        try:
+            with open(wrapped_key_file, "r", encoding="utf-8") as wrapped_handle:
+                wrapped_key = wrapped_handle.read().strip().lower()
+        except OSError:
+            wrapped_key = ""
+    if wrapped_key and (len(wrapped_key) != 64 or any(c not in "0123456789abcdef" for c in wrapped_key)):
+        fail("Grit: invalid wrapped PCK data key; expected 64 hexadecimal characters.", 8)
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -443,6 +456,11 @@ def export_main(argv):
         announce("Grit: template will embed the project's script encryption key")
     else:
         child_env.pop("SCRIPT_AES256_ENCRYPTION_KEY", None)
+    if encryption_key and wrapped_key:
+        child_env["GRIT_WRAPPED_KEY"] = wrapped_key
+        announce("Grit: template will unwrap the per-export PCK data key")
+    else:
+        child_env.pop("GRIT_WRAPPED_KEY", None)
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
     mingw_prefix = os.path.join(env.get("toolchain_root") or "", "mingw64")
