@@ -179,7 +179,10 @@ worth mentioning; the template grows by roughly 220 KB.
 The encrypted template also runs an **anti-debug check** before unwrapping
 (macOS `ptrace(PT_DENY_ATTACH)` + `P_TRACED`, Windows `IsDebuggerPresent`, Linux
 `/proc/self/status` `TracerPid`): a game started under a debugger does not get the
-key, so the pack cannot be inspected from memory that way.
+key, so the pack cannot be inspected from memory that way. **HTML5 Fast exports
+are supported too** (same white-box template; the wasm grows by ~215 KB), with one
+caveat: browsers have no equivalent anti-debug hook, so a web build relies on the
+white-box tables and wrapped key alone — web is inherently the weakest client.
 
 Caveat: this is our own white-box construction, not a peer-reviewed one. It
 raises extraction far above "read the array/immediates" (automated tools that
