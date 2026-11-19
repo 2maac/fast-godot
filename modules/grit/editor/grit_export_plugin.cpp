@@ -508,15 +508,23 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	bool cancel_requested = false;
 	while (OS::get_singleton()->is_process_running(pid)) {
 		String current_line;
-		Ref<FileAccess> log_file = FileAccess::open(log_path, FileAccess::READ);
-		if (log_file.is_valid()) {
-			const PackedStringArray lines = log_file->get_as_text().split("\n");
-			lines_seen = lines.size();
-			for (int i = lines.size() - 1; i >= 0; i--) {
-				const String line = lines[i].strip_edges();
-				if (!line.is_empty()) {
-					current_line = line.left(120);
-					break;
+		// The read handle must not outlive the read: on Windows a reader without
+		// share-write denies the helper's open of the same log, and the helper only
+		// retries for a few seconds. Keeping this in its own scope releases the
+		// handle before the delay below, which leaves the helper a window to open
+		// the file (a helper that lost the startup race otherwise fails with
+		// "Permission denied" before it even reads build_env.json).
+		{
+			Ref<FileAccess> log_file = FileAccess::open(log_path, FileAccess::READ);
+			if (log_file.is_valid()) {
+				const PackedStringArray lines = log_file->get_as_text().split("\n");
+				lines_seen = lines.size();
+				for (int i = lines.size() - 1; i >= 0; i--) {
+					const String line = lines[i].strip_edges();
+					if (!line.is_empty()) {
+						current_line = line.left(120);
+						break;
+					}
 				}
 			}
 		}

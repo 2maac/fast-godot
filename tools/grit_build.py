@@ -395,7 +395,15 @@ def export_main(argv):
             config = os.path.join(emsdk, ".emscripten")
             if os.path.isfile(config):
                 child_env["EM_CONFIG"] = config
-            child_env["PATH"] = os.pathsep.join([em] + nodes + [child_env.get("PATH", "")])
+            # The emcc launcher runs Emscripten through Python. macOS and Linux
+            # usually have an interpreter on PATH; a Windows machine supplied only
+            # with a toolchain bundle does not, so point the launcher at the
+            # toolchain's own interpreter instead of the "python" app alias.
+            python = toolchain_python(toolchain_root)
+            child_env["EMSDK_PYTHON"] = python
+            child_env["PATH"] = os.pathsep.join(
+                [em] + nodes + [os.path.dirname(python), child_env.get("PATH", "")]
+            )
         else:
             announce("Grit: no emsdk in the toolchain folder; web build relies on PATH")
 
