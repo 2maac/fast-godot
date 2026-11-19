@@ -166,11 +166,21 @@ stored in the project's `.godot/export_credentials.cfg`, never in
 `export_presets.cfg`. `GODOT_SCRIPT_ENCRYPTION_KEY` overrides the preset key for
 CI/command-line exports, matching the engine's behaviour.
 
-The key is part of the template's build identity (`out/grit-profiles`), so
-changing it rebuilds the template instead of reusing one compiled with another
-key; a missing or non-hex key fails the export before anything is built, and a
-toolchain whose build helper predates encryption support is refused (re-download
-the build tools with this editor to get the updated 4.7.2 source).
+The export uses a **random 256-bit data key per export**; the pack is encrypted
+with that data key, and the template embeds only the data key *wrapped* with your
+key (AES-256-ECB). When the pack is opened the template unwraps the data key, so
+the key the pack actually uses never appears in the binary — only the wrapped
+value does. Your key itself is not stored as an array either: it is rebuilt from
+per-key XOR share immediates.
+
+Caveats (prototype): someone with the sources can still rebuild your key from
+those immediates (or dump the unwrapped data key at runtime); the next step is to
+replace the share step with a white-box implementation so the user key is not
+recoverable from the code. The user key is part of the template's build identity
+(`out/grit-profiles`) so changing it rebuilds the template; a missing or non-hex
+key fails the export before anything is built, and a toolchain whose build helper
+predates encryption support is refused (re-download the build tools with this
+editor to get the updated 4.7.2 source).
 
 ## Building the editor itself
 
