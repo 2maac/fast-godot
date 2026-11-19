@@ -6,12 +6,10 @@ class Button;
 class EditorFileDialog;
 class LineEdit;
 
-// A settings row that is a path plus a button to pick an existing folder. The same
-// row serves the source override and the toolchain; the mode decides the text.
+// A settings row that is a path plus a button to pick an existing folder.
 class GritPathEditor : public EditorProperty {
 	GDCLASS(GritPathEditor, EditorProperty);
 
-	bool toolchain = false;
 	LineEdit *path_edit = nullptr;
 	Button *browse_button = nullptr;
 	EditorFileDialog *browse_dialog = nullptr;
@@ -26,7 +24,7 @@ protected:
 	void update_property() override;
 
 public:
-	GritPathEditor(bool p_toolchain, const String &p_label);
+	GritPathEditor(const String &p_label);
 };
 
 class GritSettingsPlugin : public EditorInspectorPlugin {

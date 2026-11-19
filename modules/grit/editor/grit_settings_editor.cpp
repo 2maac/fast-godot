@@ -12,8 +12,7 @@
 #include "scene/gui/button.h"
 #include "scene/gui/line_edit.h"
 
-GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
-	toolchain = p_toolchain;
+GritPathEditor::GritPathEditor(const String &p_label) {
 	set_label(p_label);
 
 	HBoxContainer *row = memnew(HBoxContainer);
@@ -21,7 +20,7 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 
 	path_edit = memnew(LineEdit);
 	path_edit->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	path_edit->set_placeholder(toolchain ? TTR("Folder containing the Fast_Godot toolchain") : TTR("Optional source checkout (the toolchain normally carries the source)"));
+	path_edit->set_placeholder(TTR("Folder containing the Fast_Godot toolchain"));
 	path_edit->connect("text_submitted", callable_mp(this, &GritPathEditor::_text_submitted));
 	path_edit->connect("text_changed", callable_mp(this, &GritPathEditor::_text_changed));
 	path_edit->connect("focus_exited", callable_mp(this, &GritPathEditor::_focus_exited));
@@ -36,7 +35,7 @@ GritPathEditor::GritPathEditor(bool p_toolchain, const String &p_label) {
 	browse_dialog = memnew(EditorFileDialog);
 	browse_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_DIR);
 	browse_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
-	browse_dialog->set_title(toolchain ? TTR("Choose the toolchain folder") : TTR("Choose the Fast_Godot source folder"));
+	browse_dialog->set_title(TTR("Choose the toolchain folder"));
 	browse_dialog->connect("dir_selected", callable_mp(this, &GritPathEditor::_browse_chosen));
 	add_child(browse_dialog);
 }
@@ -84,18 +83,11 @@ bool GritSettingsPlugin::can_handle(Object *p_object) {
 bool GritSettingsPlugin::parse_property(Object *p_object, const Variant::Type p_type, const String &p_path, const PropertyHint p_hint, const String &p_hint_text, const BitField<PropertyUsageFlags> p_usage, const bool p_wide) {
 	// The settings dialog hands editors a path relative to the selected section, so
 	// match the full name or the trailing segment of it.
-	const bool source = p_path == GritProvisioner::SETTING_SOURCE_PATH ||
-			p_path == "source_code_root_folder_path" ||
-			p_path.ends_with("/source_code_root_folder_path");
 	const bool toolchain = p_path == GritProvisioner::SETTING_TOOLCHAIN_ROOT ||
 			p_path == "toolchain_root_folder_path" ||
 			p_path.ends_with("/toolchain_root_folder_path");
-	if (source) {
-		add_property_editor(p_path, memnew(GritPathEditor(false, TTR("Source Code Root Folder Path"))), false, TTR("Source Code Root Folder Path"));
-		return true;
-	}
 	if (toolchain) {
-		add_property_editor(p_path, memnew(GritPathEditor(true, TTR("ToolChain Root Folder Path"))), false, TTR("ToolChain Root Folder Path"));
+		add_property_editor(p_path, memnew(GritPathEditor(TTR("ToolChain Root Folder Path"))), false, TTR("ToolChain Root Folder Path"));
 		return true;
 	}
 	return false;

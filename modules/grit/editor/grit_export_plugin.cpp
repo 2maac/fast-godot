@@ -156,14 +156,6 @@ static bool _is_inside(const String &p_path, const String &p_root) {
 // must already contain the built engine objects (bin/obj) for the requested
 // target; the script only compiles the generated sources and relinks.
 String GritExportPlugin::_resolve_engine_root() const {
-	// The source folder chosen in Editor Settings > Grit > Settings is read fresh
-	// every time: it can change mid-session and must win over anything resolved
-	// earlier (a walk-up hit or a fetched tree), or the new path would only take
-	// effect after restarting the editor.
-	const String configured = GritProvisioner::configured_source();
-	if (!configured.is_empty()) {
-		return configured;
-	}
 	if (!resolved_engine_root.is_empty()) {
 		return resolved_engine_root;
 	}
@@ -345,7 +337,7 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path) {
 	const String engine_root = _resolve_engine_root();
 	if (engine_root.is_empty()) {
-		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Install the build tools from the export window (the toolchain carries the engine source), or set Editor Settings > Grit > Settings > Source Code Root Folder Path to a checkout, then export again.", OS::get_singleton()->get_executable_path()));
+		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Install the build tools from the export window (the toolchain carries the engine source), or run an editor built from a checkout, then export again.", OS::get_singleton()->get_executable_path()));
 		return ERR_UNCONFIGURED;
 	}
 	const String script = engine_root.path_join("tools/grit_build.py");
@@ -721,7 +713,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		const String project_root = _absolute_dir(ProjectSettings::get_singleton()->globalize_path("res://"));
 		const String engine_root = _absolute_dir(_resolve_engine_root());
 		if (!engine_root.is_empty() && _is_inside(engine_root, project_root)) {
-			ERR_PRINT(vformat("Grit: the Fast_Godot source tree is inside the project (\"%s\"). Move it out of the project folder and set Editor Settings > Grit > Settings > Source Code Root Folder Path to the new location; otherwise its scripts are scanned, compiled and packed as game content.", engine_root));
+			ERR_PRINT(vformat("Grit: the Fast_Godot source tree is inside the project (\"%s\"). Move the checkout (or the toolchain) out of the project folder; otherwise its scripts are scanned, compiled and packed as game content.", engine_root));
 			return ERR_INVALID_DATA;
 		}
 		const String toolchain_root = _absolute_dir(GritProvisioner::configured_toolchain());
@@ -738,7 +730,7 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 			for (const String &name : project_dir->get_directories()) {
 				const String candidate = String("res://") + name;
 				if (FileAccess::exists(candidate.path_join("SConstruct")) && FileAccess::exists(candidate.path_join("tools").path_join("grit_build.py"))) {
-					ERR_PRINT(vformat("Grit: %s is a Fast_Godot source tree inside the project. Move it out (the Source Code Root Folder Path may point elsewhere, but every script under res:// is treated as project content), then export again.", candidate));
+					ERR_PRINT(vformat("Grit: %s is a Fast_Godot source tree inside the project. Move the checkout (or the toolchain) out of the project folder; every script under res:// is treated as project content.", candidate));
 					return ERR_INVALID_DATA;
 				}
 			}
@@ -759,7 +751,6 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		// does not exist here.
 		return OK;
 	}
-	const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
 	_apply_default_bundle_identifier(p_preset);
 	if (p_preset.is_valid()) {
 		const Ref<EditorExportPlatform> clear_platform = platform_preset.is_valid() ? platform_preset->get_platform() : Ref<EditorExportPlatform>();
@@ -767,9 +758,8 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 		for (const char *key : { "custom_template/debug", "custom_template/release" }) {
 			// Native Fast platforms (Linux/Windows) resolve their template themselves;
 			// a stale custom_template makes the exporter reject the file's arch before
-			// the freshly built template is used. Legacy managed paths are cleared for
-			// every platform, macOS included.
-			if (clear_fast || String(p_preset->get(key)).begins_with(managed_templates)) {
+			// the freshly built template is used.
+			if (clear_fast) {
 				p_preset->set(key, "");
 			}
 		}
@@ -785,21 +775,10 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 
 
 	const Ref<EditorExportPreset> preset = get_export_preset();
-	const bool compiled = _is_fast_platform(preset.is_valid() ? preset->get_platform() : Ref<EditorExportPlatform>());
-
-	// VM mode: stock export, no code generation at all. Drop a compiled template an
-	// older build left behind so the stock template is genuinely what runs.
-	if (!compiled) {
+	if (!_is_fast_platform(preset.is_valid() ? preset->get_platform() : Ref<EditorExportPlatform>())) {
+		// This fork registers only Fast platforms; an extension-provided platform
+		// simply gets no Grit customization.
 		stripped_sources.clear();
-		const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
-		if (preset.is_valid()) {
-			for (const char *key : { "custom_template/debug", "custom_template/release" }) {
-				if (String(preset->get(key)).begins_with(managed_templates)) {
-					preset->set(key, "");
-					WARN_PRINT(vformat("Grit: \"%s\" pointed at a compiled template left by an earlier export; using the stock template.", key));
-				}
-			}
-		}
 		return;
 	}
 
@@ -816,8 +795,9 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 	const Error error = _prepare_compiled(preset, p_debug);
 	if (error != OK) {
 		if (preset.is_valid()) {
-			const String managed_templates = GritProvisioner::configured_source().path_join("bin/grit_templates");
-			preset->set(p_debug ? "custom_template/debug" : "custom_template/release", managed_templates.path_join(".build-did-not-complete"));
+			// A path that cannot exist: makes the platform refuse the export instead of
+			// packing a game against a stale template.
+			preset->set(p_debug ? "custom_template/debug" : "custom_template/release", "res://.grit-build-did-not-complete");
 			ERR_PRINT("Grit: compiled build did not complete; the export is abandoned. Run it again (or switch the toolbar to VM for a normal export).");
 		}
 		return;

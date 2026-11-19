@@ -5,17 +5,13 @@
 
 // Editor-side plumbing for compiling a project into an export template.
 //
-// Two places, deliberately:
-//   Editor Settings > Grit > Toolchain    the toolchain folder (grit/toolchain/root)
-//   Project Settings > Grit               engine_root, enabled, generated_directory
-//
-// The toolchain folder is per machine, not per project, which is why it is an editor
-// setting; the rest describe the project.
+// The toolchain folder (Editor Settings > Grit > Toolchain) is per machine and
+// self-contained: it carries the compilers and the engine source tree the export
+// templates are built from. A checkout next to the editor is only used for a
+// staged/dev build, which has to build against its own tree.
 class GritProvisioner {
 public:
 	static constexpr const char *SETTING_TOOLCHAIN_ROOT = "grit/settings/toolchain_root_folder_path";
-	// Engine source folder, fetched with the "Fetch Source" button or chosen by hand.
-	static constexpr const char *SETTING_SOURCE_PATH = "grit/settings/source_code_root_folder_path";
 
 	// Registers grit/toolchain/root, which the export window and the build read.
 	// Called once when the editor starts.
@@ -37,12 +33,9 @@ public:
 	// new toolchain and deleted from the cache.
 	static String ensure_engine_for_toolchain(String *r_error = nullptr);
 
-	// The source folder chosen in Editor Settings, when it holds a tree.
-	static String configured_source();
-
-	// The engine source tree a toolchain bundle carries (<toolchain>/engine/...),
-	// or empty when the toolchain has none. Exports use that copy instead of
-	// downloading the archive again.
+	// The engine source tree the toolchain declares in its toolchain.json
+	// ("engine": "engine/<revision>"), or empty when it declares none or the tree
+	// is missing.
 	static String toolchain_engine();
 
 	// The toolchain folder chosen in the editor settings, or empty when unusable.
@@ -58,7 +51,8 @@ public:
 	// progress dialog, then points the toolchain setting at p_dest.
 	static bool download_toolchain(const String &p_dest, String *r_error = nullptr);
 
-	// The commit this editor was built from; the engine source is fetched for it.
+	// The commit this editor was built from; the one-time toolchain bootstrap
+	// downloads that revision's source so the downloader has a tree to run from.
 	static String engine_commit();
 
 	// The interpreter that runs tools/grit_build.py.

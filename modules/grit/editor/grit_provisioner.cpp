@@ -4,38 +4,31 @@
 #include "core/crypto/hashing_context.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/io/json.h"
 #include "core/os/os.h"
 #include "core/version.h"
 #include "editor/editor_node.h"
 #include "editor/settings/editor_settings.h"
 #include "servers/display/display_server.h"
 
-// Everything this module needs comes from two project settings:
-//   grit/export/toolchain_root  an unzipped Fast_Godot_Toolchain_* folder
-//   grit/export/engine_root     a local Fast_Godot checkout (offline alternative)
-// The engine source is otherwise fetched for this editor's own commit, which is what
-// keeps a toolchain folder from ever going stale.
+// The toolchain folder is per machine and self-contained: its toolchain.json lists
+// the components, including the engine source tree the templates build from. A
+// checkout next to the editor is used instead only for a staged/dev build, which
+// must build against its own tree.
 
 void GritProvisioner::register_settings() {
 	EditorSettings *settings = EditorSettings::get_singleton();
 	if (!settings) {
 		return;
 	}
-	// The toolchain folder, and the source folder. Both are per machine, both start
-	// empty, and neither is ever filled in by the editor unless the user asks.
+	// The toolchain folder is per machine, starts empty, and is only filled in by
+	// the user or by Download Build Tools.
 	if (settings->has_setting("grit/settings/toolchain_root")) {
 		const String old = String(settings->get_setting("grit/settings/toolchain_root")).strip_edges();
 		if (!old.is_empty()) {
 			settings->set_setting(GritProvisioner::SETTING_TOOLCHAIN_ROOT, old);
 		}
 		settings->erase("grit/settings/toolchain_root");
-	}
-	if (settings->has_setting("grit/settings/source_path")) {
-		const String old = String(settings->get_setting("grit/settings/source_path")).strip_edges();
-		if (!old.is_empty()) {
-			settings->set_setting(GritProvisioner::SETTING_SOURCE_PATH, old);
-		}
-		settings->erase("grit/settings/source_path");
 	}
 	if (settings->has_setting("grit/toolchain/root")) {
 		// Carry a value over from the key used before both lived under Grit > Settings.
@@ -47,8 +40,6 @@ void GritProvisioner::register_settings() {
 	}
 	EDITOR_DEF(GritProvisioner::SETTING_TOOLCHAIN_ROOT, "");
 	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_TOOLCHAIN_ROOT, PROPERTY_HINT_DIR));
-	EDITOR_DEF(GritProvisioner::SETTING_SOURCE_PATH, "");
-	settings->add_property_hint(PropertyInfo(Variant::STRING, GritProvisioner::SETTING_SOURCE_PATH, PROPERTY_HINT_DIR));
 }
 
 void GritProvisioner::purge_obsolete_settings() {
@@ -59,10 +50,8 @@ void GritProvisioner::purge_obsolete_settings() {
 		Vector<String> stale;
 		for (const PropertyInfo &prop : props) {
 			const String name = prop.name;
-			// Anything grit-scoped that is not one of the two settings we keep.
-			if (name.begins_with("grit/") &&
-					name != GritProvisioner::SETTING_SOURCE_PATH &&
-					name != GritProvisioner::SETTING_TOOLCHAIN_ROOT) {
+			// Anything grit-scoped that is not the toolchain setting we keep.
+			if (name.begins_with("grit/") && name != GritProvisioner::SETTING_TOOLCHAIN_ROOT) {
 				stale.push_back(name);
 			}
 		}
@@ -90,14 +79,6 @@ void GritProvisioner::purge_obsolete_settings() {
 	}
 }
 
-static String _source_path() {
-	EditorSettings *settings = EditorSettings::get_singleton();
-	if (!settings || !settings->has_setting(GritProvisioner::SETTING_SOURCE_PATH)) {
-		return String();
-	}
-	return String(settings->get_setting(GritProvisioner::SETTING_SOURCE_PATH)).strip_edges();
-}
-
 static String _toolchain_root() {
 	EditorSettings *settings = EditorSettings::get_singleton();
 	if (!settings || !settings->has_setting(GritProvisioner::SETTING_TOOLCHAIN_ROOT)) {
@@ -107,11 +88,11 @@ static String _toolchain_root() {
 }
 
 static bool _toolchain_usable(const String &p_root) {
-	// The engine is not part of a bundle: it is fetched for this build's commit.
 	return !p_root.is_empty() && FileAccess::exists(p_root.path_join("toolchain.json"));
 }
 
-// The commit this editor was built from; the engine source is fetched for exactly it.
+// The commit this editor was built from; the one-time toolchain bootstrap fetches
+// exactly this revision so the downloader runs against a matching tree.
 String GritProvisioner::engine_commit() {
 	const String hash = String(VERSION_HASH);
 	if (hash.is_empty() || hash == "unknown") {
@@ -126,15 +107,6 @@ String GritProvisioner::engine_commit() {
 // older editor a different engine revision.
 static String _engine_archive_url(const String &p_commit) {
 	return vformat("https://github.com/2maac/fast-godot/archive/%s.zip", p_commit);
-}
-
-// Where a fetched engine tree lives: inside the toolchain folder when there is one,
-// so the user's folder stays self-contained, otherwise in the editor's data dir.
-static String _engine_root_dir() {
-	const String root = _toolchain_root();
-	const String parent = _toolchain_usable(root) ? root : OS::get_singleton()->get_data_path().path_join("grit-tools");
-	const String commit = GritProvisioner::engine_commit();
-	return parent.path_join("engine").path_join(commit.is_empty() ? String("unknown") : commit);
 }
 
 // The tree the editor was built from (a source checkout/staged build): use it
@@ -156,27 +128,10 @@ static bool _engine_present(const String &p_dir) {
 			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
 }
 
-// The fetched archive unpacks to <dir>/fast-godot-<commit>/, so a cached extraction
-// sits one level below <toolchain>/engine/<commit>. Looking only at the top level
-// made every export download and unpack the source again.
-static String _engine_tree_at(const String &p_dir) {
-	if (_engine_present(p_dir)) {
-		return p_dir;
-	}
-	Ref<DirAccess> dir = DirAccess::open(p_dir);
-	if (dir.is_null()) {
-		return String();
-	}
-	String found;
-	dir->list_dir_begin();
-	for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
-		if (dir->current_is_dir() && _engine_present(p_dir.path_join(name))) {
-			found = p_dir.path_join(name);
-			break;
-		}
-	}
-	dir->list_dir_end();
-	return found;
+// Where the one-time toolchain bootstrap unpacks the source archive. It is only
+// needed to run the downloader and is deleted when the download finishes.
+static String _bootstrap_engine_dir(const String &p_commit) {
+	return OS::get_singleton()->get_cache_path().path_join("grit-bootstrap").path_join(p_commit.is_empty() ? String("unknown") : p_commit);
 }
 
 // tar handles .tar and (via bsdtar) .zip on Windows and macOS; it is the fallback
@@ -328,14 +283,25 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	if (engine.is_empty()) {
 		return false;
 	}
+	// A bootstrap checkout exists only to run the downloader; the new toolchain
+	// carries its own copy, so it is removed when the download ends either way.
+	const String bootstrap_root = OS::get_singleton()->get_cache_path().path_join("grit-bootstrap");
+	const bool bootstrap = engine.begins_with(bootstrap_root);
+	auto cleanup_bootstrap = [&]() {
+		if (bootstrap) {
+			DirAccess::remove_absolute(engine);
+		}
+	};
 	const bool windows = OS::get_singleton()->get_name() == "Windows";
 	const String script = engine.path_join("tools").path_join("toolchain").path_join(windows ? "download_toolchain.cmd" : "download_toolchain.sh");
 	if (!FileAccess::exists(script)) {
 		error = vformat("the toolchain downloader is missing from \"%s\".", engine);
+		cleanup_bootstrap();
 		return false;
 	}
 	if (DirAccess::make_dir_recursive_absolute(p_dest) != OK) {
 		error = vformat("could not create \"%s\".", p_dest);
+		cleanup_bootstrap();
 		return false;
 	}
 	const String progress_path = OS::get_singleton()->get_cache_path().path_join("grit_toolchain_download.txt");
@@ -358,6 +324,7 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	args.push_back(progress_path);
 	if (OS::get_singleton()->create_process(program, args, &pid) != OK) {
 		error = "could not start the toolchain downloader.";
+		cleanup_bootstrap();
 		return false;
 	}
 
@@ -393,6 +360,7 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 		if (progress.step(state, percent)) {
 			OS::get_singleton()->kill(pid);
 			error = "the download was cancelled";
+			cleanup_bootstrap();
 			return false;
 		}
 		if (DisplayServer::get_singleton()) {
@@ -406,23 +374,14 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 		if (error.is_empty()) {
 			error = "the downloader finished but the toolchain is incomplete.";
 		}
+		cleanup_bootstrap();
 		return false;
 	}
-	// A bootstrap checkout was only needed to run the downloader; the new toolchain
-	// carries its own copy, so the cache of it can go.
-	const String cache_root = OS::get_singleton()->get_data_path().path_join("grit-tools");
-	if (engine.begins_with(cache_root)) {
-		DirAccess::remove_absolute(engine);
-	}
+	cleanup_bootstrap();
 	EditorSettings *settings = EditorSettings::get_singleton();
 	settings->set_setting(SETTING_TOOLCHAIN_ROOT, p_dest);
 	settings->save();
 	return true;
-}
-
-String GritProvisioner::configured_source() {
-	const String chosen = _source_path();
-	return _engine_present(chosen) ? chosen : String();
 }
 
 String GritProvisioner::configured_toolchain() {
@@ -449,35 +408,39 @@ String GritProvisioner::configured_toolchain() {
 }
 
 String GritProvisioner::toolchain_engine() {
-	// A toolchain built by tools/toolchain/download_toolchain.* ships the engine
-	// source it was built from, so an export never has to download the archive
-	// again. Prefer the tree for this editor's revision, then any other tree under
-	// <toolchain>/engine (the download cache uses <engine>/<commit>/<tree>).
+	// The toolchain declares the one engine tree it carries. Do not go looking for
+	// other trees under engine/: a second copy could only be a leftover.
 	const String root = configured_toolchain();
 	if (root.is_empty()) {
 		return String();
 	}
-	const String engine = root.path_join("engine");
-	const String commit = engine_commit();
-	if (!commit.is_empty()) {
-		const String exact = _engine_tree_at(engine.path_join(commit));
-		if (!exact.is_empty()) {
-			return exact;
-		}
+	Ref<FileAccess> file = FileAccess::open(root.path_join("toolchain.json"), FileAccess::READ);
+	if (file.is_null()) {
+		return String();
 	}
-	return _engine_tree_at(engine);
+	const Variant parsed = JSON::parse_string(file->get_as_text());
+	file->close();
+	if (parsed.get_type() != Variant::DICTIONARY) {
+		return String();
+	}
+	const Dictionary data = parsed;
+	if (!data.has("engine")) {
+		return String();
+	}
+	const String relative = String(data["engine"]).strip_edges();
+	if (relative.is_empty()) {
+		return String();
+	}
+	const String tree = relative.is_relative_path() ? root.path_join(relative) : relative;
+	return _engine_present(tree) ? tree : String();
 }
 
 String GritProvisioner::ensure_engine(String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	// A configured folder and a checkout next to the editor describe the tree the
-	// running build belongs to; otherwise the toolchain is the source of truth.
-	const String configured = configured_source();
-	if (!configured.is_empty()) {
-		return configured;
-	}
+	// A checkout next to the editor is the tree the running build belongs to;
+	// otherwise the toolchain is the source of truth.
 	const String local = _local_engine_tree();
 	if (!local.is_empty()) {
 		print_line("Grit: using the engine source next to the editor at " + local);
@@ -494,7 +457,7 @@ String GritProvisioner::ensure_engine(String *r_error) {
 	if (toolchain.is_empty()) {
 		error = "no Fast_Godot build tools are installed. Open the export window and press Download Build Tools; the toolchain carries the engine source, so an export never downloads anything.";
 	} else {
-		error = vformat("the toolchain at \"%s\" has no engine source. Use a toolchain built by tools/toolchain/download_toolchain.{sh,cmd} (they copy the engine source in), or set Editor Settings > Grit > Settings > Source Code Root Folder Path to a checkout.", toolchain);
+		error = vformat("the toolchain at \"%s\" has no engine source: toolchain.json does not declare an \"engine\" tree, or it is missing. Use a toolchain built by tools/toolchain/download_toolchain.{sh,cmd}, which copy the engine source in.", toolchain);
 	}
 	return String();
 }
@@ -513,7 +476,7 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 
 	const String commit = engine_commit();
 	if (commit.is_empty()) {
-		error = "this editor does not report its revision, so the engine source cannot be matched to it. Choose a source folder in Editor Settings > Grit > Settings.";
+		error = "this editor does not report its revision, so the engine source cannot be matched to it. Build the toolchain on a machine with a Fast_Godot checkout.";
 		return String();
 	}
 	const String url = _engine_archive_url(commit);
@@ -524,11 +487,11 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 	print_line("Grit: downloading the engine source for " + commit + " from " + url);
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
-		error = vformat("could not download the engine source for %s from %s (%s). If this machine has no internet access, choose a local source folder in Editor Settings > Grit > Settings instead.", commit, url, download_error);
+		error = vformat("could not download the engine source for %s from %s (%s). This is only needed while creating the toolchain; without network, build the toolchain on a machine that has a checkout.", commit, url, download_error);
 		return String();
 	}
 
-	const String dest = _engine_root_dir();
+	const String dest = _bootstrap_engine_dir(commit);
 	DirAccess::remove_absolute(dest);
 	DirAccess::make_dir_recursive_absolute(dest);
 
