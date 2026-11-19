@@ -8,12 +8,13 @@
 # Progress is reported on stdout as "GRIT_PROGRESS <percent> <label>", errors as
 # "GRIT_ERROR <text>", and success as "GRIT_DONE <path>"; the editor reads those.
 #
-# usage: download_toolchain.sh [dest]
+# usage: download_toolchain.sh [dest] [progress-file] [engine-revision]
 set -e
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 dest=${1:-${HOME:-/tmp}/fast_godot_toolchain}
 prog=${2:-}
+eng_rev=${3:-}
 os=$(uname -s)
 arch=$(uname -m)
 
@@ -132,6 +133,11 @@ if command -v git >/dev/null 2>&1; then
 	if [ -n "$rev" ]; then
 		engine_name=$rev
 	fi
+fi
+# A tree unpacked from a GitHub archive has no .git; the editor passes the
+# revision explicitly so the engine folder keeps the commit name.
+if [ "$engine_name" = "4.7.2-stable" ] && [ -n "$eng_rev" ]; then
+	engine_name=$eng_rev
 fi
 engine_dest="$dest/engine/$engine_name"
 rm -rf "$engine_dest"

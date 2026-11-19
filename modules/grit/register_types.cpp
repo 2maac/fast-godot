@@ -54,6 +54,9 @@ static void grit_editor_init() {
 	if (!OS::get_singleton()->get_environment("GRIT_PROBE_NOW").is_empty()) {
 		callable_mp_static(&GritProvisioner::run_probe).call_deferred();
 	}
+	if (!OS::get_singleton()->get_environment("GRIT_DOWNLOAD_NOW").is_empty()) {
+		callable_mp_static(&GritProvisioner::run_download_probe).call_deferred();
+	}
 	print_line(vformat("Grit: Fast export tools active (build %s).", String(VERSION_HASH).is_empty() ? String(VERSION_FULL_BUILD) : vformat("%s.%s", VERSION_FULL_BUILD, VERSION_HASH)));
 	for (const Ref<EditorExportPlugin> &plugin : other_plugins) {
 		editor_export->add_export_plugin(plugin);

@@ -76,6 +76,9 @@ where git >nul 2>nul
 if not errorlevel 1 (
   for /f "delims=" %%C in ('git -C "%ENGINE_ROOT%" rev-parse --short HEAD 2^>nul') do set "ENGINE_NAME=%%C"
 )
+rem A tree unpacked from a GitHub archive has no .git; the editor passes the
+rem revision explicitly so the engine folder keeps the commit name.
+if "%ENGINE_NAME%"=="4.7.2-stable" if defined ENGINE_REV set "ENGINE_NAME=%ENGINE_REV%"
 set "ENGINE_DEST=%DEST%\engine\%ENGINE_NAME%"
 if exist "%ENGINE_DEST%" rmdir /s /q "%ENGINE_DEST%"
 mkdir "%ENGINE_DEST%"

@@ -109,20 +109,6 @@ static String _engine_archive_url(const String &p_commit) {
 	return vformat("https://github.com/2maac/fast-godot/archive/%s.zip", p_commit);
 }
 
-// The tree the editor was built from (a source checkout/staged build). Only used
-// by the toolchain bootstrap, so a rebuilt editor produces a toolchain carrying
-// its own source; exports never use it.
-static String _local_engine_tree() {
-	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
-	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
-		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools").path_join("grit_build.py"))) {
-			return dir;
-		}
-		dir = dir.get_base_dir();
-	}
-	return String();
-}
-
 static bool _engine_present(const String &p_dir) {
 	return FileAccess::exists(p_dir.path_join("SConstruct")) &&
 			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
@@ -323,6 +309,10 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	}
 	args.push_back(p_dest);
 	args.push_back(progress_path);
+	// The downloader names <dest>/engine/<revision> from git when it runs in a
+	// checkout; the bootstrap tree is unpacked from an archive and has no .git, so
+	// hand it the revision instead (a reused toolchain keeps its existing name).
+	args.push_back(bootstrap ? engine_commit() : engine.get_file());
 	if (OS::get_singleton()->create_process(program, args, &pid) != OK) {
 		error = "could not start the toolchain downloader.";
 		cleanup_bootstrap();
@@ -470,15 +460,9 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	// Only a toolchain download needs a checkout to run the downloader from; the
-	// resulting bundle carries it, and afterwards ensure_engine() never downloads.
-	// Prefer the tree this editor was built from so a freshly rebuilt editor gets
-	// a toolchain with matching source, then the current toolchain's copy.
-	const String local = _local_engine_tree();
-	if (!local.is_empty()) {
-		print_line("Grit: Download Build Tools: the new toolchain will copy the engine source from the editor's checkout at " + local + ".");
-		return local;
-	}
+	// Creating a toolchain never reads an editor checkout or leaves anything in
+	// one: it reuses the source of the current toolchain when there is one,
+	// otherwise it downloads the engine source for this editor's revision.
 	const String existing = toolchain_engine();
 	if (!existing.is_empty()) {
 		print_line("Grit: Download Build Tools: the new toolchain will copy the engine source of the current toolchain at " + existing + ".");
@@ -496,7 +480,7 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 	if (OS::get_singleton()->get_name() == "Windows") {
 		archive = archive.replace("/", "\\");
 	}
-	print_line("Grit: Download Build Tools: no checkout found, downloading the engine source for " + commit + " from " + url + ".");
+	print_line("Grit: Download Build Tools: downloading the engine source for " + commit + " from " + url + ".");
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
 		error = vformat("could not download the engine source for %s from %s (%s). This is only needed while creating the toolchain; without network, build the toolchain on a machine that has a checkout.", commit, url, download_error);
@@ -642,6 +626,21 @@ void GritProvisioner::write_build_env(const String &p_engine_root) {
 	json += "]\n}\n";
 	file->store_string(json);
 	file->close();
+}
+
+void GritProvisioner::run_download_probe() {
+	static bool ran = false;
+	if (ran) {
+		return;
+	}
+	ran = true;
+	String error;
+	print_line("Grit: download probe: creating the toolchain in " + home_toolchain_folder() + ".");
+	if (download_toolchain(home_toolchain_folder(), &error)) {
+		print_line("Grit: download probe: toolchain ready at " + home_toolchain_folder() + ".");
+	} else {
+		print_line("Grit: download probe failed: " + error);
+	}
 }
 
 void GritProvisioner::run_probe() {

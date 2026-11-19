@@ -64,4 +64,8 @@ public:
 
 	// Runs at editor start and when the export window opens.
 	static void run_probe();
+
+	// Debug aid: GRIT_DOWNLOAD_NOW=1 creates the toolchain at startup, so the
+	// bootstrap can be exercised headlessly.
+	static void run_download_probe();
 };
