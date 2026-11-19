@@ -31,7 +31,7 @@ public:
 	// disk it downloads this editor's source archive so the toolchain downloader
 	// (which lives in the source tree) can run. That tree is then copied into the
 	// new toolchain and deleted from the cache.
-	static String ensure_engine_for_toolchain(String *r_error = nullptr);
+	static String ensure_engine_for_toolchain(const String &p_dest, String *r_error = nullptr);
 
 	// The engine source tree the toolchain declares in its toolchain.json
 	// ("engine": "engine/<revision>"), or empty when it declares none or the tree

@@ -114,10 +114,22 @@ static bool _engine_present(const String &p_dir) {
 			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
 }
 
-// Where the one-time toolchain bootstrap unpacks the source archive. It is only
-// needed to run the downloader and is deleted when the download finishes.
-static String _bootstrap_engine_dir(const String &p_commit) {
-	return OS::get_singleton()->get_cache_path().path_join("grit-bootstrap").path_join(p_commit.is_empty() ? String("unknown") : p_commit);
+// Where the one-time toolchain bootstrap unpacks the source archive. It lives
+// inside the toolchain folder being created, so a build never needs anything
+// outside the toolchain, and it is deleted once the download finishes.
+static String _bootstrap_engine_dir(const String &p_dest, const String &p_commit) {
+	return p_dest.path_join(".bootstrap").path_join(p_commit.is_empty() ? String("unknown") : p_commit);
+}
+
+// DirAccess::remove_absolute() removes a file or an empty directory; a populated
+// tree (the unpacked engine source is thousands of files) needs its contents
+// erased first.
+static void _remove_tree(const String &p_path) {
+	Ref<DirAccess> dir = DirAccess::open(p_path);
+	if (dir.is_valid()) {
+		dir->erase_contents_recursive();
+	}
+	DirAccess::remove_absolute(p_path);
 }
 
 // tar handles .tar and (via bsdtar) .zip on Windows and macOS; it is the fallback
@@ -266,17 +278,18 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	String &error = r_error ? *r_error : local_error;
 
 	print_line("Grit: Download Build Tools: creating the toolchain in " + p_dest + ".");
-	const String engine = ensure_engine_for_toolchain(&error);
+	const String engine = ensure_engine_for_toolchain(p_dest, &error);
 	if (engine.is_empty()) {
 		return false;
 	}
-	// A bootstrap checkout exists only to run the downloader; the new toolchain
-	// carries its own copy, so it is removed when the download ends either way.
-	const String bootstrap_root = OS::get_singleton()->get_cache_path().path_join("grit-bootstrap");
+	// The bootstrap tree lives in <toolchain>/.bootstrap and exists only to run
+	// the downloader; the toolchain carries its own copy, so it is removed when
+	// the download ends either way.
+	const String bootstrap_root = p_dest.path_join(".bootstrap");
 	const bool bootstrap = engine.begins_with(bootstrap_root);
 	auto cleanup_bootstrap = [&]() {
 		if (bootstrap) {
-			DirAccess::remove_absolute(engine);
+			_remove_tree(bootstrap_root);
 		}
 	};
 	const bool windows = OS::get_singleton()->get_name() == "Windows";
@@ -291,7 +304,9 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 		cleanup_bootstrap();
 		return false;
 	}
-	const String progress_path = OS::get_singleton()->get_cache_path().path_join("grit_toolchain_download.txt");
+	// The progress file lives in the bootstrap scratch folder too, so creating a
+	// toolchain writes nothing outside the toolchain folder.
+	const String progress_path = bootstrap_root.path_join("download.progress");
 	DirAccess::remove_absolute(progress_path);
 
 	List<String> args;
@@ -456,7 +471,7 @@ String GritProvisioner::ensure_engine(String *r_error) {
 	return String();
 }
 
-String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
+String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
@@ -476,7 +491,9 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 		return String();
 	}
 	const String url = _engine_archive_url(commit);
-	String archive = OS::get_singleton()->get_cache_path().path_join("grit-engine-" + commit + ".zip");
+	const String bootstrap_dir = _bootstrap_engine_dir(p_dest, commit);
+	DirAccess::make_dir_recursive_absolute(bootstrap_dir);
+	String archive = bootstrap_dir.path_join("engine-" + commit + ".zip");
 	if (OS::get_singleton()->get_name() == "Windows") {
 		archive = archive.replace("/", "\\");
 	}
@@ -487,8 +504,8 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 		return String();
 	}
 
-	const String dest = _bootstrap_engine_dir(commit);
-	DirAccess::remove_absolute(dest);
+	const String dest = bootstrap_dir;
+	_remove_tree(dest);
 	DirAccess::make_dir_recursive_absolute(dest);
 
 	// Unpack with Python when it works (it is portable), otherwise with tar, which

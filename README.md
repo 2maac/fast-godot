@@ -99,6 +99,13 @@ toolchain declares, and a warning is printed when that tree's revision differs
 from the editor's (re-download the build tools with the current editor to
 refresh it).
 
+Creating a toolchain also never touches a source checkout: it reuses the source
+of the current toolchain when there is one, otherwise it downloads the engine
+source archive for the editor's revision. The archive and its unpacked tree are
+temporary, the toolchain is the only place the source is kept, and template
+build caches (`out/grit-profiles`, `bin/grit`) are written inside the toolchain's
+engine tree, not into the source folder.
+
 ## Template build profile
 
 By default a project's Fast export template is a full engine build. A project can
