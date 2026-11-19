@@ -279,6 +279,7 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
+	print_line("Grit: Download Build Tools: creating the toolchain in " + p_dest + ".");
 	const String engine = ensure_engine_for_toolchain(&error);
 	if (engine.is_empty()) {
 		return false;
@@ -475,12 +476,12 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 	// a toolchain with matching source, then the current toolchain's copy.
 	const String local = _local_engine_tree();
 	if (!local.is_empty()) {
-		print_line("Grit: using the engine source next to the editor at " + local);
+		print_line("Grit: Download Build Tools: the new toolchain will copy the engine source from the editor's checkout at " + local + ".");
 		return local;
 	}
 	const String existing = toolchain_engine();
 	if (!existing.is_empty()) {
-		print_line("Grit: using the engine source in the current toolchain at " + existing);
+		print_line("Grit: Download Build Tools: the new toolchain will copy the engine source of the current toolchain at " + existing + ".");
 		return existing;
 	}
 	error = String();
@@ -495,7 +496,7 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 	if (OS::get_singleton()->get_name() == "Windows") {
 		archive = archive.replace("/", "\\");
 	}
-	print_line("Grit: downloading the engine source for " + commit + " from " + url);
+	print_line("Grit: Download Build Tools: no checkout found, downloading the engine source for " + commit + " from " + url + ".");
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
 		error = vformat("could not download the engine source for %s from %s (%s). This is only needed while creating the toolchain; without network, build the toolchain on a machine that has a checkout.", commit, url, download_error);
