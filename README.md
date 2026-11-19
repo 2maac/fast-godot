@@ -4,9 +4,9 @@
 
 Fast Godot is a custom build of Godot **4.7.2** with two additions:
 
-- **Grit** — compiles a project's GDScript into C++ and links it into a
-  per-project export template, so game logic runs as native code instead of
-  bytecode. Native code can be up to 80x faster in some cases.
+- **Grit** — compiles a project's GDScript into the project's Fast export
+  template as native C++, so game logic runs as native code instead of bytecode.
+  Native code can be up to 80x faster in some cases.
   
 - **CFFI** — lets GDScript call into C libraries directly.
 
@@ -28,9 +28,10 @@ There are no stock exports. Every project builds its own template on export:
 | Windows x86_64 | `Windows Fast` | `<project>/exports/windows_fast_<target>_<arch>.exe` |
 | Web | `HTML5 Fast` | `<project>/exports/web_fast.zip` |
 
-A platform is only registered on its own host, so a macOS editor offers
-`macOS Fast` and ignores presets for other platforms. Nothing is cross-compiled;
-the HTML5 template is built by the toolchain's Emscripten.
+Native-platform presets are only offered on their own host, so a macOS editor
+offers `macOS Fast` and ignores presets for Linux or Windows. HTML5 is the
+exception: `HTML5 Fast` is offered on every host and is cross-compiled with the
+toolchain's Emscripten.
 
 The first export of a project compiles the engine for that project's template
 (10–20 minutes on a warm machine); later exports only rebuild what changed.
@@ -104,6 +105,6 @@ with `load_threaded_request(..., use_sub_threads = true)`.
 ## Status
 
 - macOS, Linux and Windows editors build locally.
-- Linux, Windows, macOS and HTML5 Fast templates build; the Linux and HTML5
-  exports have been run and benchmarked, the Windows export has not been run on
-  Windows yet.
+- Fast templates build on macOS, Linux and Windows; the Linux and HTML5 exports
+  have been run and benchmarked, the Windows export has not been run on Windows
+  yet.
