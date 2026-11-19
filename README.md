@@ -36,6 +36,15 @@ toolchain's Emscripten.
 The first export of a project compiles the engine for that project's template
 (10–20 minutes on a warm machine); later exports only rebuild what changed.
 
+A **macOS Fast** template is arm64, and the macOS exporter refuses an arm64
+build unless ETC2/ASTC texture compression is enabled. This fork's macOS editor
+therefore defaults `rendering/textures/vram_compression/import_etc2_astc` to on,
+and the project manager writes it into every project it creates on macOS, so a
+fresh project exports without touching that setting. Other platforms keep the
+stock default (off). Existing projects that were imported before this default
+was enabled may need their textures reimported to actually carry ETC2/ASTC data
+(delete `.godot/imported` and let the editor reimport).
+
 ## First run: Download Build Tools
 
 A fresh editor has no build tools, so the export window shows no presets — only a
