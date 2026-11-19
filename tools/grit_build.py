@@ -278,6 +278,19 @@ def export_main(argv):
     # the download small; -O3 is measurably faster on Grit-compiled code and costs
     # ~7 MB of wasm. Native platforms are always -O3 for release builds.
     optimized = len(argv) > 8 and argv[8] == "optimized"
+    # Optional 10th argument: a file holding the project's 256-bit AES script/PCK
+    # encryption key as 64 hex characters (empty file = no key). Older helpers in
+    # an older toolchain simply ignore the extra argument.
+    script_key_file = argv[9] if len(argv) > 9 else ""
+    encryption_key = ""
+    if script_key_file:
+        try:
+            with open(script_key_file, "r", encoding="utf-8") as key_handle:
+                encryption_key = key_handle.read().strip().lower()
+        except OSError:
+            encryption_key = ""
+    if encryption_key and (len(encryption_key) != 64 or any(c not in "0123456789abcdef" for c in encryption_key)):
+        fail("Grit: invalid script encryption key; expected 64 hexadecimal characters.", 7)
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -391,6 +404,10 @@ def export_main(argv):
     # The engine revision is part of the key: a tree seeded by another revision
     # keeps *.gen.* files that are not refreshed, and then fails to link.
     key.update((env.get("engine_id") or "").encode("utf-8"))
+    # A template built with an encryption key has to be separate from (and
+    # rebuilt instead of reusing) a keyless one: the key is compiled into the
+    # binary, so it is part of the build identity.
+    key.update(("enc:" + encryption_key).encode("utf-8"))
     profile_hash = key.hexdigest()[:16]
     work_root = os.environ.get("GRIT_PROFILE_WORKDIR") or os.path.join(engine, "out", "grit-profiles")
     source = os.path.join(work_root, "%s-%s-%s-%s" % (profile_hash, platform, arch, target))
@@ -419,6 +436,13 @@ def export_main(argv):
     child_env = dict(os.environ)
     if extra_paths:
         child_env["PATH"] = os.pathsep.join(extra_paths + [child_env.get("PATH", "")])
+    # core/SCsub reads this environment variable and compiles the key into the
+    # template; the exported pack is encrypted with the same key.
+    if encryption_key:
+        child_env["SCRIPT_AES256_ENCRYPTION_KEY"] = encryption_key
+        announce("Grit: template will embed the project's script encryption key")
+    else:
+        child_env.pop("SCRIPT_AES256_ENCRYPTION_KEY", None)
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]
     mingw_prefix = os.path.join(env.get("toolchain_root") or "", "mingw64")

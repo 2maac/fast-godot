@@ -453,6 +453,44 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	}
 	args.push_back(web_optimization);
 
+	// PCK encryption: the template must be built with the same 256-bit AES key the
+	// exporter encrypts the pack with, because the runtime decrypts it with the key
+	// compiled into the binary. `GODOT_SCRIPT_ENCRYPTION_KEY` wins over the preset,
+	// matching EditorExportPlatform::_get_script_encryption_key().
+	String script_encryption_key;
+	{
+		const Ref<EditorExportPreset> key_preset = get_export_preset();
+		if (key_preset.is_valid()) {
+			script_encryption_key = OS::get_singleton()->get_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
+			if (script_encryption_key.is_empty()) {
+				script_encryption_key = key_preset->get_script_encryption_key();
+			}
+			script_encryption_key = script_encryption_key.strip_edges().to_lower();
+			if (key_preset->get_enc_pck() && script_encryption_key.length() != 64) {
+				ERR_PRINT("Grit: PCK encryption is on but there is no 256-bit AES key. Set the 64-character hexadecimal key in the export window's Encryption section (or GODOT_SCRIPT_ENCRYPTION_KEY).");
+				return ERR_INVALID_PARAMETER;
+			}
+			if (!script_encryption_key.is_empty() && (script_encryption_key.length() != 64 || !script_encryption_key.is_valid_hex_number(false))) {
+				ERR_PRINT(vformat("Grit: the script encryption key must be exactly 64 hexadecimal characters (the current key is %d characters).", script_encryption_key.length()));
+				return ERR_INVALID_PARAMETER;
+			}
+		}
+	}
+	// The helper reads it as a file (the export build does not inherit the editor's
+	// environment); its contents also key the isolated template tree, so changing
+	// the key rebuilds the template instead of reusing a keyless one.
+	const String key_path = p_generated_dir.path_join("script_encryption_key.txt");
+	{
+		Ref<FileAccess> key_file = FileAccess::open(key_path, FileAccess::WRITE);
+		if (key_file.is_null()) {
+			ERR_PRINT("Grit: could not write the script encryption key next to the generated sources.");
+			return ERR_CANT_CREATE;
+		}
+		key_file->store_string(script_encryption_key);
+		key_file->close();
+	}
+	args.push_back(key_path);
+
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 
 	// Run the build as a child process and follow its log, so the editor stays

@@ -147,6 +147,29 @@ engine. The profile file's contents are part of the per-project template cache
 key, so choosing a different profile rebuilds the template, and an unreadable or
 malformed profile fails the export with an error instead of building anything.
 
+## PCK encryption
+
+A Fast export can be shipped with an encrypted PCK. Godot encrypts the pack with
+a 256-bit AES key that is compiled into the export template, so in the stock
+engine you have to build a custom template for every key. Grit builds the
+project's template on export anyway, so the key can simply be configured:
+
+1. open the export window and go to the **Encryption** section of the preset;
+2. enable **Encrypt Exported PCK** (and optionally encrypt the directory and set
+   include/exclude filters);
+3. paste the **256-bit AES key as 64 hexadecimal characters**.
+
+That's all: the export builds the project's Fast template with
+`SCRIPT_AES256_ENCRYPTION_KEY` set to the same key, so the runtime can decrypt
+the PCK it ships with, and the pack itself is written encrypted. The key is
+stored in the project's `.godot/export_credentials.cfg`, never in
+`export_presets.cfg`. `GODOT_SCRIPT_ENCRYPTION_KEY` overrides the preset key for
+CI/command-line exports, matching the engine's behaviour.
+
+The key is part of the template's build identity (`out/grit-profiles`), so
+changing it rebuilds the template instead of reusing one compiled with another
+key; a missing or non-hex key fails the export before anything is built.
+
 ## Building the editor itself
 
 `tools/build-editor.sh` (Linux, macOS) and `build-editor.cmd` in the Windows
