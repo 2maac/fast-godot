@@ -156,6 +156,10 @@ void ProjectExportDialog::popup_export() {
 #ifdef MODULE_GRIT_ENABLED
 	_update_grit_banner();
 #endif
+	// Plugins add their presets in this hook (the Fast platforms do). Run it before
+	// the list below is built: the notification that normally calls it only fires
+	// once the window is made visible, which happens after _update_presets().
+	EditorExport::get_singleton()->notify_export_dialog_opened();
 	add_preset->get_popup()->clear();
 	for (int i = 0; i < EditorExport::get_singleton()->get_export_platform_count(); i++) {
 		Ref<EditorExportPlatform> plat = EditorExport::get_singleton()->get_export_platform(i);
@@ -2196,7 +2200,15 @@ void ProjectExportDialog::_grit_download_pressed() {
 		ERR_PRINT("Grit: " + error);
 	} else {
 		print_line("Grit: toolchain ready at " + GritProvisioner::home_toolchain_folder());
+		// The window was opened without a toolchain, so it showed the download
+		// button instead of presets. Re-run the open-window hook (plugins add the
+		// Fast presets there) and rebuild the window from scratch: preset list,
+		// parameter panel and the export buttons.
+		EditorExport::get_singleton()->notify_export_dialog_opened();
 		_update_presets();
+		if (presets->get_current() >= 0) {
+			_update_current_preset();
+		}
 		_update_export_all();
 	}
 	_update_grit_banner();
