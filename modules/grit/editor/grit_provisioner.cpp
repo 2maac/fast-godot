@@ -109,8 +109,9 @@ static String _engine_archive_url(const String &p_commit) {
 	return vformat("https://github.com/2maac/fast-godot/archive/%s.zip", p_commit);
 }
 
-// The tree the editor was built from (a source checkout/staged build). Used only
-// when the toolchain has no engine source of its own.
+// The tree the editor was built from (a source checkout/staged build). Only used
+// by the toolchain bootstrap, so a rebuilt editor produces a toolchain carrying
+// its own source; exports never use it.
 static String _local_engine_tree() {
 	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
 	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
@@ -447,27 +448,20 @@ String GritProvisioner::ensure_engine(String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	// The toolchain is the source of truth: its templates are built from the engine
-	// tree it declares. A checkout next to the editor is only a fallback for a
-	// toolchain that has no source.
+	// The toolchain's downloaded engine source is the only tree used. There is no
+	// fallback to a checkout or to a download: a toolchain without source is an
+	// error, and the archive is only fetched while a toolchain is being created.
+	const String toolchain = configured_toolchain();
+	if (toolchain.is_empty()) {
+		error = "no Fast_Godot build tools are installed. Open the export window and press Download Build Tools; the toolchain carries the engine source, so an export never downloads anything.";
+		return String();
+	}
 	const String in_toolchain = toolchain_engine();
 	if (!in_toolchain.is_empty()) {
 		print_line("Grit: using the engine source in the toolchain at " + in_toolchain);
 		return in_toolchain;
 	}
-	const String local = _local_engine_tree();
-	if (!local.is_empty()) {
-		print_line("Grit: using the engine source next to the editor at " + local + " (the toolchain has no engine source)");
-		return local;
-	}
-	// Once the build tools exist everything must come from them: nothing is
-	// downloaded on an export or an editor build.
-	const String toolchain = configured_toolchain();
-	if (toolchain.is_empty()) {
-		error = "no Fast_Godot build tools are installed. Open the export window and press Download Build Tools; the toolchain carries the engine source, so an export never downloads anything.";
-	} else {
-		error = vformat("the toolchain at \"%s\" has no engine source: toolchain.json does not declare an \"engine\" tree, or it is missing. Use a toolchain built by tools/toolchain/download_toolchain.{sh,cmd}, which copy the engine source in.", toolchain);
-	}
+	error = vformat("the toolchain at \"%s\" has no engine source: toolchain.json does not declare an \"engine\" tree, or it is missing. Use a toolchain built by tools/toolchain/download_toolchain.{sh,cmd}, which copy the engine source in.", toolchain);
 	return String();
 }
 
