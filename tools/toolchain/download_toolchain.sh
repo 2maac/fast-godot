@@ -8,13 +8,12 @@
 # Progress is reported on stdout as "GRIT_PROGRESS <percent> <label>", errors as
 # "GRIT_ERROR <text>", and success as "GRIT_DONE <path>"; the editor reads those.
 #
-# usage: download_toolchain.sh [dest] [progress-file] [engine-revision]
+# usage: download_toolchain.sh [dest] [progress-file]
 set -e
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 dest=${1:-${HOME:-/tmp}/fast_godot_toolchain}
 prog=${2:-}
-eng_rev=${3:-}
 os=$(uname -s)
 arch=$(uname -m)
 
@@ -121,23 +120,12 @@ python="$dest/python/bin/python3"
 "$python" "$dest/emsdk/emsdk.py" activate 4.0.11 >/dev/null
 
 progress 82 "Engine source"
-# The toolchain carries the engine source tree. The editor unpacks it straight
-# into engine/<revision> and runs this script from there, so there is nothing to
-# copy; a manual run from a checkout copies the tree it runs from instead.
+# The toolchain carries the engine source tree at engine/source. The editor
+# unpacks it there and runs this script from it, so there is nothing to copy; a
+# manual run from a checkout copies the tree it runs from instead. The folder has
+# no revision in its name: the toolchain works with any 4.7.x editor.
 engine_root=$(CDPATH= cd -- "$here/../.." && pwd)
-engine_name="4.7.2-stable"
-if command -v git >/dev/null 2>&1; then
-	rev=$(git -C "$engine_root" rev-parse --short HEAD 2>/dev/null || true)
-	if [ -n "$rev" ]; then
-		engine_name=$rev
-	fi
-fi
-# A tree unpacked from a GitHub archive has no .git; the editor passes the
-# revision explicitly and has already placed the tree in engine/<revision>.
-if [ "$engine_name" = "4.7.2-stable" ] && [ -n "$eng_rev" ]; then
-	engine_name=$eng_rev
-fi
-engine_dest="$dest/engine/$engine_name"
+engine_dest="$dest/engine/source"
 if [ -f "$engine_dest/SConstruct" ] && [ -f "$engine_dest/tools/grit_build.py" ]; then
 	progress 82 "Engine source (already in the toolchain)"
 else
@@ -178,7 +166,7 @@ if [ "$os" = "Linux" ]; then
   "engineVersion": "4.7.2-stable",
   "platform": "linux",
   "arch": "x86_64",
-  "engine": "engine/$engine_name",
+  "engine": "engine/source",
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "gcc": "gcc",
@@ -194,7 +182,7 @@ else
   "engineVersion": "4.7.2-stable",
   "platform": "macos",
   "arch": "$arch",
-  "engine": "engine/$engine_name",
+  "engine": "engine/source",
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "moltenvk": "moltenvk",

@@ -24,14 +24,10 @@ echo "$SCONS_SHA  $TMP/scons.tar.gz" | sha256sum -c -
 tar -xzf "$TMP/scons.tar.gz" -C "$B/scons/4.11.1"
 
 # The bundle carries the engine source tree it was built from, like the
-# downloaders do, so editors and templates can be built from it directly.
+# downloaders do, so editors and templates can be built from it directly. The
+# folder has no revision in its name: a toolchain works with any 4.7.x editor.
 ENGINE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
-ENGINE_NAME="4.7.2-stable"
-if command -v git >/dev/null 2>&1; then
-	REV="$(git -C "$ENGINE_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
-	[ -n "$REV" ] && ENGINE_NAME="$REV"
-fi
-ENGINE_DEST="$B/engine/$ENGINE_NAME"
+ENGINE_DEST="$B/engine/source"
 if [ -f "$ENGINE_ROOT/SConstruct" ]; then
 	rm -rf "$ENGINE_DEST"
 	mkdir -p "$ENGINE_DEST"
@@ -56,7 +52,7 @@ cat > "$B/toolchain.json" <<JSON
   "engineVersion": "4.7.2-stable",
   "platform": "linux",
   "arch": "x86_64",
-  "engine": "engine/$ENGINE_NAME",
+  "engine": "engine/source",
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "gcc": "gcc"

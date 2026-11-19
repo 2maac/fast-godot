@@ -88,21 +88,25 @@ Nothing else needs to be installed for an export: no system C++ compiler, X11,
 ALSA, Wayland or libffi development packages. macOS still uses the Xcode Command
 Line Tools for its compiler.
 
-The engine source lives at `<toolchain>/engine/<revision>/` and is recorded
-under the `engine` key in `toolchain.json`. A bundle is therefore self-contained:
-editor builds and export templates use that tree, and an older bundle without it
-is reported as an error (press Download Build Tools again to get a
-source-carrying one) — never downloaded at export time. There is no fallback:
-exports and editor builds only ever use the engine tree the toolchain declares,
-and a warning is printed when that tree's revision differs from the editor's
-(re-download the build tools with the current editor to refresh it).
+The engine source lives at `<toolchain>/engine/source/` and is recorded under
+the `engine` key in `toolchain.json`. A bundle is therefore self-contained: editor
+builds and export templates use that tree, and an older bundle without it is
+reported as an error (press Download Build Tools again to get a source-carrying
+one) — never downloaded at export time. There is no fallback: exports and editor
+builds only ever use the engine tree the toolchain declares.
+
+**Toolchains are not tied to an editor revision.** Nothing in the toolchain's
+paths or `toolchain.json` names a commit, and no revision check or warning runs
+at export time: a toolchain built once works with any 4.7.x editor, so rebuilding
+the editor never requires re-downloading the build tools.
 
 Creating a toolchain never touches a source checkout and never copies the engine
 source around:
 
-1. the editor downloads the engine source archive for its own revision;
-2. the archive is unpacked and its `fast-godot-<revision>/` folder is **renamed**
-   to `<toolchain>/engine/<revision>/` — nothing is copied;
+1. the editor downloads an engine source archive (its own revision; the main
+   branch when the build reports no revision);
+2. the archive is unpacked and its `fast-godot-<rev>/` folder is **renamed** to
+   `<toolchain>/engine/source/` — nothing is copied;
 3. the downloader that ships inside that tree fetches Python, SCons and the
    platform libraries, and writes `toolchain.json`.
 

@@ -315,10 +315,6 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	}
 	args.push_back(p_dest);
 	args.push_back(progress_path);
-	// The engine tree came from a GitHub archive (no .git), so hand the downloader
-	// its revision name: it must not copy the source again, that tree is already
-	// <dest>/engine/<revision>.
-	args.push_back(engine.get_file());
 	if (OS::get_singleton()->create_process(program, args, &pid) != OK) {
 		error = "could not start the toolchain downloader.";
 		cleanup_scratch();
@@ -428,15 +424,8 @@ String GritProvisioner::toolchain_engine() {
 	if (relative.is_empty()) {
 		return String();
 	}
-	// A toolchain pinned to an earlier editor revision still exports, but the
-	// template is then built from that older source; say so once per export.
-	const String declared = relative.get_file();
-	const String commit = engine_commit();
-	// The toolchain records the short revision, the editor knows the full hash.
-	const bool same_revision = !commit.is_empty() && !declared.is_empty() && (commit == declared || commit.begins_with(declared) || declared.begins_with(commit));
-	if (!commit.is_empty() && !declared.is_empty() && !same_revision && declared.length() >= 7 && declared.length() <= 40 && declared.is_valid_hex_number(false)) {
-		WARN_PRINT(vformat("Grit: the toolchain carries engine source for \"%s\", but this editor was built from \"%s\". Templates build from the toolchain copy; re-download the build tools with this editor to keep them in sync.", declared, commit));
-	}
+	// The toolchain is not tied to an editor revision: an engine tree from any
+	// 4.7.x toolchain is used as it is, with no revision checks.
 	const String tree = relative.is_relative_path() ? root.path_join(relative) : relative;
 	return _engine_present(tree) ? tree : String();
 }
@@ -469,12 +458,9 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 	// The engine source is unpacked straight into its final place in the toolchain;
 	// nothing is copied afterwards. The only scratch is <toolchain>/.download,
 	// which holds the archive while it is unpacked and is deleted right after.
-	const String commit = engine_commit();
-	if (commit.is_empty()) {
-		error = "this editor does not report its revision, so the engine source cannot be matched to it. Build the toolchain on a machine with a Fast_Godot checkout.";
-		return String();
-	}
-	const String engine_dir = p_dest.path_join("engine").path_join(commit.left(8));
+	// The folder has no revision in its name: the toolchain works with any 4.7.x
+	// editor, so there is nothing to match.
+	const String engine_dir = p_dest.path_join("engine").path_join("source");
 	if (_engine_present(engine_dir)) {
 		// A previous attempt already unpacked the source; continue from there.
 		return engine_dir;
@@ -487,11 +473,17 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 	const String unpacked = scratch.path_join("unpacked");
 	DirAccess::make_dir_recursive_absolute(unpacked);
 
-	const String url = _engine_archive_url(commit);
+	// Prefer this editor's revision; a build without a revision uses the main
+	// branch. Either way the source is only needed to create the toolchain, and
+	// the finished toolchain is not tied to it.
+	const String commit = engine_commit();
+	const String url = commit.is_empty()
+			? String("https://github.com/2maac/fast-godot/archive/refs/heads/fresh.zip")
+			: _engine_archive_url(commit);
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
 		_remove_tree(scratch);
-		error = vformat("could not download the engine source for %s from %s (%s).", commit, url, download_error);
+		error = vformat("could not download the engine source from %s (%s).", url, download_error);
 		return String();
 	}
 

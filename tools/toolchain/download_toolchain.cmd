@@ -65,19 +65,12 @@ pushd "%DEST%\emsdk"
 popd
 
 call :progress 90 "Engine source"
-rem The toolchain carries the engine source tree. The editor unpacks it straight
-rem into engine\<revision> and runs this script from there, so there is nothing
-rem to copy; a manual run from a checkout copies the tree it runs from instead.
+rem The toolchain carries the engine source tree at engine\source. The editor
+rem unpacks it there and runs this script from it, so there is nothing to copy; a
+rem manual run from a checkout copies the tree it runs from instead. The folder
+rem has no revision in its name: the toolchain works with any 4.7.x editor.
 set "ENGINE_ROOT=%~dp0..\.."
-set "ENGINE_NAME=4.7.2-stable"
-where git >nul 2>nul
-if not errorlevel 1 (
-  for /f "delims=" %%C in ('git -C "%ENGINE_ROOT%" rev-parse --short HEAD 2^>nul') do set "ENGINE_NAME=%%C"
-)
-rem A tree unpacked from a GitHub archive has no .git; the editor passes the
-rem revision explicitly and has already placed the tree in engine\<revision>.
-if "%ENGINE_NAME%"=="4.7.2-stable" if defined ENGINE_REV set "ENGINE_NAME=%ENGINE_REV%"
-set "ENGINE_DEST=%DEST%\engine\%ENGINE_NAME%"
+set "ENGINE_DEST=%DEST%\engine\source"
 if exist "%ENGINE_DEST%\SConstruct" goto :engine_ready
 if not exist "%ENGINE_ROOT%\SConstruct" goto :fail
 if not exist "%ENGINE_ROOT%\tools\grit_build.py" goto :fail
@@ -88,7 +81,6 @@ tar.exe -xf "%TMP%\engine.tar" -C "%ENGINE_DEST%" || goto :fail
 del /q "%TMP%\engine.tar" 2>nul
 if not exist "%ENGINE_DEST%\SConstruct" goto :fail
 :engine_ready
-
 call :progress 96 "verifying"
 for %%F in (
   "%DEST%\python\python.exe"
@@ -112,7 +104,7 @@ for %%F in (
   echo   "engineVersion": "4.7.2-stable",
   echo   "platform": "windows",
   echo   "arch": "x86_64",
-  echo   "engine": "engine/%ENGINE_NAME%",
+  echo   "engine": "engine/source",
   echo   "python": "python",
   echo   "scons": "scons/4.11.1/scons-4.11.1",
   echo   "mingw": "mingw64",
