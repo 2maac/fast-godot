@@ -168,7 +168,9 @@ CI/command-line exports, matching the engine's behaviour.
 
 The key is part of the template's build identity (`out/grit-profiles`), so
 changing it rebuilds the template instead of reusing one compiled with another
-key; a missing or non-hex key fails the export before anything is built.
+key; a missing or non-hex key fails the export before anything is built, and a
+toolchain whose build helper predates encryption support is refused (re-download
+the build tools with this editor to get the updated 4.7.2 source).
 
 ## Building the editor itself
 
