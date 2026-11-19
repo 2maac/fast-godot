@@ -65,27 +65,29 @@ pushd "%DEST%\emsdk"
 popd
 
 call :progress 90 "Engine source"
-rem The bundle is self-contained: it carries the engine source tree it was built
-rem from, so editors and export templates are built from this copy instead of
-rem downloading the archive again (or needing a separate checkout).
+rem The toolchain carries the engine source tree. The editor unpacks it straight
+rem into engine\<revision> and runs this script from there, so there is nothing
+rem to copy; a manual run from a checkout copies the tree it runs from instead.
 set "ENGINE_ROOT=%~dp0..\.."
-if not exist "%ENGINE_ROOT%\SConstruct" goto :fail
-if not exist "%ENGINE_ROOT%\tools\grit_build.py" goto :fail
 set "ENGINE_NAME=4.7.2-stable"
 where git >nul 2>nul
 if not errorlevel 1 (
   for /f "delims=" %%C in ('git -C "%ENGINE_ROOT%" rev-parse --short HEAD 2^>nul') do set "ENGINE_NAME=%%C"
 )
 rem A tree unpacked from a GitHub archive has no .git; the editor passes the
-rem revision explicitly so the engine folder keeps the commit name.
+rem revision explicitly and has already placed the tree in engine\<revision>.
 if "%ENGINE_NAME%"=="4.7.2-stable" if defined ENGINE_REV set "ENGINE_NAME=%ENGINE_REV%"
 set "ENGINE_DEST=%DEST%\engine\%ENGINE_NAME%"
+if exist "%ENGINE_DEST%\SConstruct" goto :engine_ready
+if not exist "%ENGINE_ROOT%\SConstruct" goto :fail
+if not exist "%ENGINE_ROOT%\tools\grit_build.py" goto :fail
 if exist "%ENGINE_DEST%" rmdir /s /q "%ENGINE_DEST%"
 mkdir "%ENGINE_DEST%"
 tar.exe -cf "%TMP%\engine.tar" -C "%ENGINE_ROOT%" --exclude=.git --exclude=./bin --exclude=./out --exclude=./.godot --exclude=./compile_commands.json --exclude=./.sconsign.dblite --exclude=./.sconsign5.dblite --exclude=./.scons_env.json --exclude=./.scons_node_count --exclude=__pycache__ --exclude=.DS_Store . || goto :fail
 tar.exe -xf "%TMP%\engine.tar" -C "%ENGINE_DEST%" || goto :fail
 del /q "%TMP%\engine.tar" 2>nul
 if not exist "%ENGINE_DEST%\SConstruct" goto :fail
+:engine_ready
 
 call :progress 96 "verifying"
 for %%F in (

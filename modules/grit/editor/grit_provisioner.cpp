@@ -114,13 +114,6 @@ static bool _engine_present(const String &p_dir) {
 			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
 }
 
-// Where the one-time toolchain bootstrap unpacks the source archive. It lives
-// inside the toolchain folder being created, so a build never needs anything
-// outside the toolchain, and it is deleted once the download finishes.
-static String _bootstrap_engine_dir(const String &p_dest, const String &p_commit) {
-	return p_dest.path_join(".bootstrap").path_join(p_commit.is_empty() ? String("unknown") : p_commit);
-}
-
 // DirAccess::remove_absolute() removes a file or an empty directory; a populated
 // tree (the unpacked engine source is thousands of files) needs its contents
 // erased first.
@@ -241,6 +234,9 @@ static bool _toolchain_complete(const String &p_root) {
 	if (!FileAccess::exists(p_root.path_join("scons").path_join("4.11.1").path_join("scons-4.11.1").path_join("SCons").path_join("__init__.py"))) {
 		return false;
 	}
+	if (!DirAccess::dir_exists_absolute(p_root.path_join("engine"))) {
+		return false;
+	}
 	const String os = OS::get_singleton()->get_name();
 	if (os == "Windows") {
 		return FileAccess::exists(p_root.path_join("mingw64").path_join("bin").path_join("gcc.exe")) &&
@@ -282,33 +278,28 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	if (engine.is_empty()) {
 		return false;
 	}
-	// The bootstrap tree lives in <toolchain>/.bootstrap and exists only to run
-	// the downloader; the toolchain carries its own copy, so it is removed when
-	// the download ends either way.
-	const String bootstrap_root = p_dest.path_join(".bootstrap");
-	const bool bootstrap = engine.begins_with(bootstrap_root);
-	auto cleanup_bootstrap = [&]() {
-		if (bootstrap) {
-			_remove_tree(bootstrap_root);
-		}
+	// The only scratch is <toolchain>/.download: it holds the progress file while
+	// the downloader runs and is removed on every exit path, so a finished
+	// toolchain folder contains nothing but the toolchain.
+	const String scratch = p_dest.path_join(".download");
+	DirAccess::make_dir_recursive_absolute(scratch);
+	const String progress_path = scratch.path_join("progress.txt");
+	DirAccess::remove_absolute(progress_path);
+	auto cleanup_scratch = [&]() {
+		_remove_tree(scratch);
 	};
 	const bool windows = OS::get_singleton()->get_name() == "Windows";
 	const String script = engine.path_join("tools").path_join("toolchain").path_join(windows ? "download_toolchain.cmd" : "download_toolchain.sh");
 	if (!FileAccess::exists(script)) {
 		error = vformat("the toolchain downloader is missing from \"%s\".", engine);
-		cleanup_bootstrap();
+		cleanup_scratch();
 		return false;
 	}
 	if (DirAccess::make_dir_recursive_absolute(p_dest) != OK) {
 		error = vformat("could not create \"%s\".", p_dest);
-		cleanup_bootstrap();
+		cleanup_scratch();
 		return false;
 	}
-	// The progress file lives in the bootstrap scratch folder too, so creating a
-	// toolchain writes nothing outside the toolchain folder.
-	const String progress_path = bootstrap_root.path_join("download.progress");
-	DirAccess::remove_absolute(progress_path);
-
 	List<String> args;
 	ProcessID pid = 0;
 	String program;
@@ -324,13 +315,13 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	}
 	args.push_back(p_dest);
 	args.push_back(progress_path);
-	// The downloader names <dest>/engine/<revision> from git when it runs in a
-	// checkout; the bootstrap tree is unpacked from an archive and has no .git, so
-	// hand it the revision instead (a reused toolchain keeps its existing name).
-	args.push_back(bootstrap ? engine_commit() : engine.get_file());
+	// The engine tree came from a GitHub archive (no .git), so hand the downloader
+	// its revision name: it must not copy the source again, that tree is already
+	// <dest>/engine/<revision>.
+	args.push_back(engine.get_file());
 	if (OS::get_singleton()->create_process(program, args, &pid) != OK) {
 		error = "could not start the toolchain downloader.";
-		cleanup_bootstrap();
+		cleanup_scratch();
 		return false;
 	}
 
@@ -366,7 +357,7 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 		if (progress.step(state, percent)) {
 			OS::get_singleton()->kill(pid);
 			error = "the download was cancelled";
-			cleanup_bootstrap();
+			cleanup_scratch();
 			return false;
 		}
 		if (DisplayServer::get_singleton()) {
@@ -380,10 +371,10 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 		if (error.is_empty()) {
 			error = "the downloader finished but the toolchain is incomplete.";
 		}
-		cleanup_bootstrap();
+		cleanup_scratch();
 		return false;
 	}
-	cleanup_bootstrap();
+	cleanup_scratch();
 	EditorSettings *settings = EditorSettings::get_singleton();
 	settings->set_setting(SETTING_TOOLCHAIN_ROOT, p_dest);
 	settings->save();
@@ -475,44 +466,38 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	// Creating a toolchain never reads an editor checkout or leaves anything in
-	// one: it reuses the source of the current toolchain when there is one,
-	// otherwise it downloads the engine source for this editor's revision.
-	const String existing = toolchain_engine();
-	if (!existing.is_empty()) {
-		return existing;
-	}
-	error = String();
-
+	// The engine source is unpacked straight into its final place in the toolchain;
+	// nothing is copied afterwards. The only scratch is <toolchain>/.download,
+	// which holds the archive while it is unpacked and is deleted right after.
 	const String commit = engine_commit();
 	if (commit.is_empty()) {
 		error = "this editor does not report its revision, so the engine source cannot be matched to it. Build the toolchain on a machine with a Fast_Godot checkout.";
 		return String();
 	}
-	const String url = _engine_archive_url(commit);
-	const String bootstrap_root = p_dest.path_join(".bootstrap");
-	const String bootstrap_dir = _bootstrap_engine_dir(p_dest, commit);
-	DirAccess::make_dir_recursive_absolute(bootstrap_root);
-	DirAccess::make_dir_recursive_absolute(bootstrap_dir);
-	// The archive stays beside the unpack folder (not inside it): the folder is
-	// wiped before extracting, and the archive must survive that.
-	String archive = bootstrap_root.path_join("engine-" + commit + ".zip");
-	if (OS::get_singleton()->get_name() == "Windows") {
-		archive = archive.replace("/", "\\");
+	const String engine_dir = p_dest.path_join("engine").path_join(commit.left(8));
+	if (_engine_present(engine_dir)) {
+		// A previous attempt already unpacked the source; continue from there.
+		return engine_dir;
 	}
+
+	const String scratch = p_dest.path_join(".download");
+	_remove_tree(scratch);
+	DirAccess::make_dir_recursive_absolute(scratch);
+	const String archive = scratch.path_join("engine.zip");
+	const String unpacked = scratch.path_join("unpacked");
+	DirAccess::make_dir_recursive_absolute(unpacked);
+
+	const String url = _engine_archive_url(commit);
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
-		error = vformat("could not download the engine source for %s from %s (%s). This is only needed while creating the toolchain; without network, build the toolchain on a machine that has a checkout.", commit, url, download_error);
+		_remove_tree(scratch);
+		error = vformat("could not download the engine source for %s from %s (%s).", commit, url, download_error);
 		return String();
 	}
 
-	const String dest = bootstrap_dir;
-	_remove_tree(dest);
-	DirAccess::make_dir_recursive_absolute(dest);
-
 	// Unpack with Python when it works (it is portable), otherwise with tar, which
 	// reads zip on Windows and macOS. One of the two always applies.
-	bool unpacked = false;
+	bool unpacked_ok = false;
 	String unpack_error;
 	const String python = python_for_build();
 	if (!python.is_empty()) {
@@ -521,46 +506,59 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 		args.push_back("zipfile");
 		args.push_back("-e");
 		args.push_back(archive);
-		args.push_back(dest);
+		args.push_back(unpacked);
 		int code = -1;
 		String output;
 		const Error ran = OS::get_singleton()->execute(python, args, &output, &code);
-		unpacked = ran == OK && code == 0;
-		if (!unpacked) {
+		unpacked_ok = ran == OK && code == 0;
+		if (!unpacked_ok) {
 			unpack_error = vformat("python %s exited %d: %s", python, code, output.strip_edges().right(160));
 		}
 	}
-	if (!unpacked) {
+	if (!unpacked_ok) {
 		String tar_error;
-		if (_extract(archive, dest, tar_error)) {
-			unpacked = true;
+		if (_extract(archive, unpacked, tar_error)) {
+			unpacked_ok = true;
 		} else {
 			unpack_error += (unpack_error.is_empty() ? "" : "; ") + tar_error;
 		}
 	}
 	DirAccess::remove_absolute(archive);
-	if (!unpacked) {
+	if (!unpacked_ok) {
+		_remove_tree(scratch);
 		error = vformat("could not unpack the engine source downloaded from %s (%s).", url, unpack_error);
 		return String();
 	}
 
-	String tree = dest;
-	Ref<DirAccess> dir = DirAccess::open(dest);
+	// GitHub archives wrap the tree in fast-godot-<revision>/; move that folder to
+	// its final place. A rename keeps the source where it was unpacked, so the
+	// engine source is only ever written once.
+	String tree = unpacked;
+	Ref<DirAccess> dir = DirAccess::open(unpacked);
 	if (dir.is_valid()) {
 		dir->list_dir_begin();
 		for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
-			if (dir->current_is_dir() && FileAccess::exists(dest.path_join(name).path_join("SConstruct"))) {
-				tree = dest.path_join(name);
+			if (dir->current_is_dir() && FileAccess::exists(unpacked.path_join(name).path_join("SConstruct"))) {
+				tree = unpacked.path_join(name);
 				break;
 			}
 		}
 		dir->list_dir_end();
 	}
 	if (!_engine_present(tree)) {
+		_remove_tree(scratch);
 		error = vformat("the engine source downloaded from %s is not a usable Fast_Godot tree.", url);
 		return String();
 	}
-	return tree;
+	DirAccess::make_dir_recursive_absolute(p_dest.path_join("engine"));
+	_remove_tree(engine_dir);
+	const Error moved = DirAccess::rename_absolute(tree, engine_dir);
+	_remove_tree(scratch);
+	if (moved != OK || !_engine_present(engine_dir)) {
+		error = vformat("could not move the engine source into \"%s\".", engine_dir);
+		return String();
+	}
+	return engine_dir;
 }
 
 String GritProvisioner::python_for_build() {

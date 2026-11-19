@@ -121,12 +121,10 @@ python="$dest/python/bin/python3"
 "$python" "$dest/emsdk/emsdk.py" activate 4.0.11 >/dev/null
 
 progress 82 "Engine source"
-# The bundle is self-contained: it carries the engine source tree it was built
-# from, so editors and export templates are built from this copy instead of
-# downloading the archive again (or needing a separate checkout).
+# The toolchain carries the engine source tree. The editor unpacks it straight
+# into engine/<revision> and runs this script from there, so there is nothing to
+# copy; a manual run from a checkout copies the tree it runs from instead.
 engine_root=$(CDPATH= cd -- "$here/../.." && pwd)
-[ -f "$engine_root/SConstruct" ] || fail "cannot find the Fast_Godot source tree at $engine_root"
-[ -f "$engine_root/tools/grit_build.py" ] || fail "the tree at $engine_root is not a Fast_Godot checkout"
 engine_name="4.7.2-stable"
 if command -v git >/dev/null 2>&1; then
 	rev=$(git -C "$engine_root" rev-parse --short HEAD 2>/dev/null || true)
@@ -135,25 +133,31 @@ if command -v git >/dev/null 2>&1; then
 	fi
 fi
 # A tree unpacked from a GitHub archive has no .git; the editor passes the
-# revision explicitly so the engine folder keeps the commit name.
+# revision explicitly and has already placed the tree in engine/<revision>.
 if [ "$engine_name" = "4.7.2-stable" ] && [ -n "$eng_rev" ]; then
 	engine_name=$eng_rev
 fi
 engine_dest="$dest/engine/$engine_name"
-rm -rf "$engine_dest"
-mkdir -p "$engine_dest"
-# Stream the working tree (not version-control data or build outputs) straight
-# into the bundle; no temporary archive is needed.
-(
-	cd "$engine_root" &&
-	tar -cf - \
-		--exclude=.git --exclude=./bin --exclude=./out --exclude=./.godot \
-		--exclude=./compile_commands.json --exclude=./.sconsign.dblite \
-		--exclude=./.sconsign5.dblite --exclude=./.scons_env.json \
-		--exclude=./.scons_node_count --exclude=__pycache__ --exclude=.DS_Store \
-		. 2>/dev/null
-) | tar -xf - -C "$engine_dest" || fail "could not copy the engine source into the toolchain"
-[ -f "$engine_dest/SConstruct" ] && [ -f "$engine_dest/tools/grit_build.py" ] || fail "the engine source copy is incomplete"
+if [ -f "$engine_dest/SConstruct" ] && [ -f "$engine_dest/tools/grit_build.py" ]; then
+	progress 82 "Engine source (already in the toolchain)"
+else
+	[ -f "$engine_root/SConstruct" ] || fail "cannot find the Fast_Godot source tree at $engine_root"
+	[ -f "$engine_root/tools/grit_build.py" ] || fail "the tree at $engine_root is not a Fast_Godot checkout"
+	rm -rf "$engine_dest"
+	mkdir -p "$engine_dest"
+	# Stream the working tree (not version-control data or build outputs) straight
+	# into the bundle; no temporary archive is needed.
+	(
+		cd "$engine_root" &&
+		tar -cf - \
+			--exclude=.git --exclude=./bin --exclude=./out --exclude=./.godot \
+			--exclude=./compile_commands.json --exclude=./.sconsign.dblite \
+			--exclude=./.sconsign5.dblite --exclude=./.scons_env.json \
+			--exclude=./.scons_node_count --exclude=__pycache__ --exclude=.DS_Store \
+			. 2>/dev/null
+	) | tar -xf - -C "$engine_dest" || fail "could not copy the engine source into the toolchain"
+	[ -f "$engine_dest/SConstruct" ] && [ -f "$engine_dest/tools/grit_build.py" ] || fail "the engine source copy is incomplete"
+fi
 
 progress 90 "verifying"
 for f in "$dest/python/bin/python3" "$dest/scons/4.11.1/scons-4.11.1/SCons/__init__.py" "$dest/emsdk/upstream/emscripten/emcc" "$engine_dest/SConstruct"; do

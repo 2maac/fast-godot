@@ -88,26 +88,31 @@ Nothing else needs to be installed for an export: no system C++ compiler, X11,
 ALSA, Wayland or libffi development packages. macOS still uses the Xcode Command
 Line Tools for its compiler.
 
-The downloaders finish by copying the engine source tree they run from into
-`<toolchain>/engine/<revision>/` (the working tree, without `.git`, `bin/` or
-`out/`), and record it under the `engine` key in `toolchain.json`. A bundle is
-therefore self-contained: editor builds and export templates use that copy, and
-an older bundle without it is reported as an error (press Download Build Tools
-again to get a source-carrying one) — never downloaded at export time. There is
-no fallback: exports and editor builds only ever use the engine tree the
-toolchain declares, and a warning is printed when that tree's revision differs
-from the editor's (re-download the build tools with the current editor to
-refresh it).
+The engine source lives at `<toolchain>/engine/<revision>/` and is recorded
+under the `engine` key in `toolchain.json`. A bundle is therefore self-contained:
+editor builds and export templates use that tree, and an older bundle without it
+is reported as an error (press Download Build Tools again to get a
+source-carrying one) — never downloaded at export time. There is no fallback:
+exports and editor builds only ever use the engine tree the toolchain declares,
+and a warning is printed when that tree's revision differs from the editor's
+(re-download the build tools with the current editor to refresh it).
 
-Creating a toolchain also never touches a source checkout: it reuses the source
-of the current toolchain when there is one, otherwise it downloads the engine
-source archive for the editor's revision. The download's scratch space (the
-archive, its unpacked tree and the progress file) lives in
-`<toolchain>/.bootstrap` and is deleted when the download ends, so after a
-toolchain is installed the toolchain folder is self-contained — nothing outside
-it was read while building it and nothing is left behind. Template build caches
-(`out/grit-profiles`, `bin/grit`) are written inside the toolchain's engine tree
-too, not into the source folder.
+Creating a toolchain never touches a source checkout and never copies the engine
+source around:
+
+1. the editor downloads the engine source archive for its own revision;
+2. the archive is unpacked and its `fast-godot-<revision>/` folder is **renamed**
+   to `<toolchain>/engine/<revision>/` — nothing is copied;
+3. the downloader that ships inside that tree fetches Python, SCons and the
+   platform libraries, and writes `toolchain.json`.
+
+The archive and the progress file live in a temporary `<toolchain>/.download`
+folder that is deleted as soon as it is no longer needed, so after creation the
+toolchain folder is self-contained and nothing is left behind. Running
+`tools/toolchain/download_toolchain.sh` by hand from a checkout still copies
+that checkout's tree into the toolchain, so manual toolchain builds work
+unchanged. Template build caches (`out/grit-profiles`, `bin/grit`) are written
+inside the toolchain's engine tree too, not into the source folder.
 
 Note: the toolchain carries the engine source, Python, SCons and the platform
 libraries (MoltenVK/ANGLE/Mesa/Mingw/libffi/emsdk as applicable), but on macOS
