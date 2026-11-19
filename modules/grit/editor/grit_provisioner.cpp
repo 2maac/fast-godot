@@ -177,7 +177,7 @@ static int64_t _remote_size(const String &p_url) {
 // either way, so a cancelled download never leaves something that looks installed.
 static bool _download_engine_archive(const String &p_url, const String &p_dest, String &r_error) {
 	const int64_t total = _remote_size(p_url);
-	EditorProgress progress("grit_engine_download", TTR("Downloading the Fast_Godot engine source"), 100, true);
+	EditorProgress progress("grit_engine_download", TTR("Downloading the Fast_Godot toolchain"), 100, true);
 
 	List<String> args;
 	args.push_back("-L");
@@ -277,7 +277,7 @@ bool GritProvisioner::download_toolchain(const String &p_dest, String *r_error) 
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	print_line("Grit: Download Build Tools: creating the toolchain in " + p_dest + ".");
+	print_line("Grit: downloading the toolchain into " + p_dest + ".");
 	const String engine = ensure_engine_for_toolchain(p_dest, &error);
 	if (engine.is_empty()) {
 		return false;
@@ -480,7 +480,6 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 	// otherwise it downloads the engine source for this editor's revision.
 	const String existing = toolchain_engine();
 	if (!existing.is_empty()) {
-		print_line("Grit: Download Build Tools: the new toolchain will copy the engine source of the current toolchain at " + existing + ".");
 		return existing;
 	}
 	error = String();
@@ -491,13 +490,16 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 		return String();
 	}
 	const String url = _engine_archive_url(commit);
+	const String bootstrap_root = p_dest.path_join(".bootstrap");
 	const String bootstrap_dir = _bootstrap_engine_dir(p_dest, commit);
+	DirAccess::make_dir_recursive_absolute(bootstrap_root);
 	DirAccess::make_dir_recursive_absolute(bootstrap_dir);
-	String archive = bootstrap_dir.path_join("engine-" + commit + ".zip");
+	// The archive stays beside the unpack folder (not inside it): the folder is
+	// wiped before extracting, and the archive must survive that.
+	String archive = bootstrap_root.path_join("engine-" + commit + ".zip");
 	if (OS::get_singleton()->get_name() == "Windows") {
 		archive = archive.replace("/", "\\");
 	}
-	print_line("Grit: Download Build Tools: downloading the engine source for " + commit + " from " + url + ".");
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
 		error = vformat("could not download the engine source for %s from %s (%s). This is only needed while creating the toolchain; without network, build the toolchain on a machine that has a checkout.", commit, url, download_error);
@@ -558,7 +560,6 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 		error = vformat("the engine source downloaded from %s is not a usable Fast_Godot tree.", url);
 		return String();
 	}
-	print_line("Grit: engine source for " + commit + " is in " + tree);
 	return tree;
 }
 
@@ -652,7 +653,7 @@ void GritProvisioner::run_download_probe() {
 	}
 	ran = true;
 	String error;
-	print_line("Grit: download probe: creating the toolchain in " + home_toolchain_folder() + ".");
+
 	if (download_toolchain(home_toolchain_folder(), &error)) {
 		print_line("Grit: download probe: toolchain ready at " + home_toolchain_folder() + ".");
 	} else {

@@ -101,10 +101,18 @@ refresh it).
 
 Creating a toolchain also never touches a source checkout: it reuses the source
 of the current toolchain when there is one, otherwise it downloads the engine
-source archive for the editor's revision. The archive and its unpacked tree are
-temporary, the toolchain is the only place the source is kept, and template
-build caches (`out/grit-profiles`, `bin/grit`) are written inside the toolchain's
-engine tree, not into the source folder.
+source archive for the editor's revision. The download's scratch space (the
+archive, its unpacked tree and the progress file) lives in
+`<toolchain>/.bootstrap` and is deleted when the download ends, so after a
+toolchain is installed the toolchain folder is self-contained — nothing outside
+it was read while building it and nothing is left behind. Template build caches
+(`out/grit-profiles`, `bin/grit`) are written inside the toolchain's engine tree
+too, not into the source folder.
+
+Note: the toolchain carries the engine source, Python, SCons and the platform
+libraries (MoltenVK/ANGLE/Mesa/Mingw/libffi/emsdk as applicable), but on macOS
+the C++ compiler and SDK still come from the installed Xcode Command Line Tools;
+on Windows and Linux the compiler is bundled in the toolchain.
 
 ## Template build profile
 
