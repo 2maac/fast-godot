@@ -95,6 +95,30 @@ therefore self-contained: editor builds and export templates use that copy, and
 an older bundle without it is reported as an error (press Download Build Tools
 again to get a source-carrying one) — never downloaded at export time.
 
+## Template build profile
+
+By default a project's Fast export template is a full engine build. A project can
+instead give its own template a Godot **build profile**: *Project Settings → Grit
+→ Export → Build Profile* takes a `.json` profile file (the picker button selects
+it), in the same format the editor's build profile tool and `scons
+build_profile=<file>` use — a list of disabled classes and features:
+
+```json
+{
+  "type": "build_profile",
+  "disabled_classes": ["MovieWriter"],
+  "disabled_build_options": { "module_gltf_enabled": false }
+}
+```
+
+The template is then compiled with those classes/modules left out, which makes
+it smaller and quicker to build and to load. The profile must keep everything
+the project actually uses (including the engine calls Grit compiles): a missing
+class fails the template build or the game. Leave the setting empty for the full
+engine. The profile file's contents are part of the per-project template cache
+key, so choosing a different profile rebuilds the template, and an unreadable or
+malformed profile fails the export with an error instead of building anything.
+
 ## Building the editor itself
 
 `tools/build-editor.sh` (Linux, macOS) and `build-editor.cmd` in the Windows

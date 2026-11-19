@@ -70,12 +70,11 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 	grit_registry->activate();
 
 #ifdef TOOLS_ENABLED
-	// Internal state only: nothing Grit owns is meant to be edited in Project
-	// Settings, so every key here is registered with NO_EDITOR and Grit does not
-	// appear as a project settings section at all.
-	const uint32_t internal = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_NO_EDITOR;
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, "grit/export/build_profile", PROPERTY_HINT_NONE, "", internal), "");
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_NONE, "", internal), "res://.godot/grit/generated");
+	// The one project-facing Grit setting: an optional build profile for this
+	// project's Fast export template. Empty means the full engine.
+	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_BUILD_PROFILE, PROPERTY_HINT_GLOBAL_FILE, "*.json"), "");
+	// Internal state only: not meant to be edited, so keep it out of the settings UI.
+	GLOBAL_DEF_INTERNAL(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE), "res://.godot/grit/generated");
 	EditorNode::add_init_callback(grit_editor_init);
 	GDScriptCompiler::set_code_generator_factory(grit_create_code_generator);
 #else

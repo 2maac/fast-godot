@@ -10,6 +10,7 @@
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
+#include "core/io/json.h"
 #include "core/io/resource.h"
 #include "core/input/input.h"
 
@@ -421,12 +422,26 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// binary to relink against. A project without a profile gets the default
 	// module set, written out as an empty profile. Hand it over as a file:
 	// OS::execute does not inherit the editor's environment.
-	String profile_json;
-	if (ProjectSettings::get_singleton()->has_setting("grit/build_profile_json")) {
-		profile_json = String(ProjectSettings::get_singleton()->get_setting("grit/build_profile_json"));
-	}
-	if (profile_json.is_empty()) {
-		profile_json = "{\n\t\"type\": \"build_profile\"\n}\n";
+	// A project may point at a build profile of its own; otherwise the template is
+	// built with the full engine. Validate it here so a bad file fails the export
+	// with a readable error instead of dying inside SCons.
+	String profile_json = "{\n\t\"type\": \"build_profile\"\n}\n";
+	const String profile_setting = String(ProjectSettings::get_singleton()->get_setting(SETTING_BUILD_PROFILE, "")).strip_edges();
+	if (!profile_setting.is_empty()) {
+		const String profile_path = profile_setting.begins_with("res://") ? ProjectSettings::get_singleton()->globalize_path(profile_setting) : profile_setting;
+		Error profile_error = OK;
+		const String profile_source = FileAccess::get_file_as_string(profile_path, &profile_error);
+		if (profile_error != OK || profile_source.strip_edges().is_empty()) {
+			ERR_PRINT(vformat("Grit: could not read the build profile \"%s\". Choose a readable .json file in Project Settings > Grit > Export > Build Profile.", profile_setting));
+			return ERR_FILE_CANT_READ;
+		}
+		const Variant parsed_profile = JSON::parse_string(profile_source);
+		if (parsed_profile.get_type() != Variant::DICTIONARY || !Dictionary(parsed_profile).has("type") || String(Dictionary(parsed_profile)["type"]) != "build_profile") {
+			ERR_PRINT(vformat("Grit: \"%s\" is not a Godot build profile: it needs \"type\": \"build_profile\". Create one with the editor's build profile tool.", profile_setting));
+			return ERR_INVALID_DATA;
+		}
+		print_line("Grit: using the build profile at " + profile_setting);
+		profile_json = profile_source;
 	}
 	String build_profile = p_generated_dir.path_join("build_profile.json");
 	{

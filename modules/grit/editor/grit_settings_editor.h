@@ -27,6 +27,28 @@ public:
 	GritPathEditor(const String &p_label);
 };
 
+// A project settings row for the build profile file: editable path plus a browse
+// button that picks an existing .json profile.
+class GritBuildProfileEditor : public EditorProperty {
+	GDCLASS(GritBuildProfileEditor, EditorProperty);
+
+	LineEdit *path_edit = nullptr;
+	Button *browse_button = nullptr;
+	EditorFileDialog *browse_dialog = nullptr;
+
+	void _browse_pressed();
+	void _browse_chosen(const String &p_path);
+	void _text_submitted(const String &p_text);
+	void _text_changed(const String &p_text);
+	void _focus_exited();
+
+protected:
+	void update_property() override;
+
+public:
+	GritBuildProfileEditor();
+};
+
 class GritSettingsPlugin : public EditorInspectorPlugin {
 	GDCLASS(GritSettingsPlugin, EditorInspectorPlugin);
 

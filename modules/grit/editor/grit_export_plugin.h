@@ -55,6 +55,8 @@ protected:
 
 public:
 	static constexpr const char *SETTING_GENERATED_DIRECTORY = "grit/export/generated_directory";
+	// Optional Godot build profile file for this project's Fast export template.
+	static constexpr const char *SETTING_BUILD_PROFILE = "grit/export/build_profile";
 	static constexpr const char *OPTION_STRIP_SCRIPTS = "grit/strip_scripts";
 
 	// Runs when the user adds an export preset: checks the build environment and
