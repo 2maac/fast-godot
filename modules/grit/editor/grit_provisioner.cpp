@@ -643,6 +643,26 @@ String GritProvisioner::configured_toolchain() {
 	return String();
 }
 
+String GritProvisioner::toolchain_engine() {
+	// A toolchain built by tools/toolchain/download_toolchain.* ships the engine
+	// source it was built from, so an export never has to download the archive
+	// again. Prefer the tree for this editor's revision, then any other tree under
+	// <toolchain>/engine (the download cache uses <engine>/<commit>/<tree>).
+	const String root = configured_toolchain();
+	if (root.is_empty()) {
+		return String();
+	}
+	const String engine = root.path_join("engine");
+	const String commit = engine_commit();
+	if (!commit.is_empty()) {
+		const String exact = _engine_tree_at(engine.path_join(commit));
+		if (!exact.is_empty()) {
+			return exact;
+		}
+	}
+	return _engine_tree_at(engine);
+}
+
 String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
@@ -655,6 +675,11 @@ String GritProvisioner::ensure_engine(bool p_show_progress, String *r_error) {
 	if (!local.is_empty()) {
 		print_line("Grit: using the engine source next to the editor at " + local);
 		return local;
+	}
+	const String in_toolchain = toolchain_engine();
+	if (!in_toolchain.is_empty()) {
+		print_line("Grit: using the engine source in the toolchain at " + in_toolchain);
+		return in_toolchain;
 	}
 	const String existing = _engine_tree_at(_engine_root_dir());
 	if (!existing.is_empty()) {

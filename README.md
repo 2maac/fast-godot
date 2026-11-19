@@ -41,8 +41,9 @@ The first export of a project compiles the engine for that project's template
 A fresh editor has no build tools, so the export window shows no presets — only a
 centered **Download Build Tools** button. Pressing it:
 
-1. fetches the engine source for this editor's commit once (it is cached and
-   reused later),
+1. fetches the engine source for this editor's commit once and keeps a copy
+   inside the toolchain (`<toolchain>/engine/<revision>/`), so later exports and
+   editor builds use it instead of downloading again,
 2. downloads every toolchain component from its original source into
    `~/fast_godot_toolchain` (Windows: `%USERPROFILE%\fast_godot_toolchain`), with
    progress and a SHA-256 check for each file,
@@ -70,10 +71,18 @@ What the toolchain carries:
 | Linux | Python, SCons, focal GCC 9 (glibc 2.31 sysroot), binutils, libffi, wayland-scanner, Emscripten |
 | Windows | Python, SCons, MinGW-w64, libffi, static ANGLE, Mesa NIR + Agility SDK, WinRT headers, Emscripten |
 | macOS | Python, SCons, MoltenVK, Emscripten |
+| all hosts | the engine source tree the bundle was built from (`engine/<revision>/`) |
 
 Nothing else needs to be installed for an export: no system C++ compiler, X11,
 ALSA, Wayland or libffi development packages. macOS still uses the Xcode Command
 Line Tools for its compiler.
+
+The downloaders finish by copying the engine source tree they run from into
+`<toolchain>/engine/<revision>/` (the working tree, without `.git`, `bin/` or
+`out/`), and record it under the `engine` key in `toolchain.json`. A bundle is
+therefore self-contained: editor builds and export templates use that copy, and
+the editor only downloads the archive when the toolchain has no source (older
+bundles).
 
 ## Building the editor itself
 
@@ -85,13 +94,16 @@ toolchain folder find the source tree and the toolchain and run SCons with
 tools/grit_build.py editor --toolchain <toolchain-folder> [--engine <checkout>]
 ```
 
-On macOS the build needs MoltenVK; the downloaded toolchain provides it under
-`moltenvk/`, or pass `vulkan_sdk_path=<toolchain>/moltenvk`.
+By default the editor is built from the engine source shipped inside the
+toolchain; `--engine <checkout>` selects a different tree. On macOS the build
+needs MoltenVK; the downloaded toolchain provides it under `moltenvk/`, or pass
+`vulkan_sdk_path=<toolchain>/moltenvk`.
 
 ## Toolchains by hand
 
 Every component can also be assembled with the scripts in `tools/toolchain/`
-(`fetch_linux_toolchain.sh`, `make_linux_gcc.sh` with its pinned
+(`fetch_linux_toolchain.sh`, which also copies the engine source into
+`<bundle>/engine/<revision>/`, `make_linux_gcc.sh` with its pinned
 `linux_gcc_packages.txt`, `make_bundle_zip.py`), and any folder can be selected
 with the *ToolChain Root Folder Path* editor setting. A valid folder contains
 `toolchain.json` and the components above.

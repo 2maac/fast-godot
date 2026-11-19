@@ -19,7 +19,9 @@ arch=$(uname -m)
 
 progress() {
 	printf 'GRIT_PROGRESS %s %s\n' "$1" "$2"
-	[ -n "$prog" ] && printf 'GRIT_PROGRESS %s %s\n' "$1" "$2" >> "$prog"
+	if [ -n "$prog" ]; then
+		printf 'GRIT_PROGRESS %s %s\n' "$1" "$2" >> "$prog"
+	fi
 }
 fail() {
 	printf 'GRIT_ERROR %s\n' "$1"
@@ -91,7 +93,7 @@ if [ "$os" = "Linux" ]; then
 	cp "$tmp/ffi/usr/lib/x86_64-linux-gnu/libffi.a" "$dest/libffi/linux-x86_64/lib/"
 
 	progress 35 "GCC 9, glibc 2.31 sysroot and wayland-scanner"
-	sh "$here/make_linux_gcc.sh" "$dest"
+	bash "$here/make_linux_gcc.sh" "$dest"
 else
 	progress 35 "MoltenVK"
 	MOLTENVK_URL="https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.2/MoltenVK-macos.tar"
@@ -117,8 +119,38 @@ python="$dest/python/bin/python3"
 "$python" "$dest/emsdk/emsdk.py" install 4.0.11 >/dev/null
 "$python" "$dest/emsdk/emsdk.py" activate 4.0.11 >/dev/null
 
+progress 82 "Engine source"
+# The bundle is self-contained: it carries the engine source tree it was built
+# from, so editors and export templates are built from this copy instead of
+# downloading the archive again (or needing a separate checkout).
+engine_root=$(CDPATH= cd -- "$here/../.." && pwd)
+[ -f "$engine_root/SConstruct" ] || fail "cannot find the Fast_Godot source tree at $engine_root"
+[ -f "$engine_root/tools/grit_build.py" ] || fail "the tree at $engine_root is not a Fast_Godot checkout"
+engine_name="4.7.2-stable"
+if command -v git >/dev/null 2>&1; then
+	rev=$(git -C "$engine_root" rev-parse --short HEAD 2>/dev/null || true)
+	if [ -n "$rev" ]; then
+		engine_name=$rev
+	fi
+fi
+engine_dest="$dest/engine/$engine_name"
+rm -rf "$engine_dest"
+mkdir -p "$engine_dest"
+# Stream the working tree (not version-control data or build outputs) straight
+# into the bundle; no temporary archive is needed.
+(
+	cd "$engine_root" &&
+	tar -cf - \
+		--exclude=.git --exclude=./bin --exclude=./out --exclude=./.godot \
+		--exclude=./compile_commands.json --exclude=./.sconsign.dblite \
+		--exclude=./.sconsign5.dblite --exclude=./.scons_env.json \
+		--exclude=./.scons_node_count --exclude=__pycache__ --exclude=.DS_Store \
+		. 2>/dev/null
+) | tar -xf - -C "$engine_dest" || fail "could not copy the engine source into the toolchain"
+[ -f "$engine_dest/SConstruct" ] && [ -f "$engine_dest/tools/grit_build.py" ] || fail "the engine source copy is incomplete"
+
 progress 90 "verifying"
-for f in "$dest/python/bin/python3" "$dest/scons/4.11.1/scons-4.11.1/SCons/__init__.py" "$dest/emsdk/upstream/emscripten/emcc"; do
+for f in "$dest/python/bin/python3" "$dest/scons/4.11.1/scons-4.11.1/SCons/__init__.py" "$dest/emsdk/upstream/emscripten/emcc" "$engine_dest/SConstruct"; do
 	[ -e "$f" ] || fail "missing $f"
 done
 if [ "$os" = "Linux" ]; then
@@ -136,6 +168,7 @@ if [ "$os" = "Linux" ]; then
   "engineVersion": "4.7.2-stable",
   "platform": "linux",
   "arch": "x86_64",
+  "engine": "engine/$engine_name",
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "gcc": "gcc",
@@ -151,6 +184,7 @@ else
   "engineVersion": "4.7.2-stable",
   "platform": "macos",
   "arch": "$arch",
+  "engine": "engine/$engine_name",
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "moltenvk": "moltenvk",
@@ -161,4 +195,6 @@ fi
 
 progress 100 "toolchain ready"
 printf 'GRIT_DONE %s\n' "$dest"
-[ -n "$prog" ] && printf 'GRIT_DONE %s\n' "$dest" >> "$prog"
+if [ -n "$prog" ]; then
+	printf 'GRIT_DONE %s\n' "$dest" >> "$prog"
+fi

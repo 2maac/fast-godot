@@ -16,8 +16,10 @@ dependencies a build needs before starting SCons.
 
 Editor builds need the engine source tree (this file lives inside it) and a
 toolchain folder for Python, SCons and the platform compiler; pass it with
---toolchain or GRIT_TOOLCHAIN, or let it read bin/grit/build_env.json. Exports are
-started by the editor, which writes build_env.json and the build profile.
+--toolchain or GRIT_TOOLCHAIN, or let it read bin/grit/build_env.json. When the
+toolchain ships the engine source (<toolchain>/engine/...) that copy is used
+unless --engine names another checkout. Exports are started by the editor, which
+writes build_env.json and the build profile; they use the same toolchain copy.
 
 Nothing here needs a shell: the toolchain bundles ship the interpreter, SCons and
 the compilers, and the only downloads are the ones a platform build genuinely
@@ -83,6 +85,43 @@ def find_engine(start=None):
                 break
             path = parent
     return ""
+
+
+def toolchain_engine_source(toolchain):
+    """Return the engine source tree a toolchain bundle carries, or "".
+
+    A toolchain built by tools/toolchain/download_toolchain.{sh,cmd} or
+    fetch_linux_toolchain.sh ships the tree it was built from at
+    <toolchain>/engine/<revision>/ (the fetch cache adds another level for
+    downloaded archives). Editor builds and exports use that copy instead of a
+    separate checkout or a fresh download.
+    """
+    if not toolchain:
+        return ""
+    root = os.path.join(os.path.abspath(toolchain), "engine")
+    if not os.path.isdir(root):
+        return ""
+
+    def is_tree(path):
+        return os.path.isfile(os.path.join(path, "SConstruct")) and os.path.isfile(
+            os.path.join(path, "tools", "grit_build.py")
+        )
+
+    if is_tree(root):
+        return root
+    found = []
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name)
+        if not os.path.isdir(path):
+            continue
+        if is_tree(path):
+            found.append(path)
+            continue
+        for sub in sorted(os.listdir(path)):
+            subpath = os.path.join(path, sub)
+            if os.path.isdir(subpath) and is_tree(subpath):
+                found.append(subpath)
+    return found[0] if found else ""
 
 
 def install_d3d12(engine, python, mingw_prefix=""):
@@ -554,16 +593,27 @@ def parse_editor_args(argv):
 def build_editor(argv):
     """Build the editor for this host, installing what the build needs first."""
     options = parse_editor_args(argv)
-    engine = options["engine"] or find_engine(os.path.dirname(os.path.abspath(__file__)))
+    platform = options["platform"]
+    toolchain = options["toolchain"]
+    engine = options["engine"]
+    # The toolchain is the source of truth: it ships the engine tree it was built
+    # from, so use that unless --engine explicitly asks for another checkout.
+    if not engine and toolchain:
+        engine = toolchain_engine_source(toolchain)
+        if engine:
+            announce("Grit: using the engine source in the toolchain at %s" % engine)
     if not engine:
-        fail("Grit: cannot find a Fast_Godot source tree. Pass --engine DIR (or set "
-             "GRIT_ENGINE); the tree must contain tools/grit_build.py.", 2)
+        engine = find_engine(os.path.dirname(os.path.abspath(__file__)))
+    if not engine:
+        fail("Grit: cannot find a Fast_Godot source tree. Pass --engine DIR or point "
+             "--toolchain at a bundle that carries one (or set GRIT_ENGINE); the tree "
+             "must contain tools/grit_build.py.", 2)
     engine = os.path.abspath(engine)
     if not os.path.isfile(os.path.join(engine, "tools", "grit_build.py")):
         fail("Grit: %s does not look like a Fast_Godot checkout (no "
              "tools/grit_build.py)." % engine, 2)
-    platform = options["platform"]
-    toolchain = options["toolchain"] or (read_env(engine).get("toolchain_root") or "")
+    if not toolchain:
+        toolchain = read_env(engine).get("toolchain_root") or ""
     if toolchain:
         toolchain = os.path.abspath(toolchain)
     if toolchain and not os.path.isdir(toolchain):

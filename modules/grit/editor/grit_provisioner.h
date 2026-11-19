@@ -34,6 +34,11 @@ public:
 	// The source folder chosen in Editor Settings, when it holds a tree.
 	static String configured_source();
 
+	// The engine source tree a toolchain bundle carries (<toolchain>/engine/...),
+	// or empty when the toolchain has none. Exports use that copy instead of
+	// downloading the archive again.
+	static String toolchain_engine();
+
 	// The toolchain folder chosen in the editor settings, or empty when unusable.
 	static String configured_toolchain();
 

@@ -64,6 +64,26 @@ pushd "%DEST%\emsdk"
 "%DEST%\python\python.exe" emsdk.py activate 4.0.11 >nul || goto :fail
 popd
 
+call :progress 90 "Engine source"
+rem The bundle is self-contained: it carries the engine source tree it was built
+rem from, so editors and export templates are built from this copy instead of
+rem downloading the archive again (or needing a separate checkout).
+set "ENGINE_ROOT=%~dp0..\.."
+if not exist "%ENGINE_ROOT%\SConstruct" goto :fail
+if not exist "%ENGINE_ROOT%\tools\grit_build.py" goto :fail
+set "ENGINE_NAME=4.7.2-stable"
+where git >nul 2>nul
+if not errorlevel 1 (
+  for /f "delims=" %%C in ('git -C "%ENGINE_ROOT%" rev-parse --short HEAD 2^>nul') do set "ENGINE_NAME=%%C"
+)
+set "ENGINE_DEST=%DEST%\engine\%ENGINE_NAME%"
+if exist "%ENGINE_DEST%" rmdir /s /q "%ENGINE_DEST%"
+mkdir "%ENGINE_DEST%"
+tar.exe -cf "%TMP%\engine.tar" -C "%ENGINE_ROOT%" --exclude=.git --exclude=./bin --exclude=./out --exclude=./.godot --exclude=./compile_commands.json --exclude=./.sconsign.dblite --exclude=./.sconsign5.dblite --exclude=./.scons_env.json --exclude=./.scons_node_count --exclude=__pycache__ --exclude=.DS_Store . || goto :fail
+tar.exe -xf "%TMP%\engine.tar" -C "%ENGINE_DEST%" || goto :fail
+del /q "%TMP%\engine.tar" 2>nul
+if not exist "%ENGINE_DEST%\SConstruct" goto :fail
+
 call :progress 96 "verifying"
 for %%F in (
   "%DEST%\python\python.exe"
@@ -75,6 +95,7 @@ for %%F in (
   "%DEST%\agility_sdk\build\native\bin\x64\D3D12Core.dll"
   "%DEST%\winrt\winrt\Windows.Foundation.h"
   "%DEST%\emsdk\upstream\emscripten\emcc.bat"
+  "%ENGINE_DEST%\SConstruct"
 ) do (
   if not exist %%F ( echo GRIT_ERROR missing %%F & goto :fail )
 )
@@ -86,6 +107,7 @@ for %%F in (
   echo   "engineVersion": "4.7.2-stable",
   echo   "platform": "windows",
   echo   "arch": "x86_64",
+  echo   "engine": "engine/%ENGINE_NAME%",
   echo   "python": "python",
   echo   "scons": "scons/4.11.1/scons-4.11.1",
   echo   "mingw": "mingw64",

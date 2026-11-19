@@ -23,13 +23,40 @@ curl -sSL --fail -o "$TMP/scons.tar.gz" "$SCONS_URL"
 echo "$SCONS_SHA  $TMP/scons.tar.gz" | sha256sum -c -
 tar -xzf "$TMP/scons.tar.gz" -C "$B/scons/4.11.1"
 
-cat > "$B/toolchain.json" <<'JSON'
+# The bundle carries the engine source tree it was built from, like the
+# downloaders do, so editors and templates can be built from it directly.
+ENGINE_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
+ENGINE_NAME="4.7.2-stable"
+if command -v git >/dev/null 2>&1; then
+	REV="$(git -C "$ENGINE_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+	[ -n "$REV" ] && ENGINE_NAME="$REV"
+fi
+ENGINE_DEST="$B/engine/$ENGINE_NAME"
+if [ -f "$ENGINE_ROOT/SConstruct" ]; then
+	rm -rf "$ENGINE_DEST"
+	mkdir -p "$ENGINE_DEST"
+	(
+		cd "$ENGINE_ROOT" &&
+		tar -cf - \
+			--exclude=.git --exclude=./bin --exclude=./out --exclude=./.godot \
+			--exclude=./compile_commands.json --exclude=./.sconsign.dblite \
+			--exclude=./.sconsign5.dblite --exclude=./.scons_env.json \
+			--exclude=./.scons_node_count --exclude=__pycache__ --exclude=.DS_Store \
+			. 2>/dev/null
+	) | tar -xf - -C "$ENGINE_DEST"
+	[ -f "$ENGINE_DEST/SConstruct" ] || { echo "engine source copy is incomplete" >&2; exit 1; }
+else
+	echo "warning: $ENGINE_ROOT is not a checkout; the bundle will have no engine source" >&2
+fi
+
+cat > "$B/toolchain.json" <<JSON
 {
   "name": "Fast_Godot_Toolchain_linux_x86_64",
   "format": 1,
   "engineVersion": "4.7.2-stable",
   "platform": "linux",
   "arch": "x86_64",
+  "engine": "engine/$ENGINE_NAME",
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "gcc": "gcc"
