@@ -93,7 +93,11 @@ The downloaders finish by copying the engine source tree they run from into
 `out/`), and record it under the `engine` key in `toolchain.json`. A bundle is
 therefore self-contained: editor builds and export templates use that copy, and
 an older bundle without it is reported as an error (press Download Build Tools
-again to get a source-carrying one) — never downloaded at export time.
+again to get a source-carrying one) — never downloaded at export time. Export
+templates always build from the engine tree the toolchain declares; a checkout
+next to the editor is only a fallback when the toolchain has no source (and a
+warning is printed when the toolchain's source revision differs from the
+editor's).
 
 ## Template build profile
 

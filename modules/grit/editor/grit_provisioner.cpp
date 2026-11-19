@@ -109,9 +109,8 @@ static String _engine_archive_url(const String &p_commit) {
 	return vformat("https://github.com/2maac/fast-godot/archive/%s.zip", p_commit);
 }
 
-// The tree the editor was built from (a source checkout/staged build): use it
-// directly instead of fetching the same commit again, which is what made every
-// relaunch re-download the source for a staged editor.
+// The tree the editor was built from (a source checkout/staged build). Used only
+// when the toolchain has no engine source of its own.
 static String _local_engine_tree() {
 	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
 	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
@@ -431,6 +430,15 @@ String GritProvisioner::toolchain_engine() {
 	if (relative.is_empty()) {
 		return String();
 	}
+	// A toolchain pinned to an earlier editor revision still exports, but the
+	// template is then built from that older source; say so once per export.
+	const String declared = relative.get_file();
+	const String commit = engine_commit();
+	// The toolchain records the short revision, the editor knows the full hash.
+	const bool same_revision = !commit.is_empty() && !declared.is_empty() && (commit == declared || commit.begins_with(declared) || declared.begins_with(commit));
+	if (!commit.is_empty() && !declared.is_empty() && !same_revision && declared.length() >= 7 && declared.length() <= 40 && declared.is_valid_hex_number(false)) {
+		WARN_PRINT(vformat("Grit: the toolchain carries engine source for \"%s\", but this editor was built from \"%s\". Templates build from the toolchain copy; re-download the build tools with this editor to keep them in sync.", declared, commit));
+	}
 	const String tree = relative.is_relative_path() ? root.path_join(relative) : relative;
 	return _engine_present(tree) ? tree : String();
 }
@@ -439,17 +447,18 @@ String GritProvisioner::ensure_engine(String *r_error) {
 	String local_error;
 	String &error = r_error ? *r_error : local_error;
 
-	// A checkout next to the editor is the tree the running build belongs to;
-	// otherwise the toolchain is the source of truth.
-	const String local = _local_engine_tree();
-	if (!local.is_empty()) {
-		print_line("Grit: using the engine source next to the editor at " + local);
-		return local;
-	}
+	// The toolchain is the source of truth: its templates are built from the engine
+	// tree it declares. A checkout next to the editor is only a fallback for a
+	// toolchain that has no source.
 	const String in_toolchain = toolchain_engine();
 	if (!in_toolchain.is_empty()) {
 		print_line("Grit: using the engine source in the toolchain at " + in_toolchain);
 		return in_toolchain;
+	}
+	const String local = _local_engine_tree();
+	if (!local.is_empty()) {
+		print_line("Grit: using the engine source next to the editor at " + local + " (the toolchain has no engine source)");
+		return local;
 	}
 	// Once the build tools exist everything must come from them: nothing is
 	// downloaded on an export or an editor build.
@@ -468,8 +477,16 @@ String GritProvisioner::ensure_engine_for_toolchain(String *r_error) {
 
 	// Only a toolchain download needs a checkout to run the downloader from; the
 	// resulting bundle carries it, and afterwards ensure_engine() never downloads.
-	const String existing = ensure_engine(&error);
+	// Prefer the tree this editor was built from so a freshly rebuilt editor gets
+	// a toolchain with matching source, then the current toolchain's copy.
+	const String local = _local_engine_tree();
+	if (!local.is_empty()) {
+		print_line("Grit: using the engine source next to the editor at " + local);
+		return local;
+	}
+	const String existing = toolchain_engine();
 	if (!existing.is_empty()) {
+		print_line("Grit: using the engine source in the current toolchain at " + existing);
 		return existing;
 	}
 	error = String();

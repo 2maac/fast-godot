@@ -153,37 +153,21 @@ static bool _is_inside(const String &p_path, const String &p_root) {
 }
 
 // Builds an export template that contains the project's generated code, by
-// running tools/grit_build.py inside the engine source tree. That tree
-// must already contain the built engine objects (bin/obj) for the requested
-// target; the script only compiles the generated sources and relinks.
+// running tools/grit_build.py inside the engine source tree. One resolver decides
+// which tree that is (the toolchain's declared source first, a checkout next to
+// the editor as a fallback); nothing is downloaded here.
 String GritExportPlugin::_resolve_engine_root() const {
 	if (!resolved_engine_root.is_empty()) {
 		return resolved_engine_root;
 	}
-
-	// Otherwise find the tree this editor was built from by walking up from the
-	// executable. A staged app sits at <engine>/out/editor-staging/..., so this
-	// covers both the tree binary and a staged bundle.
-	String dir = OS::get_singleton()->get_executable_path().get_base_dir();
-	for (int i = 0; i < 8 && !dir.is_empty(); i++) {
-		if (FileAccess::exists(dir.path_join("SConstruct")) && FileAccess::exists(dir.path_join("tools/grit_build.py"))) {
-			resolved_engine_root = dir;
-			print_line(vformat("Grit: using the engine tree at \"%s\".", dir));
-			return resolved_engine_root;
-		}
-		dir = dir.get_base_dir();
-	}
-
-	// Nothing local: use the engine source the toolchain carries. Nothing is
-	// downloaded here; a toolchain without source is an error.
-	String fetch_error;
-	const String fetched = GritProvisioner::ensure_engine(&fetch_error);
-	if (!fetched.is_empty()) {
-		resolved_engine_root = fetched;
+	String error;
+	const String root = GritProvisioner::ensure_engine(&error);
+	if (!root.is_empty()) {
+		resolved_engine_root = root;
 		return resolved_engine_root;
 	}
-	if (!fetch_error.is_empty()) {
-		ERR_PRINT("Grit: " + fetch_error);
+	if (!error.is_empty()) {
+		ERR_PRINT("Grit: " + error);
 	}
 	return String();
 }
