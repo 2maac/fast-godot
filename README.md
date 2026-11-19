@@ -168,19 +168,28 @@ CI/command-line exports, matching the engine's behaviour.
 
 The export uses a **random 256-bit data key per export**; the pack is encrypted
 with that data key, and the template embeds only the data key *wrapped* with your
-key (AES-256-ECB). When the pack is opened the template unwraps the data key, so
-the key the pack actually uses never appears in the binary — only the wrapped
-value does. Your key itself is not stored as an array either: it is rebuilt from
-per-key XOR share immediates.
+key. At pack-open a **white-box AES-256 table network** (the key baked into
+randomized lookup tables with random GF(2) byte encodings between rounds, and a
+fresh table layout per build) recomputes the data key, which is then used for the
+pack. Neither your key nor the pack key exists as bytes or instruction
+immediates in the binary — only the wrapped value and the encoded tables do.
+The unwrap is two block encryptions at pack-open, so there is no runtime cost
+worth mentioning; the template grows by roughly 220 KB.
 
-Caveats (prototype): someone with the sources can still rebuild your key from
-those immediates (or dump the unwrapped data key at runtime); the next step is to
-replace the share step with a white-box implementation so the user key is not
-recoverable from the code. The user key is part of the template's build identity
-(`out/grit-profiles`) so changing it rebuilds the template; a missing or non-hex
-key fails the export before anything is built, and a toolchain whose build helper
-predates encryption support is refused (re-download the build tools with this
-editor to get the updated 4.7.2 source).
+The encrypted template also runs an **anti-debug check** before unwrapping
+(macOS `ptrace(PT_DENY_ATTACH)` + `P_TRACED`, Windows `IsDebuggerPresent`, Linux
+`/proc/self/status` `TracerPid`): a game started under a debugger does not get the
+key, so the pack cannot be inspected from memory that way.
+
+Caveat: this is our own white-box construction, not a peer-reviewed one. It
+raises extraction far above "read the array/immediates" (automated tools that
+scan for the key find nothing), but a determined analyst with the source and a
+debugger can still invest in breaking the encodings (or bypass the anti-debug).
+Treat it as strong obfuscation, not as unbreakable DRM. The user key is part of
+the template's build identity (`out/grit-profiles`) so changing it rebuilds the
+template; a missing or non-hex key fails the export before anything is built, and
+a toolchain whose build helper predates encryption support is refused (re-download
+the build tools with this editor to get the updated 4.7.2 source).
 
 ## Building the editor itself
 
