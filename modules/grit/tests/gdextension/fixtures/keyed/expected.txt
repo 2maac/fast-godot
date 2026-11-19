@@ -1,8 +1,0 @@
-keyed cffi: 7
-Grit: too few arguments for "set_value" call. Expected 2 but received 1.
-Grit: too few arguments for "get_value" call. Expected 1 but received 0.
-keyed missing: 0
-keyed array: 40
-keyed packed: 12
-Grit: array index 3 is out of bounds (size 0).
-keyed oob: 0

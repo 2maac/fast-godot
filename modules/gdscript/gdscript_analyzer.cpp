@@ -397,10 +397,7 @@ Error GDScriptAnalyzer::resolve_class_inheritance(GDScriptParser::ClassNode *p_c
 		StringName class_name = p_class->identifier->name;
 		if (GDScriptParser::get_builtin_type(class_name) < Variant::VARIANT_MAX) {
 			push_error(vformat(R"(Class "%s" hides a built-in type.)", class_name), p_class->identifier);
-		} else if (class_exists(class_name) && !(p_class == parser->head && parser->script_path.ends_with(".gde"))) {
-			// A `.gde` file is the source of a generated class: its class_name names
-			// that class and is never registered as a GDScript global class, so the
-			// native class it becomes is not a conflict.
+		} else if (class_exists(class_name)) {
 			push_error(vformat(R"(Class "%s" hides a native class.)", class_name), p_class->identifier);
 		} else if (ScriptServer::is_global_class(class_name) && (!GDScript::is_canonically_equal_paths(ScriptServer::get_global_class_path(class_name), parser->script_path) || p_class != parser->head)) {
 			push_error(vformat(R"(Class "%s" hides a global script class.)", class_name), p_class->identifier);
@@ -4744,11 +4741,6 @@ void GDScriptAnalyzer::reduce_preload(GDScriptParser::PreloadNode *p_preload) {
 			p_preload->resolved_path = parser->script_path.get_base_dir().path_join(p_preload->resolved_path);
 		}
 		p_preload->resolved_path = p_preload->resolved_path.simplify_path();
-		if (p_preload->resolved_path.get_extension() == "gde") {
-			// A `.gde` file is a class source for the GDExtension converter; GDScript
-			// files cannot use it (only the built class exists for them).
-			push_error("GDExtension sources cannot be used from GDScript.", p_preload->path);
-		}
 		if (!ResourceLoader::exists(p_preload->resolved_path)) {
 			Ref<FileAccess> file_check = FileAccess::create(FileAccess::ACCESS_RESOURCES);
 

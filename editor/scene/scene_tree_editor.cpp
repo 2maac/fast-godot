@@ -415,17 +415,6 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 
 	Ref<Texture2D> icon = EditorNode::get_singleton()->get_object_icon(p_node);
 	p_item->set_icon(0, icon);
-	{
-		// Class-level badge: a plugin can decorate a generated class (e.g. "its
-		// source changed, rebuild needed") with an overlay on the node's icon.
-		const Dictionary badge = EditorNode::get_singleton()->get_class_badge(p_node->get_class_name());
-		if (!badge.is_empty()) {
-			const StringName badge_icon = badge.get("icon", StringName());
-			if (!badge_icon.is_empty()) {
-				p_item->set_icon_overlay(0, get_editor_theme_icon(badge_icon));
-			}
-		}
-	}
 	p_item->set_metadata(0, p_node->get_path());
 
 	if (!p_node->is_connected("child_order_changed", callable_mp(this, &SceneTreeEditor::_node_child_order_changed))) {
@@ -446,8 +435,7 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 		// Add script icons for all scripted nodes.
 		Ref<Script> scr = p_node->get_script();
 		if (scr.is_valid()) {
-			const StringName script_icon = scr->get_editor_icon();
-			p_item->add_button(0, get_editor_theme_icon(script_icon.is_empty() ? SNAME("Script") : script_icon), BUTTON_SCRIPT);
+			p_item->add_button(0, get_editor_theme_icon(SNAME("Script")), BUTTON_SCRIPT);
 			if (EditorNode::get_singleton()->get_object_custom_type_base(p_node) == scr) {
 				// Disable button on custom scripts (pure visual cue).
 				p_item->set_button_disabled(0, p_item->get_button_count(0) - 1, true);
@@ -614,8 +602,7 @@ void SceneTreeEditor::_update_node(Node *p_node, TreeItem *p_item, bool p_part_o
 				additional_notes += "\n" + TTR("This script is a custom type.");
 				button_color.a = 0.5;
 			}
-			const StringName script_icon = scr->get_editor_icon();
-			p_item->add_button(0, get_editor_theme_icon(script_icon.is_empty() ? SNAME("Script") : script_icon), BUTTON_SCRIPT, false, TTR("Open Script:") + " " + scr->get_path() + additional_notes);
+			p_item->add_button(0, get_editor_theme_icon(SNAME("Script")), BUTTON_SCRIPT, false, TTR("Open Script:") + " " + scr->get_path() + additional_notes);
 			p_item->set_button_color(0, p_item->get_button_count(0) - 1, button_color);
 		}
 
@@ -714,13 +701,6 @@ void SceneTreeEditor::_update_node_tooltip(Node *p_node, TreeItem *p_item) {
 		}
 	}
 
-	{
-		const Dictionary badge = EditorNode::get_singleton()->get_class_badge(p_node->get_class_name());
-		const String badge_tooltip = badge.get("tooltip", String());
-		if (!badge_tooltip.is_empty()) {
-			tooltip += "\n" + badge_tooltip;
-		}
-	}
 	p_item->set_tooltip_text(0, tooltip);
 }
 

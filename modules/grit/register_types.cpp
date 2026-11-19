@@ -1,13 +1,9 @@
 #include "register_types.h"
 
-#include "grit_gdx_script.h"
 #include "runtime/grit_registry.h"
 #include "runtime/grit_runtime.h"
 #include "runtime/grit_runtime_code_generator.h"
 
-#include "core/io/resource_loader.h"
-#include "core/io/resource_saver.h"
-#include "core/object/class_db.h"
 #include "modules/gdscript/gdscript_compiler.h"
 
 #ifdef TOOLS_ENABLED
@@ -15,16 +11,12 @@
 #include "editor/grit_export_plugin.h"
 #include "editor/grit_settings_editor.h"
 #include "editor/grit_provisioner.h"
-#include "gdextension/grit_gdx_apply.h"
-#include "gdextension/grit_gdx_generator.h"
 
 #include "core/config/project_settings.h"
 #include "core/version.h"
 #include "core/object/callable_mp.h"
 #include "core/os/os.h"
 #include "editor/editor_node.h"
-#include "editor/script/script_create_dialog.h"
-#include "editor/script/script_editor_plugin.h"
 #include "editor/export/editor_export.h"
 #endif
 
@@ -49,8 +41,6 @@ static void grit_editor_init() {
 	GritProvisioner::purge_obsolete_settings();
 	// Draws the source row (Fetch Source button + path entry) in Editor Settings.
 	EditorInspector::add_inspector_plugin(Ref<EditorInspectorPlugin>(memnew(GritSettingsPlugin)));
-	// Class badge: a stale generated class gets an overlay on its scene-tree icon.
-	EditorNode::get_singleton()->add_class_badge_provider(callable_mp_static(&GritGdxApply::class_stale_badge));
 	Ref<GritExportPlugin> export_plugin;
 	export_plugin.instantiate();
 	EditorExport *editor_export = EditorExport::get_singleton();
@@ -64,55 +54,14 @@ static void grit_editor_init() {
 	if (!OS::get_singleton()->get_environment("GRIT_PROBE_NOW").is_empty()) {
 		callable_mp_static(&GritProvisioner::run_probe).call_deferred();
 	}
-	print_line(vformat("Grit: GDExtension tools active (build %s).", String(VERSION_HASH).is_empty() ? String(VERSION_FULL_BUILD) : vformat("%s.%s", VERSION_FULL_BUILD, VERSION_HASH)));
-
-	// GDExtension sources are created from FileSystem > New Script with the
-	// "GDScript (GDExtension)" language; the scene tree has no Grit actions.
-	ScriptCreateDialog::register_extra_language("GDScript (GDExtension)", "gde", "class_name %s", &GritGdxApply::create_source_callback);
-	ScriptEditor::set_build_gde_handler(callable_mp_static(&GritGdxApply::build_source_from_editor));
-	const List<String> arguments = OS::get_singleton()->get_cmdline_args();
-	for (const List<String>::Element *element = arguments.front(); element; element = element->next()) {
-		const String &argument = element->get();
-		if (argument == "--grit-gdx-build-source" && element->next()) {
-			callable_mp_static(&GritGdxApply::build_source_from_editor).bind(element->next()->get()).call_deferred();
-			break;
-		}
-		if (argument == "--grit-gdx-dialog-check") {
-			callable_mp_static(&ScriptCreateDialog::run_language_check).call_deferred();
-			break;
-		}
-		if (argument == "--grit-gdx-generate" || argument == "--grit-gdx-project-check" || argument == "--grit-gdx-migrate") {
-			callable_mp_static(&GritGdxGenerator::run_from_command_line).call_deferred();
-			break;
-		}
-	}
+	print_line(vformat("Grit: Fast export tools active (build %s).", String(VERSION_HASH).is_empty() ? String(VERSION_FULL_BUILD) : vformat("%s.%s", VERSION_FULL_BUILD, VERSION_HASH)));
 	for (const Ref<EditorExportPlugin> &plugin : other_plugins) {
 		editor_export->add_export_plugin(plugin);
 	}
 }
 #endif
 
-static Ref<GritGdxScriptLoader> grit_gdx_script_loader;
-static Ref<GritGdxScriptSaver> grit_gdx_script_saver;
-
 void initialize_grit_module(ModuleInitializationLevel p_level) {
-	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
-		// `.gde` class sources and legacy `.gds` archives are GritGdxScript
-		// resources. A legacy archive is referenced by the scenes converted by the
-		// retired flow, so the loader has to exist in exported games too; `.gde`
-		// sources are only opened by the editor and the generator.
-		GDREGISTER_CLASS(GritGdxScript);
-		grit_gdx_script_loader.instantiate();
-		ResourceLoader::add_resource_format_loader(grit_gdx_script_loader);
-		return;
-	}
-#ifdef TOOLS_ENABLED
-	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
-		grit_gdx_script_saver.instantiate();
-		ResourceSaver::add_resource_format_saver(grit_gdx_script_saver);
-		return;
-	}
-#endif
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		return;
 	}
@@ -137,22 +86,6 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 }
 
 void uninitialize_grit_module(ModuleInitializationLevel p_level) {
-	if (p_level == MODULE_INITIALIZATION_LEVEL_SCENE) {
-		if (grit_gdx_script_loader.is_valid()) {
-			ResourceLoader::remove_resource_format_loader(grit_gdx_script_loader);
-			grit_gdx_script_loader.unref();
-		}
-		return;
-	}
-#ifdef TOOLS_ENABLED
-	if (p_level == MODULE_INITIALIZATION_LEVEL_EDITOR) {
-		if (grit_gdx_script_saver.is_valid()) {
-			ResourceSaver::remove_resource_format_saver(grit_gdx_script_saver);
-			grit_gdx_script_saver.unref();
-		}
-		return;
-	}
-#endif
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SERVERS) {
 		return;
 	}

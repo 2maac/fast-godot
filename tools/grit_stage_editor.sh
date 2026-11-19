@@ -66,7 +66,7 @@ echo "Grit: staged $STAGE (rev $REV)"
 echo "$CHECK_OUT"
 
 if [ "${CLASSES:-0}" -lt 1000 ] 2>/dev/null; then
-	echo "Grit: WARNING staged editor reports ${CLASSES} classes; expected ~1077. The tree build is broken — rebuild before staging." >&2
+	echo "Grit: WARNING staged editor reports ${CLASSES} classes; expected ~1078. The tree build is broken — rebuild before staging." >&2
 	exit 2
 fi
 echo "Grit: staged editor verified (classes=$CLASSES)"

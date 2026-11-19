@@ -185,8 +185,6 @@ class EditorBuildProfileManager : public AcceptDialog {
 	void _export_profile(const String &p_path);
 
 	bool updating_build_options = false;
-	bool external_mode = false;
-
 	void _class_list_item_selected();
 	void _class_list_item_edited();
 	void _class_list_item_collapsed(Object *p_item);
@@ -214,11 +212,6 @@ protected:
 
 public:
 	Ref<EditorBuildProfile> get_current_profile();
-
-	// Reuse this window for an unrelated profile (stored by the caller) without
-	// touching the editor's own build profile or its file actions.
-	void set_external_profile(Ref<EditorBuildProfile> p_profile, const String &p_title);
-	Ref<EditorBuildProfile> get_external_profile() const { return external_mode ? edited : Ref<EditorBuildProfile>(); }
 
 	static EditorBuildProfileManager *get_singleton() { return singleton; }
 	EditorBuildProfileManager();

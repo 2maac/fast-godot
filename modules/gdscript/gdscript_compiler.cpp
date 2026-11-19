@@ -2763,10 +2763,7 @@ Error GDScriptCompiler::_prepare_compilation(GDScript *p_script, const GDScriptP
 	p_script->_is_abstract = p_class->is_abstract;
 
 	if (p_script->local_name != StringName()) {
-		// A `.gde` source declares the class it generates; that class is native and
-		// the file is never executed, so the name is not a shadow.
-		const bool is_gdextension_source = p_script->get_path().ends_with(".gde");
-		if (GDScriptAnalyzer::class_exists(p_script->local_name) && !is_gdextension_source) {
+		if (GDScriptAnalyzer::class_exists(p_script->local_name)) {
 			_set_error(vformat(R"(The class "%s" shadows a native class)", p_script->local_name), p_class);
 			return ERR_ALREADY_EXISTS;
 		}
@@ -3133,7 +3130,6 @@ void GDScriptCompiler::make_scripts(GDScript *p_script, const GDScriptParser::Cl
 	p_script->local_name = p_class->identifier ? p_class->identifier->name : StringName();
 	p_script->global_name = p_class->get_global_name();
 	p_script->simplified_icon_path = p_class->simplified_icon_path;
-	p_script->gdextension_class_name = p_class->gdextension_class_name;
 
 	HashMap<StringName, Ref<GDScript>> old_subclasses;
 

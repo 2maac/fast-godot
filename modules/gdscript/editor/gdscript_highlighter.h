@@ -61,9 +61,6 @@ private:
 	HashMap<StringName, Color> reserved_keywords;
 	HashMap<StringName, Color> member_keywords;
 	HashSet<StringName> global_functions;
-	// A `.gde` class source names the native class it generates, so a method or a
-	// signal may legally share that name; its declaration is not a type reference.
-	bool is_gdextension_source = false;
 
 	enum Type {
 		NONE,

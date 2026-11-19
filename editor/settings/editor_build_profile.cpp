@@ -750,27 +750,7 @@ void EditorBuildProfileManager::_notification(int p_what) {
 	}
 }
 
-void EditorBuildProfileManager::set_external_profile(Ref<EditorBuildProfile> p_profile, const String &p_title) {
-	external_mode = true;
-	edited = p_profile;
-	set_title(p_title);
-	// File actions make no sense for a profile owned by the caller; Reset and
-	// Detect from Project still apply, which is all that is wanted here.
-	for (int i = 0; i < ACTION_MAX; i++) {
-		if (profile_actions[i] && i != ACTION_RESET && i != ACTION_DETECT) {
-			profile_actions[i]->hide();
-		}
-	}
-	if (profile_path) {
-		profile_path->hide();
-	}
-	_update_edited_profile();
-}
-
 void EditorBuildProfileManager::_profile_action(int p_action) {
-	if (external_mode && p_action != ACTION_RESET && p_action != ACTION_DETECT) {
-		return;
-	}
 	last_action = Action(p_action);
 
 	switch (p_action) {

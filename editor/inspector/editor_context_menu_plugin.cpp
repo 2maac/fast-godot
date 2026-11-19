@@ -155,12 +155,6 @@ void EditorContextMenuPluginManager::add_options_from_plugins(PopupMenu *p_popup
 			if (item.shortcut.is_valid()) {
 				p_popup->set_item_shortcut(-1, item.shortcut, true);
 			}
-
-			// A plugin can offer an item it cannot currently run; show it greyed
-			// out instead of hiding it, so the reason stays discoverable.
-			if (!item.callable.is_valid() && !item.submenu) {
-				p_popup->set_item_disabled(-1, true);
-			}
 			id++;
 		}
 	}
@@ -189,9 +183,6 @@ bool EditorContextMenuPluginManager::activate_custom_option(ContextMenuSlot p_sl
 
 		for (KeyValue<String, EditorContextMenuPlugin::ContextMenuItem> &E : plugin->context_menu_items) {
 			if (E.value.id == p_option) {
-				if (!E.value.callable.is_valid()) {
-					return false;
-				}
 				invoke_callback(E.value.callable, p_arg);
 				return true;
 			}

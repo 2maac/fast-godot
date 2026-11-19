@@ -145,9 +145,6 @@ GDScriptParser::GDScriptParser() {
 		// Script annotations.
 		register_annotation(MethodInfo("@tool"), AnnotationInfo::SCRIPT, &GDScriptParser::tool_annotation);
 		register_annotation(MethodInfo("@icon", PropertyInfo(Variant::STRING, "icon_path")), AnnotationInfo::SCRIPT, &GDScriptParser::icon_annotation);
-		// Grit: names the GDExtension class this script converts into. Ignored by
-		// GDScript; the converter refuses scripts without it (and with a class_name).
-		register_annotation(MethodInfo("@gdextension_class_name", PropertyInfo(Variant::STRING, "name")), AnnotationInfo::SCRIPT, &GDScriptParser::gdextension_class_name_annotation);
 		register_annotation(MethodInfo("@static_unload"), AnnotationInfo::SCRIPT, &GDScriptParser::static_unload_annotation);
 		register_annotation(MethodInfo("@abstract"), AnnotationInfo::SCRIPT | AnnotationInfo::CLASS | AnnotationInfo::FUNCTION, &GDScriptParser::abstract_annotation);
 		// Onready annotation.
@@ -4455,32 +4452,6 @@ bool GDScriptParser::tool_annotation(AnnotationNode *p_annotation, Node *p_targe
 	}
 #endif // DEBUG_ENABLED
 	_is_tool = true;
-	return true;
-}
-
-bool GDScriptParser::gdextension_class_name_annotation(AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class) {
-	ERR_FAIL_COND_V_MSG(p_target->type != Node::CLASS, false, R"("@gdextension_class_name" annotation can only be applied to the script.)");
-	ERR_FAIL_COND_V(p_annotation->resolved_arguments.is_empty(), false);
-
-	ClassNode *class_node = static_cast<ClassNode *>(p_target);
-	const String name = p_annotation->resolved_arguments[0];
-
-#ifdef DEBUG_ENABLED
-	if (!class_node->gdextension_class_name.is_empty()) {
-		push_error(R"("@gdextension_class_name" annotation can only be used once.)", p_annotation);
-		return false;
-	}
-	if (name.is_empty()) {
-		push_error(R"("@gdextension_class_name" needs the name of the generated class.)", p_annotation->arguments[0]);
-		return false;
-	}
-	if (!name.is_valid_identifier()) {
-		push_error(R"("@gdextension_class_name" must be a valid identifier.)", p_annotation->arguments[0]);
-		return false;
-	}
-#endif // DEBUG_ENABLED
-
-	class_node->gdextension_class_name = name;
 	return true;
 }
 

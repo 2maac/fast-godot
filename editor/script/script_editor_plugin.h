@@ -161,7 +161,6 @@ class ScriptEditor : public PanelContainer {
 
 	Button *help_search = nullptr;
 	Button *site_search = nullptr;
-	Button *build_gde = nullptr;
 	Button *make_floating = nullptr;
 	bool is_floating = false;
 	EditorHelpSearch *help_search_dialog = nullptr;
@@ -353,7 +352,6 @@ class ScriptEditor : public PanelContainer {
 	void _calculate_script_name_button_ratio();
 
 	void _help_search(const String &p_text);
-	void _build_gde();
 
 	void _history_forward();
 	void _history_back();
@@ -401,11 +399,6 @@ protected:
 	static void _bind_methods();
 
 public:
-	// A module (Grit) provides the GDExtension build action; the button is part of
-	// the script editor toolbar next to Online Docs / Search Help.
-	static void set_build_gde_handler(const Callable &p_handler);
-	static Callable build_gde_handler;
-
 	static ScriptEditor *get_singleton() { return script_editor; }
 
 	bool toggle_files_panel();

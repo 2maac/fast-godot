@@ -1,3 +1,0 @@
-handle_crash
-Program crashed
-signal 11

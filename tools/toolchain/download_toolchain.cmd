@@ -79,13 +79,6 @@ for %%F in (
   if not exist %%F ( echo GRIT_ERROR missing %%F & goto :fail )
 )
 
-rem godot-cpp: the C++ bindings generated GDExtension libraries link against.
-if not exist "%DEST%\godot-cpp\SConstruct" (
-  call :fetch "https://codeload.github.com/godotengine/godot-cpp/tar.gz/refs/tags/10.0.0-stable" "ebbf64f0f8f8b8b66bc4bc4d3797db97f95b19cf0dfb5b3f8cf56683d9df7db4" "%TMP%\godot-cpp.tar.gz" "88" "godot-cpp" || goto :fail
-  if not exist "%DEST%\godot-cpp" mkdir "%DEST%\godot-cpp"
-  tar.exe -xzf "%TMP%\godot-cpp.tar.gz" -C "%DEST%\godot-cpp" --strip-components=1 || goto :fail
-)
-
 > "%DEST%\toolchain.json" (
   echo {
   echo   "name": "Fast_Godot_Toolchain_win64",
@@ -101,7 +94,6 @@ if not exist "%DEST%\godot-cpp\SConstruct" (
   echo   "mesa": "mesa-x86_64-gcc",
   echo   "agility_sdk": "agility_sdk",
   echo   "winrt": "winrt",
-  echo   "godot-cpp": "godot-cpp",
   echo   "emsdk": "emsdk"
   echo }
 )

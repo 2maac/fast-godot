@@ -1,7 +1,0 @@
-plain start
-plain total: 12
-plain item: x
-plain item: y
-plain branch ok
-plain label: plain! total: 17
-PLAIN DONE

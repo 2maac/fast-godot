@@ -6,9 +6,7 @@ Fast Godot is a custom build of Godot **4.7.2** with two additions:
 
 - **Grit** — compiles a project's GDScript into C++ and links it into a
   per-project export template, so game logic runs as native code instead of
-  bytecode. Native code can be up to 80x faster in some cases. The editor can
-  also turn a script file into a native GDExtension class (see
-  [GDExtension classes from scripts](#gdextension-classes-from-scripts)).
+  bytecode. Native code can be up to 80x faster in some cases.
   
 - **CFFI** — lets GDScript call into C libraries directly.
 
@@ -18,96 +16,6 @@ build toolchains are produced locally.
 
 Functions Grit cannot compile stay on the GDScript VM, and the export log names
 each one with the reason.
-
-## GDExtension classes from scripts
-
-GDExtension classes are created from a source file, not from the scene tree. In
-the FileSystem dock, **New Script…** offers **GDScript (GDExtension)**: it writes
-a `.gde` script whose template declares the class and its base:
-
-```gdscript
-class_name Player
-extends CharacterBody2D
-```
-
-The `class_name` becomes the generated class. The script is a **class source**:
-it is never compiled by the engine, never instantiated and never executed — only
-the built GDExtension runs. It cannot be attached to a node (the Attach Script
-dialog does not offer the language and rejects `.gde` paths), a `.gd` file cannot
-`preload` it, and it is not registered as a GDScript global class. It still opens
-in the script editor with normal GDScript syntax highlighting. Nodes use the
-generated class as their type instead.
-
-All `.gde` sources in a project share **one** extension, generated at
-`res://gdext/` and named after the project:
-
-```
-res://player.gde
-res://enemy.gde
-res://gdext/<ProjectName>.gdextension
-res://gdext/SConstruct
-res://gdext/src/...        (every class plus the registry)
-res://gdext/bin/lib<ProjectName>.<platform>.<arch>.<config>.<ext>
-```
-
-Creating a `.gde` adds its class to that extension and builds the project
-extension for the first time. With any `.gde` open, the script editor's **Build
-GDE** button (next to Online Docs / Search Help) saves the file (File > Save),
-regenerates **every** `.gde` class in the project from temporary copies, and
-builds the single library; it always rebuilds (there is no up-to-date check) and
-never changes a scene, a node or the `.gde` files themselves. Removing a `.gde`
-drops its class on the next build.
-
-A `class_name` clash between two `.gde` sources is an error; the generated class
-is always the script's `class_name` verbatim (never renamed). The class name is
-also what the descriptor exposes to GDScript. A `class_name` that cannot be a
-C++ class (a C++ keyword, `godot`, or an engine virtual name such as `_ready`)
-is refused with a clear message. Methods keep their GDScript names; only the C++
-symbol changes when a method would collide with the generated class name or a
-C++ keyword.
-
-The export plugin keeps each project's compiled template in
-`res://exports/` (for example `exports/macos_fast.zip`), separate from the
-export destination. It is a generated, per-project cache: deleting it only
-forces the template to be rebuilt on the next export (a few minutes). The plugin
-adds a `.gdignore` there so the editor and the exported pack skip it; add
-`exports/` to your project's `.gitignore` too.
-
-Projects converted by an older build have one extension per source. The next
-successful build copies every class into the project extension, removes the old
-folders, and updates the editor's extension list; restart the editor afterwards
-so it unloads the old libraries.
-
-Projects converted by an older build (`.gd` + `.gds` archives and the retired
-node-context actions) are upgraded once with `--grit-gdx-migrate`: each class
-gets a `.gde` source in place of its script/archive and keeps its extension. The
-node-context actions no longer exist; headless builds use
-`--grit-gdx-generate res://player.gde --grit-gdx-build` (generation only without
-`--grit-gdx-build`), and creation starts in the New Script dialog.
-
-Generated classes are ordinary godot-cpp classes: exported variables become
-properties, `signal` declarations become signals, and a script-defined `_ready`
-or `_process` overrides the native virtual. The class name is taken from the
-source's `class_name`; a name that hides a native class is refused rather than
-renamed.
-
-What converts: functions, exported variables, signals, virtual overrides,
-`is`/`as` (built-in, native and preloaded script types), `assert`, optional
-parameters, static functions, typed containers (`Array[T]`, `Dictionary[K, V]`)
-and lambdas (`func(...): ...`, including captured values). What does not:
-`await` — a GDExtension method cannot suspend and resume, so a method that awaits
-is reported and stays behind — rest parameters (`...args`), `static var`, and
-`is`/`as` on an inner-class script type.
-
-After a build the editor rescans the filesystem and reloads the loaded
-GDExtensions (the descriptors set `reloadable = true` and the libraries are built
-with hot reload support), so the new class is available to GDScript and no
-editor restart is needed. A build never edits a scene, a node or a `.gde` source.
-
-godot-cpp ships with the toolchain (`10.0.0-stable`, the release that targets
-this engine's GDExtension API, which also fixed a crash when the editor quit with
-a library loaded) and its static libraries are built by the toolchain's own
-Python and SCons, so converting never clones or builds godot-cpp by hand.
 
 ## Export Presets
 
@@ -136,8 +44,7 @@ centered **Download Build Tools** button. Pressing it:
    reused later),
 2. downloads every toolchain component from its original source into
    `~/fast_godot_toolchain` (Windows: `%USERPROFILE%\fast_godot_toolchain`), with
-   progress and a SHA-256 check for each file, and fetches godot-cpp
-   (`10.0.0-stable`) so GDExtension builds need no network access,
+   progress and a SHA-256 check for each file,
 3. validates the folder and points `grit/settings/toolchain_root_folder_path` at
    it.
 
@@ -159,9 +66,9 @@ What the toolchain carries:
 
 | host | components |
 |---|---|
-| Linux | Python, SCons, focal GCC 9 (glibc 2.31 sysroot), binutils, libffi, wayland-scanner, godot-cpp, Emscripten |
-| Windows | Python, SCons, MinGW-w64, libffi, static ANGLE, Mesa NIR + Agility SDK, WinRT headers, godot-cpp, Emscripten |
-| macOS | Python, SCons, MoltenVK, godot-cpp, Emscripten |
+| Linux | Python, SCons, focal GCC 9 (glibc 2.31 sysroot), binutils, libffi, wayland-scanner, Emscripten |
+| Windows | Python, SCons, MinGW-w64, libffi, static ANGLE, Mesa NIR + Agility SDK, WinRT headers, Emscripten |
+| macOS | Python, SCons, MoltenVK, Emscripten |
 
 Nothing else needs to be installed for an export: no system C++ compiler, X11,
 ALSA, Wayland or libffi development packages. macOS still uses the Xcode Command
@@ -197,9 +104,6 @@ with `load_threaded_request(..., use_sub_threads = true)`.
 ## Status
 
 - macOS, Linux and Windows editors build locally.
-- GDExtension classes are generated from `.gde` sources on macOS (the library is
-  built by the toolchain's godot-cpp); the fixture project suite builds and runs
-  them there. Linux and Windows runs predate the `.gde` flow.
 - Linux, Windows, macOS and HTML5 Fast templates build; the Linux and HTML5
   exports have been run and benchmarked, the Windows export has not been run on
   Windows yet.

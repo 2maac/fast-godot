@@ -5875,22 +5875,6 @@ Ref<Texture2D> EditorNode::get_object_icon(const Object *p_object, const String 
 	}
 }
 
-void EditorNode::add_class_badge_provider(const Callable &p_provider) {
-	if (p_provider.is_valid()) {
-		class_badge_providers.push_back(p_provider);
-	}
-}
-
-Dictionary EditorNode::get_class_badge(const StringName &p_class) const {
-	for (const Callable &provider : class_badge_providers) {
-		const Dictionary badge = provider.call(p_class);
-		if (!badge.is_empty()) {
-			return badge;
-		}
-	}
-	return Dictionary();
-}
-
 Ref<Texture2D> EditorNode::get_class_icon(const String &p_class, const String &p_fallback) {
 	ERR_FAIL_COND_V_MSG(p_class.is_empty(), nullptr, "Class name cannot be empty.");
 	const Pair<String, String> key(p_class, p_fallback);

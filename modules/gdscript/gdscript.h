@@ -185,8 +185,6 @@ private:
 	StringName global_name; // `class_name`.
 	String fully_qualified_name;
 	String simplified_icon_path;
-	// Grit: the name the GDExtension converter gives the generated class.
-	String gdextension_class_name;
 	SelfList<GDScript> script_list;
 
 	SelfList<GDScriptFunctionState>::List pending_func_states;
@@ -298,7 +296,6 @@ public:
 	virtual StringName get_doc_class_name() const override { return doc_class_name; }
 	virtual Vector<DocData::ClassDoc> get_documentation() const override { return docs; }
 	virtual String get_class_icon_path() const override;
-	String get_gdextension_class_name() const { return gdextension_class_name; }
 #endif // TOOLS_ENABLED
 
 	virtual Error reload(bool p_keep_state = false) override;

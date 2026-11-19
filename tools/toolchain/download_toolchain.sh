@@ -128,29 +128,6 @@ else
 	[ -d "$dest/moltenvk/macOS/lib/MoltenVK.xcframework" ] || fail "missing MoltenVK"
 fi
 
-# godot-cpp: the C++ bindings every generated GDExtension library links against.
-# It ships with the toolchain (pinned to the release that targets this engine's
-# GDExtension API) so a conversion never clones it, and the static libraries are
-# built here once with the toolchain's own interpreter.
-gcp="$dest/godot-cpp"
-if [ ! -f "$gcp/SConstruct" ]; then
-	fetch "https://codeload.github.com/godotengine/godot-cpp/tar.gz/refs/tags/10.0.0-stable" "ebbf64f0f8f8b8b66bc4bc4d3797db97f95b19cf0dfb5b3f8cf56683d9df7db4" "$dest/.godot-cpp.tar.gz" 88 "godot-cpp"
-	mkdir -p "$gcp"
-	tar -xzf "$dest/.godot-cpp.tar.gz" -C "$gcp" --strip-components=1 || fail "could not unpack godot-cpp"
-	rm -f "$dest/.godot-cpp.tar.gz"
-fi
-
-if [ -x "$dest/python/bin/python3" ] && [ -d "$dest/scons/4.11.1/scons-4.11.1" ]; then
-	gcp_platform=linux
-	[ "$os" = "Darwin" ] && gcp_platform=macos
-	for gcp_target in template_debug template_release; do
-		if [ ! -f "$gcp/bin/libgodot-cpp.$gcp_platform.$gcp_target.$arch.a" ]; then
-			progress 92 "godot-cpp ($gcp_target)"
-			PYTHONPATH="$dest/scons/4.11.1/scons-4.11.1" "$dest/python/bin/python3" -m SCons -Q -C "$gcp" platform="$gcp_platform" target="$gcp_target" arch="$arch" api_version=4.7 -j8 >/dev/null || fail "could not build godot-cpp ($gcp_target)"
-		fi
-	done
-fi
-
 if [ "$os" = "Linux" ]; then
 	cat > "$dest/toolchain.json" <<JSON
 {
@@ -163,7 +140,6 @@ if [ "$os" = "Linux" ]; then
   "scons": "scons/4.11.1/scons-4.11.1",
   "gcc": "gcc",
   "libffi": "libffi/linux-x86_64",
-  "godot-cpp": "godot-cpp",
   "emsdk": "emsdk"
 }
 JSON
@@ -178,7 +154,6 @@ else
   "python": "python",
   "scons": "scons/4.11.1/scons-4.11.1",
   "moltenvk": "moltenvk",
-  "godot-cpp": "godot-cpp",
   "emsdk": "emsdk"
 }
 JSON
