@@ -75,7 +75,7 @@ void initialize_grit_module(ModuleInitializationLevel p_level) {
 #ifdef TOOLS_ENABLED
 	// The one project-facing Grit setting: an optional build profile for this
 	// project's Fast export template. Empty means the full engine.
-	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_BUILD_PROFILE, PROPERTY_HINT_GLOBAL_FILE, "*.json"), "");
+	GLOBAL_DEF(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_BUILD_PROFILE, PROPERTY_HINT_GLOBAL_FILE, "*.gdbuild,*.build"), "");
 	// Internal state only: not meant to be edited, so keep it out of the settings UI.
 	GLOBAL_DEF_INTERNAL(PropertyInfo(Variant::STRING, GritExportPlugin::SETTING_GENERATED_DIRECTORY, PROPERTY_HINT_NONE, "", PROPERTY_USAGE_STORAGE), "res://.godot/grit/generated");
 	EditorNode::add_init_callback(grit_editor_init);

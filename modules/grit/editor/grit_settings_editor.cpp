@@ -80,7 +80,7 @@ GritBuildProfileEditor::GritBuildProfileEditor() {
 
 	path_edit = memnew(LineEdit);
 	path_edit->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	path_edit->set_placeholder(TTR("Optional build profile (.json); empty builds the full engine"));
+	path_edit->set_placeholder(TTR("Optional engine compilation profile (.build/.gdbuild); empty builds the full engine"));
 	path_edit->connect("text_submitted", callable_mp(this, &GritBuildProfileEditor::_text_submitted));
 	path_edit->connect("text_changed", callable_mp(this, &GritBuildProfileEditor::_text_changed));
 	path_edit->connect("focus_exited", callable_mp(this, &GritBuildProfileEditor::_focus_exited));
@@ -95,8 +95,8 @@ GritBuildProfileEditor::GritBuildProfileEditor() {
 	browse_dialog = memnew(EditorFileDialog);
 	browse_dialog->set_file_mode(EditorFileDialog::FILE_MODE_OPEN_FILE);
 	browse_dialog->set_access(EditorFileDialog::ACCESS_FILESYSTEM);
-	browse_dialog->set_title(TTR("Choose a build profile"));
-	browse_dialog->add_filter("*.json", TTR("Godot build profile"));
+	browse_dialog->set_title(TTR("Choose an engine compilation profile"));
+	browse_dialog->add_filter("*.gdbuild,*.build", TTR("Engine Compilation Profile"));
 	browse_dialog->set_current_dir(ProjectSettings::get_singleton()->globalize_path("res://"));
 	browse_dialog->connect("file_selected", callable_mp(this, &GritBuildProfileEditor::_browse_chosen));
 	add_child(browse_dialog);

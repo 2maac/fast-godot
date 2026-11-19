@@ -118,9 +118,9 @@ on Windows and Linux the compiler is bundled in the toolchain.
 
 By default a project's Fast export template is a full engine build. A project can
 instead give its own template a Godot **build profile**: *Project Settings → Grit
-→ Export → Build Profile* takes a `.json` profile file (the picker button selects
-it), in the same format the editor's build profile tool and `scons
-build_profile=<file>` use — a list of disabled classes and features:
+→ Export → Build Profile* takes an **Engine Compilation Profile** file — the
+`.build`/`.gdbuild` files the editor's build profile tool saves, which `scons
+build_profile=<file>` also reads — a list of disabled classes and features:
 
 ```json
 {

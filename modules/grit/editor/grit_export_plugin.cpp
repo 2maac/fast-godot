@@ -416,12 +416,12 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		Error profile_error = OK;
 		const String profile_source = FileAccess::get_file_as_string(profile_path, &profile_error);
 		if (profile_error != OK || profile_source.strip_edges().is_empty()) {
-			ERR_PRINT(vformat("Grit: could not read the build profile \"%s\". Choose a readable .json file in Project Settings > Grit > Export > Build Profile.", profile_setting));
+			ERR_PRINT(vformat("Grit: could not read the engine compilation profile \"%s\". Choose a readable .build/.gdbuild file in Project Settings > Grit > Export > Build Profile.", profile_setting));
 			return ERR_FILE_CANT_READ;
 		}
 		const Variant parsed_profile = JSON::parse_string(profile_source);
 		if (parsed_profile.get_type() != Variant::DICTIONARY || !Dictionary(parsed_profile).has("type") || String(Dictionary(parsed_profile)["type"]) != "build_profile") {
-			ERR_PRINT(vformat("Grit: \"%s\" is not a Godot build profile: it needs \"type\": \"build_profile\". Create one with the editor's build profile tool.", profile_setting));
+			ERR_PRINT(vformat("Grit: \"%s\" is not an engine compilation profile: it needs \"type\": \"build_profile\". Save one with the editor's build profile tool (.build/.gdbuild).", profile_setting));
 			return ERR_INVALID_DATA;
 		}
 		print_line("Grit: using the build profile at " + profile_setting);
