@@ -103,9 +103,9 @@ the editor never requires re-downloading the build tools.
 Creating a toolchain never touches a source checkout and never copies the engine
 source around:
 
-1. the editor downloads an engine source archive (its own revision; the main
-   branch when the build reports no revision);
-2. the archive is unpacked and its `fast-godot-<rev>/` folder is **renamed** to
+1. the editor downloads the `4.7.2` engine source archive (the repository's
+   `4.7.2` branch — the 4.7.x line, not an individual commit);
+2. the archive is unpacked and its `fast-godot-4.7.2/` folder is **renamed** to
    `<toolchain>/engine/source/` — nothing is copied;
 3. the downloader that ships inside that tree fetches Python, SCons and the
    platform libraries, and writes `toolchain.json`.

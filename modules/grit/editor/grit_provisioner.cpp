@@ -93,20 +93,11 @@ static bool _toolchain_usable(const String &p_root) {
 
 // The commit this editor was built from; the one-time toolchain bootstrap fetches
 // exactly this revision so the downloader runs against a matching tree.
-String GritProvisioner::engine_commit() {
-	const String hash = String(VERSION_HASH);
-	if (hash.is_empty() || hash == "unknown") {
-		return String();
-	}
-	return hash;
-}
-
-// GitHub generates this archive for any commit, so the source needs no release
-// asset of its own. It also pins the fetch to the exact tree this editor was built
-// from: the release tag is moved on every publish, so a tag archive would hand an
-// older editor a different engine revision.
-static String _engine_archive_url(const String &p_commit) {
-	return vformat("https://github.com/2maac/fast-godot/archive/%s.zip", p_commit);
+// The engine source for creating a toolchain: the repository's 4.7.2 branch.
+// It is the 4.7.x line, so every 4.7.x editor creates the same kind of toolchain
+// and a toolchain is never tied to one editor revision.
+static String _engine_source_url() {
+	return "https://github.com/2maac/fast-godot/archive/refs/heads/4.7.2.zip";
 }
 
 static bool _engine_present(const String &p_dir) {
@@ -459,7 +450,7 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 	// nothing is copied afterwards. The only scratch is <toolchain>/.download,
 	// which holds the archive while it is unpacked and is deleted right after.
 	// The folder has no revision in its name: the toolchain works with any 4.7.x
-	// editor, so there is nothing to match.
+	// editor.
 	const String engine_dir = p_dest.path_join("engine").path_join("source");
 	if (_engine_present(engine_dir)) {
 		// A previous attempt already unpacked the source; continue from there.
@@ -473,13 +464,9 @@ String GritProvisioner::ensure_engine_for_toolchain(const String &p_dest, String
 	const String unpacked = scratch.path_join("unpacked");
 	DirAccess::make_dir_recursive_absolute(unpacked);
 
-	// Prefer this editor's revision; a build without a revision uses the main
-	// branch. Either way the source is only needed to create the toolchain, and
-	// the finished toolchain is not tied to it.
-	const String commit = engine_commit();
-	const String url = commit.is_empty()
-			? String("https://github.com/2maac/fast-godot/archive/refs/heads/fresh.zip")
-			: _engine_archive_url(commit);
+	// The source only feeds this toolchain; the finished toolchain is not tied to
+	// any editor revision.
+	const String url = _engine_source_url();
 	String download_error;
 	if (!_download_engine_archive(url, archive, download_error)) {
 		_remove_tree(scratch);

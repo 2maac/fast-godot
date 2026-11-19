@@ -51,10 +51,6 @@ public:
 	// progress dialog, then points the toolchain setting at p_dest.
 	static bool download_toolchain(const String &p_dest, String *r_error = nullptr);
 
-	// The commit this editor was built from; creating a toolchain downloads that
-	// revision's engine source and unpacks it straight into the toolchain.
-	static String engine_commit();
-
 	// The interpreter that runs tools/grit_build.py.
 	static String python_for_build();
 
