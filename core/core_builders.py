@@ -150,7 +150,11 @@ def _wb_invert_lin(rows):
     return inverse
 
 
-def _wb_make_tables(key, seed):
+_WB_DECOYS = 64
+_WB_POOL = 512
+
+
+def _wb_make_tables(key, seed, wrapped):
     rng = random.Random(seed)
     round_keys = _wb_key_expand(key)
     enc = [[_wb_rand_linear(rng) for _ in range(16)] for _ in range(_WB_ROUNDS)]
@@ -185,28 +189,80 @@ def _wb_make_tables(key, seed):
         for idx in range(256):
             table[idx] = _WB_SBOX[enc_inv[_WB_ROUNDS - 1][in_pos][idx]] ^ round_keys[14][out_pos]
         final_tables.append(bytes(table))
-    return tables, enc_keys, final_tables
+
+    # The tables are no longer stored as recognizable permutations: every entry is
+    # XORed with its own random mask, the real tables are shuffled into a larger
+    # blob together with random decoy tables, and the wrapped key bytes are spread
+    # over a random pool. Recovering the key from the binary now needs the lookup
+    # structures and the XOR masks, not just a pattern match on the table bytes.
+    n_real = _WB_ROUNDS * 16 * 4
+    n_final = 16
+    total = n_real + _WB_DECOYS + n_final
+    slots = list(range(total))
+    rng.shuffle(slots)
+    real_slots = slots[:n_real]
+    final_slots = slots[n_real + _WB_DECOYS:]
+    blob = [bytearray(rng.getrandbits(8) for _ in range(256)) for _ in range(total)]
+    masks = [bytearray(rng.getrandbits(8) for _ in range(256)) for _ in range(total)]
+    flat = 0
+    for r in range(_WB_ROUNDS):
+        for out_pos in range(16):
+            for k in range(4):
+                slot = real_slots[flat]
+                flat += 1
+                table = tables[r][out_pos][k]
+                for i in range(256):
+                    blob[slot][i] = table[i] ^ masks[slot][i]
+    for i, table in enumerate(final_tables):
+        slot = final_slots[i]
+        for j in range(256):
+            blob[slot][j] = table[j] ^ masks[slot][j]
+
+    wrap_mask = bytearray(rng.getrandbits(8) for _ in range(32))
+    wrap_pool = bytearray(rng.getrandbits(8) for _ in range(_WB_POOL))
+    wrap_index = rng.sample(range(_WB_POOL), 32)
+    for i in range(32):
+        wrap_pool[wrap_index[i]] = wrapped[i] ^ wrap_mask[i]
+
+    return {
+        "round_keys": enc_keys,
+        "blob": blob,
+        "masks": masks,
+        "real_slots": real_slots,
+        "final_slots": final_slots,
+        "wrap_pool": wrap_pool,
+        "wrap_index": wrap_index,
+        "wrap_mask": wrap_mask,
+    }
 
 
-def _wb_emit_tables(tables, enc_keys, final_tables):
-    parts = ["static const uint8_t grit_wb_tables[%d][16][4][256] = {" % _WB_ROUNDS]
-    for round_tables in tables:
-        parts.append("{")
-        for pos_tables in round_tables:
-            parts.append("{")
-            for table in pos_tables:
-                parts.append("{" + ",".join("0x%02x" % b for b in table) + "},")
-            parts.append("},")
-        parts.append("},")
-    parts.append("};")
-    parts.append("static const uint8_t grit_wb_round_keys[%d][16] = {" % _WB_ROUNDS)
-    for rk in enc_keys:
-        parts.append("{" + ",".join("0x%02x" % b for b in rk) + "},")
-    parts.append("};")
-    parts.append("static const uint8_t grit_wb_final[16][256] = {")
-    for table in final_tables:
+def _wb_emit_tables(bundle):
+    total = len(bundle["blob"])
+    parts = ["static const uint8_t grit_wb_blob[%d][256] = {" % total]
+    for table in bundle["blob"]:
         parts.append("{" + ",".join("0x%02x" % b for b in table) + "},")
     parts.append("};")
+    parts.append("static const uint8_t grit_wb_masks[%d][256] = {" % total)
+    for table in bundle["masks"]:
+        parts.append("{" + ",".join("0x%02x" % b for b in table) + "},")
+    parts.append("};")
+    parts.append("static const uint16_t grit_wb_slots[%d] = {" % (_WB_ROUNDS * 16 * 4))
+    parts.append(",".join(str(s) for s in bundle["real_slots"]))
+    parts.append("};")
+    parts.append("static const uint16_t grit_wb_final_slots[16] = {")
+    parts.append(",".join(str(s) for s in bundle["final_slots"]))
+    parts.append("};")
+    parts.append("static const uint8_t grit_wb_round_keys[%d][16] = {" % _WB_ROUNDS)
+    for rk in bundle["round_keys"]:
+        parts.append("{" + ",".join("0x%02x" % b for b in rk) + "},")
+    parts.append("};")
+    # volatile: otherwise the optimizer constant-folds the wrap reconstruction and
+    # emits the plain wrapped key instead of the pool/mask arrays.
+    parts.append("static const volatile uint8_t grit_wrap_pool[%d] = {" % len(bundle["wrap_pool"]))
+    parts.append(",".join("0x%02x" % b for b in bundle["wrap_pool"]))
+    parts.append("};")
+    parts.append("static const volatile uint16_t grit_wrap_index[32] = {" + ",".join(str(i) for i in bundle["wrap_index"]) + "};")
+    parts.append("static const volatile uint8_t grit_wrap_mask[32] = {" + ",".join("0x%02x" % b for b in bundle["wrap_mask"]) + "};")
     return "\n".join(parts)
 
 
@@ -257,9 +313,7 @@ def encryption_key_builder(target, source, env):
         wb_seed = _wb_source_value(source, 2) or os.environ.get("GRIT_WB_SEED") or ""
         seed_material = wb_seed + buffer.hex() + wrapped_hex
         seed = int.from_bytes(hashlib.sha256(b"grit-wb-aes256:" + seed_material.encode("utf-8")).digest(), "big")
-        tables, enc_keys, final_tables = _wb_make_tables(buffer, seed)
-        table_source = _wb_emit_tables(tables, enc_keys, final_tables)
-        wrapped_bytes = ",".join("0x%02x" % b for b in wrapped)
+        table_source = _wb_emit_tables(_wb_make_tables(buffer, seed, wrapped))
         with methods.generated_wrapper(str(target[0])) as file:
             file.write(
                 f"""\
@@ -328,7 +382,8 @@ static void grit_wb_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {{
 			uint8_t value = grit_wb_round_keys[round][out_pos];
 			for (int k = 0; k < 4; k++) {{
 				const int in_pos = k + 4 * ((out_col + k) % 4);
-				value ^= grit_wb_tables[round][out_pos][k][s[in_pos]];
+				const unsigned slot = grit_wb_slots[(round * 16 + out_pos) * 4 + k];
+				value ^= grit_wb_blob[slot][s[in_pos]] ^ grit_wb_masks[slot][s[in_pos]];
 			}}
 			o[out_pos] = value;
 		}}
@@ -337,7 +392,8 @@ static void grit_wb_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {{
 	for (int out_pos = 0; out_pos < 16; out_pos++) {{
 		const int out_row = out_pos % 4;
 		const int in_pos = out_row + 4 * ((out_pos / 4 + out_row) % 4);
-		o[out_pos] = grit_wb_final[out_pos][s[in_pos]];
+		const unsigned slot = grit_wb_final_slots[out_pos];
+		o[out_pos] = grit_wb_blob[slot][s[in_pos]] ^ grit_wb_masks[slot][s[in_pos]];
 	}}
 	memcpy(r_out, o, 16);
 }}
@@ -349,12 +405,16 @@ void script_encryption_key_get(uint8_t *p_key) {{
 		memset(p_key, 0, 32);
 		return;
 	}}
-	static const uint8_t grit_wrapped_pck_key[32] = {{{wrapped_bytes}}};
+	uint8_t wrapped[32];
+	for (int i = 0; i < 32; i++) {{
+		wrapped[i] = grit_wrap_pool[grit_wrap_index[i]] ^ grit_wrap_mask[i];
+	}}
 	uint8_t data_key[32];
-	grit_wb_encrypt_block(grit_wrapped_pck_key, data_key);
-	grit_wb_encrypt_block(grit_wrapped_pck_key + 16, data_key + 16);
+	grit_wb_encrypt_block(wrapped, data_key);
+	grit_wb_encrypt_block(wrapped + 16, data_key + 16);
 	memcpy(p_key, data_key, 32);
 	memset(data_key, 0, sizeof(data_key));
+	memset(wrapped, 0, sizeof(wrapped));
 }}
 """
             )

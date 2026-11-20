@@ -188,15 +188,22 @@ The encrypted template also runs an **anti-debug check** before unwrapping
 (macOS `ptrace(PT_DENY_ATTACH)` + `P_TRACED`, Windows `IsDebuggerPresent`, Linux
 `/proc/self/status` `TracerPid`): a game started under a debugger does not get the
 key, so the pack cannot be inspected from memory that way. **HTML5 Fast exports
-are supported too** (same white-box template; the wasm grows by ~215 KB), with one
+are supported too** (same white-box template; the wasm grows by ~480 KB), with one
 caveat: browsers have no equivalent anti-debug hook, so a web build relies on the
 white-box tables and wrapped key alone — web is inherently the weakest client.
 
-Caveat: this is our own white-box construction, not a peer-reviewed one. It
-raises extraction far above "read the array/immediates" (automated tools that
-scan for the key find nothing), but a determined analyst with the source and a
-debugger can still invest in breaking the encodings (or bypass the anti-debug).
-Treat it as strong obfuscation, not as unbreakable DRM. The user key is part of
+The white-box data is hardened against pattern-matching: every table entry is
+XORed with its own random mask, the real tables are shuffled into a larger blob
+together with random decoy tables, and the wrapped pack key is split over a
+random pool instead of sitting in the binary as a 32-byte constant. Recovering
+the pack key therefore needs the lookup structures and masks, not just a
+signature scan over the table bytes.
+
+Caveat: this is still our own white-box construction, not a peer-reviewed one.
+The hardening defeats the automated "find permutations / find the wrapped key"
+attacks (verified), but a determined analyst with the source can disassemble the
+unwrap and emulate it, or dump the key from memory while the game runs. Treat it
+as strong obfuscation, not as unbreakable DRM. The user key is part of
 the template's build identity (`out/grit-profiles`) so changing it rebuilds the
 template; a missing or non-hex key fails the export before anything is built, and
 a toolchain whose build helper predates encryption support is refused (re-download
