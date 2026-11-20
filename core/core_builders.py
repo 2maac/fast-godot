@@ -210,6 +210,17 @@ def _wb_emit_tables(tables, enc_keys, final_tables):
     return "\n".join(parts)
 
 
+def _wb_source_value(source, index):
+    if len(source) > index:
+        try:
+            value = source[index].read()
+        except (AttributeError, IndexError):
+            value = ""
+        if value:
+            return str(value)
+    return ""
+
+
 def encryption_key_builder(target, source, env):
     src = source[0].read() or "0" * 64
     try:
@@ -224,7 +235,7 @@ def encryption_key_builder(target, source, env):
         )
         raise
 
-    wrapped_hex = (os.environ.get("GRIT_WRAPPED_KEY") or "").strip().lower()
+    wrapped_hex = (_wb_source_value(source, 1) or os.environ.get("GRIT_WRAPPED_KEY") or "").strip().lower()
     wrapped = None
     if wrapped_hex:
         try:
@@ -243,7 +254,8 @@ def encryption_key_builder(target, source, env):
         # key. A Chow-style table network for AES-256 with the user key baked into
         # randomized tables recomputes the data key at pack-open; neither key
         # exists as bytes or immediates in the binary.
-        seed_material = (os.environ.get("GRIT_WB_SEED") or "") + buffer.hex() + wrapped_hex
+        wb_seed = _wb_source_value(source, 2) or os.environ.get("GRIT_WB_SEED") or ""
+        seed_material = wb_seed + buffer.hex() + wrapped_hex
         seed = int.from_bytes(hashlib.sha256(b"grit-wb-aes256:" + seed_material.encode("utf-8")).digest(), "big")
         tables, enc_keys, final_tables = _wb_make_tables(buffer, seed)
         table_source = _wb_emit_tables(tables, enc_keys, final_tables)

@@ -159,6 +159,27 @@ static void _ensure_pck_encryption_filters(const Ref<EditorExportPreset> &p_pres
 	}
 }
 
+// The generated key file (in each profile tree) embeds the per-export wrapped
+// data key. Older build scripts do not track that value, so an existing tree
+// would keep a previous export's key and the template would not be able to
+// decrypt the pack that was encrypted with the new key. Remove the generated
+// files so the build regenerates them (and relinks the template) every time.
+static void _invalidate_generated_encryption_keys(const String &p_engine_root) {
+	const String profiles = p_engine_root.path_join("out").path_join("grit-profiles");
+	Ref<DirAccess> dir = DirAccess::open(profiles);
+	if (dir.is_null()) {
+		return;
+	}
+	dir->list_dir_begin();
+	for (String name = dir->get_next(); !name.is_empty(); name = dir->get_next()) {
+		if (!dir->current_is_dir() || name.begins_with(".")) {
+			continue;
+		}
+		DirAccess::remove_absolute(profiles.path_join(name).path_join("core").path_join("script_encryption_key.gen.cpp"));
+	}
+	dir->list_dir_end();
+}
+
 static bool _is_inside(const String &p_path, const String &p_root) {
 	return !p_path.is_empty() && (p_path == p_root || p_path.begins_with(p_root + "/"));
 }
@@ -585,6 +606,9 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	if (python.is_empty()) {
 		ERR_PRINT("Grit: no Python interpreter found to run the build helper.");
 		return ERR_CANT_CREATE;
+	}
+	if (!script_encryption_key.is_empty()) {
+		_invalidate_generated_encryption_keys(engine_root);
 	}
 	GritProvisioner::write_build_env(engine_root);
 	ProcessID pid = 0;
