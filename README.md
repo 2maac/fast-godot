@@ -53,6 +53,9 @@ templates are all produced locally. The CFFI reference is at
   (`.build`/`.gdbuild`) and the template is compiled with those classes and modules left out,
   making it smaller and quicker to build and load. The profile is validated and part of the
   template cache key.
+- **Per-preset build options**: `grit/lto` (Automatic, None, Thin, Full) and `grit/optimize`
+  (None, Speed, Size) choose link-time optimization and the optimization level of that
+  preset's template — Speed is the default, Size shrinks the template.
 - **CI-friendly**: `GODOT_SCRIPT_ENCRYPTION_KEY` overrides the preset encryption key, and
   `--export-release` works headless from the command line.
 
