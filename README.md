@@ -157,7 +157,9 @@ project's template on export anyway, so the key can simply be configured:
 1. open the export window and go to the **Encryption** section of the preset;
 2. enable **Encrypt Exported PCK** (and optionally encrypt the directory and set
    include/exclude filters);
-3. paste the **256-bit AES key as 64 hexadecimal characters**.
+3. paste the **256-bit AES key as 64 hexadecimal characters**, or press the
+   **random-key button** at the end of the field: it fills in a fresh 256-bit key
+   from the operating system's CSPRNG (not reproducible, so store it).
 
 That's all: the export builds the project's Fast template with
 `SCRIPT_AES256_ENCRYPTION_KEY` set to the same key, so the runtime can decrypt

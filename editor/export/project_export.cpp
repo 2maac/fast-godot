@@ -35,6 +35,7 @@
 #endif
 
 #include "core/config/project_settings.h"
+#include "core/crypto/crypto_core.h"
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "core/os/os.h"
@@ -126,6 +127,8 @@ void ProjectExportDialog::_notification(int p_what) {
 
 		case NOTIFICATION_THEME_CHANGED: {
 			_script_encryption_key_visibility_changed(show_script_key->is_pressed());
+			generate_script_key->set_button_icon(get_editor_theme_icon(SNAME("RandomNumberGenerator")));
+			generate_script_key->set_tooltip_text(TTRC("Generate a new random 256-bit key with the operating system's secure random generator.\nThe result is not reproducible, so store the key if you need it later."));
 
 			duplicate_preset->set_button_icon(presets->get_editor_theme_icon(SNAME("Duplicate")));
 			delete_preset->set_button_icon(presets->get_editor_theme_icon(SNAME("Remove")));
@@ -483,6 +486,7 @@ void ProjectExportDialog::_edit_preset(int p_index) {
 	enc_ex_filters->set_editable(enc_pck_mode);
 	script_key->set_editable(enc_pck_mode);
 	show_script_key->set_disabled(!enc_pck_mode);
+	generate_script_key->set_disabled(!enc_pck_mode);
 	seed_input->set_editable(enc_pck_mode);
 
 	bool enc_directory_mode = current->get_enc_directory();
@@ -754,6 +758,28 @@ void ProjectExportDialog::_script_encryption_key_changed(const String &p_key) {
 	updating_script_key = true;
 	_update_current_preset();
 	updating_script_key = false;
+}
+
+void ProjectExportDialog::_generate_script_encryption_key() {
+	Ref<EditorExportPreset> current = get_current_preset();
+	ERR_FAIL_COND(current.is_null());
+
+	// A CSPRNG from the OS (getrandom/BCryptGenRandom/SecRandomCopyBytes under
+	// CryptoCore). Deliberately not Math::rand or a seeded RNG: the key must not
+	// be reproducible or predictable.
+	uint8_t key[32];
+	CryptoCore::RandomGenerator random;
+	if (random.init() != OK || random.get_random_bytes(key, sizeof(key)) != OK) {
+		ERR_PRINT("Could not generate a random encryption key.");
+		return;
+	}
+	const String generated = String::hex_encode_buffer(key, sizeof(key));
+	memset(key, 0, sizeof(key));
+
+	script_key->set_text(generated);
+	// LineEdit::set_text() does not emit text_changed; the preset and the key
+	// validation have to see the generated key right away.
+	_script_encryption_key_changed(generated);
 }
 
 void ProjectExportDialog::_script_encryption_key_visibility_changed(bool p_visible) {
@@ -1997,9 +2023,14 @@ ProjectExportDialog::ProjectExportDialog() {
 	show_script_key->set_toggle_mode(true);
 	show_script_key->connect(SceneStringName(toggled), callable_mp(this, &ProjectExportDialog::_script_encryption_key_visibility_changed));
 
+	generate_script_key = memnew(Button);
+	generate_script_key->set_accessibility_name(TTRC("Generate Random Encryption Key"));
+	generate_script_key->connect(SceneStringName(pressed), callable_mp(this, &ProjectExportDialog::_generate_script_encryption_key));
+
 	HBoxContainer *encryption_hb = memnew(HBoxContainer);
 	encryption_hb->add_child(script_key);
 	encryption_hb->add_child(show_script_key);
+	encryption_hb->add_child(generate_script_key);
 
 	script_key_error = memnew(Label);
 	script_key_error->set_focus_mode(Control::FOCUS_ACCESSIBILITY);
