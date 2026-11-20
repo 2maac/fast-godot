@@ -7,7 +7,8 @@
                                 <profile> <arch> [optimized|size]
     grit_build.py html5_export  <engine> <generated> <target> <out> <profile>
                                 [optimized|size]
-    grit_build.py <engine> <generated> <target> <out> <platform> <profile> <arch> [optimized]
+    grit_build.py <engine> <generated> <target> <out> <platform> <profile> <arch>
+                  [optimized|size] [key_file] [wrapped_key_file] [lto] [optimize]
 
 The positional form without a command is what the editor invokes for an export: it
 is kept stable so the editor never has to know about this script's CLI. The same
@@ -450,7 +451,13 @@ def export_main(argv):
     # for it, native whatever SCons infers for the target).
     if optimize_mode:
         extra = [arg for arg in extra if not arg.startswith("optimize=")]
-        extra.append("optimize=" + optimize_mode)
+        # A debug template exists for troubleshooting: the engine deliberately
+        # builds it at -O2 (speed_trace) so crash backtraces stay readable, while
+        # a release template wants -O3. Speed therefore means speed_trace for a
+        # debug target; None and Size are explicit and pass through unchanged.
+        # GRIT_OPTIMIZE
+        build_optimize = "speed_trace" if optimize_mode == "speed" and target != "release" else optimize_mode
+        extra.append("optimize=" + build_optimize)
     elif platform == "web" and optimized:
         extra.append("optimize=speed")
 

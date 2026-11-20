@@ -55,7 +55,8 @@ templates are all produced locally. The CFFI reference is at
   template cache key.
 - **Per-preset build options**: `grit/lto` (Automatic, None, Thin, Full) and `grit/optimize`
   (None, Speed, Size) choose link-time optimization and the optimization level of that
-  preset's template — Speed is the default, Size shrinks the template.
+  preset's template — Speed is the default, Size shrinks the template. A debug template maps
+  Speed to the engine's `speed_trace` (`-O2`) so backtraces stay usable.
 - **CI-friendly**: `GODOT_SCRIPT_ENCRYPTION_KEY` overrides the preset encryption key, and
   `--export-release` works headless from the command line.
 
@@ -100,11 +101,12 @@ templates are all produced locally. The CFFI reference is at
 ### Platform and engine behaviour
 
 - **HTML5 Fast is single-threaded** (`threads=no`), so it needs no `SharedArrayBuffer`,
-  COOP/COEP headers or special hosting. *Optimized* (`-O3`, ~46 MB wasm) is the default and
-  *Size* (`-Os`, ~38.5 MB) is an option.
+  COOP/COEP headers or special hosting. `grit/optimize` controls the wasm: Speed (`-O3`,
+  ~46 MB) is the default and Size (`-Os`, ~38.5 MB) shrinks the download.
 - **macOS defaults ETC2/ASTC texture import on** (an arm64 template is refused without it) and
   writes it into projects created on macOS; other platforms keep the stock default.
-- Linux templates use LTO; macOS and Windows do not.
+- With `grit/lto` on Automatic, Linux templates use LTO and macOS and Windows do not; a preset
+  can force Thin/Full or turn LTO off.
 - AccessKit is disabled (`--accessibility-driver` accepts only `dummy`), and the custom-template
   options are gone from presets.
 - Includes a fix for a null-token crash in `ResourceLoader::_run_load_task()` when loading
