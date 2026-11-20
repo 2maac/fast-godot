@@ -34,6 +34,7 @@
 #include "core/io/file_access_patched.h"
 #include "core/object/script_language.h"
 #include "core/os/os.h"
+#include "core/os/secure_memory.h"
 #include "core/version.h"
 
 Error PackedData::add_pack(const String &p_path, bool p_replace_files, uint64_t p_offset, const Vector<uint8_t> &p_decryption_key) {
@@ -345,9 +346,10 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 			key.resize(32);
 			memcpy(key.ptrw(), script_key, 32);
 		}
-		memset(script_key, 0, sizeof(script_key));
+		SecureMemory::zero(script_key, sizeof(script_key));
 
 		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+		SecureMemory::zero(key.ptrw(), key.size());
 		ERR_FAIL_COND_V_MSG(err, false, "Can't open encrypted pack directory.");
 		f = fae;
 	}
@@ -576,9 +578,10 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
 			key.resize(32);
 			memcpy(key.ptrw(), script_key, 32);
 		}
-		memset(script_key, 0, sizeof(script_key));
+		SecureMemory::zero(script_key, sizeof(script_key));
 
 		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+		SecureMemory::zero(key.ptrw(), key.size());
 		ERR_FAIL_COND_MSG(err != OK, vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s" due to error "%s".)", p_path, pf.pack, error_names[err]));
 		f = fae;
 		off = 0;

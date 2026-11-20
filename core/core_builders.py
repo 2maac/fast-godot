@@ -320,6 +320,8 @@ def encryption_key_builder(target, source, env):
 #include <cstdint>
 #include <cstring>
 
+#include "core/os/secure_memory.h"
+
 // A debugger attached to the game could read the unwrapped pack key from memory.
 // The encrypted template refuses to run under one: the pack key comes out zeroed
 // and the pack cannot be opened.
@@ -413,8 +415,8 @@ void script_encryption_key_get(uint8_t *p_key) {{
 	grit_wb_encrypt_block(wrapped, data_key);
 	grit_wb_encrypt_block(wrapped + 16, data_key + 16);
 	memcpy(p_key, data_key, 32);
-	memset(data_key, 0, sizeof(data_key));
-	memset(wrapped, 0, sizeof(wrapped));
+	SecureMemory::zero(data_key, sizeof(data_key));
+	SecureMemory::zero(wrapped, sizeof(wrapped));
 }}
 """
             )

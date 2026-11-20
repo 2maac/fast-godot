@@ -21,7 +21,9 @@
 #include "core/os/os.h"
 #include "servers/display/display_server.h"
 
+#include "core/os/secure_memory.h"
 #include "core/version.h"
+
 #include "editor/editor_node.h"
 #include "modules/grit/editor/grit_provisioner.h"
 #include "platform/web/export/export_plugin_fast.h"
@@ -382,7 +384,7 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	}
 	String wrapped_key_hex;
 	if (encrypt_pck) {
-		const Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
+		Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
 		if (user_key_bytes.size() != 32) {
 			ERR_PRINT("Grit: could not decode the script encryption key.");
 			return ERR_INVALID_PARAMETER;
@@ -399,6 +401,9 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			ERR_PRINT("Grit: could not prepare the PCK key wrapping (AES-256).");
 			return ERR_CANT_CREATE;
 		}
+		// The key schedule now lives in key_wrapper; the editor does not need the
+		// user key bytes any longer.
+		SecureMemory::zero(user_key_bytes.ptrw(), user_key_bytes.size());
 		for (int block = 0; block < 2; block++) {
 			if (key_wrapper.decrypt_ecb(data_key + block * 16, wrapped + block * 16) != OK) {
 				ERR_PRINT("Grit: could not wrap the PCK data key.");
@@ -413,6 +418,8 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			script_key_env_injected = true;
 		}
 		OS::get_singleton()->set_environment("GODOT_SCRIPT_ENCRYPTION_KEY", String::hex_encode_buffer(data_key, 32));
+		SecureMemory::zero(data_key, sizeof(data_key));
+		SecureMemory::zero(wrapped, sizeof(wrapped));
 	}
 	// The helper reads both as files (the export build does not inherit the editor's
 	// environment). The user key also keys the isolated template tree; the wrapped

@@ -53,6 +53,7 @@
 #include "core/object/script_language.h"
 #include "core/os/os.h"
 #include "core/os/process_id.h"
+#include "core/os/secure_memory.h"
 #include "core/os/time.h"
 #include "core/profiling/profiling.h"
 #include "core/register_core_types.h"
@@ -1040,6 +1041,14 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	OS::get_singleton()->initialize();
 
 	CoreGlobals::print_ready = true;
+
+#if !defined(TOOLS_ENABLED) && !defined(DEBUG_ENABLED) && !defined(DEV_ENABLED)
+	// Exported release games keep the pack key (and the plaintext it unlocks) out
+	// of core dumps, and on Linux make the process non-dumpable so unprivileged
+	// processes cannot read its memory or attach a debugger. Editors, debug
+	// templates and dev builds keep their debugging hooks.
+	SecureMemory::harden_process();
+#endif
 
 #if !defined(OVERRIDE_PATH_ENABLED) && !defined(TOOLS_ENABLED)
 	String old_cwd = OS::get_singleton()->get_cwd();

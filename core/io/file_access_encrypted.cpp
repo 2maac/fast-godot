@@ -30,7 +30,36 @@
 
 #include "file_access_encrypted.h"
 
+#include "core/os/secure_memory.h"
 #include "core/variant/variant.h"
+
+namespace {
+
+// Keeps the key out of swap and crash dumps while it is live, and wipes the key
+// and the decrypted payload on every exit path of `_close()` — including the
+// early returns — so a failed open cannot leave secrets behind either.
+struct SecretWiper {
+	Vector<uint8_t> &key;
+	Vector<uint8_t> &data;
+
+	~SecretWiper() {
+		if (!key.is_empty()) {
+			SecureMemory::unlock(key.ptrw(), key.size());
+			SecureMemory::zero(key.ptrw(), key.size());
+			key.clear();
+		}
+		if (!data.is_empty()) {
+			SecureMemory::zero(data.ptrw(), data.size());
+		}
+	}
+};
+
+void protect_key(Vector<uint8_t> &p_key) {
+	SecureMemory::lock(p_key.ptrw(), p_key.size());
+	SecureMemory::exclude_from_dumps(p_key.ptrw(), p_key.size());
+}
+
+} // namespace
 
 CryptoCore::RandomGenerator *FileAccessEncrypted::_fae_static_rng = nullptr;
 
@@ -54,6 +83,7 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 		writing = true;
 		file = p_base;
 		key = p_key;
+		protect_key(key);
 		if (p_iv.is_empty()) {
 			iv.resize(16);
 			if (unlikely(!_fae_static_rng)) {
@@ -74,6 +104,7 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 	} else if (p_mode == MODE_READ) {
 		writing = false;
 		key = p_key;
+		protect_key(key);
 
 		if (use_magic) {
 			uint32_t magic = p_base->get_32();
@@ -106,6 +137,7 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 		}
 
 		data.resize(length);
+		SecureMemory::exclude_from_dumps(data.ptrw(), data.size());
 
 		unsigned char hash[16];
 		ERR_FAIL_COND_V(CryptoCore::md5(data.ptr(), data.size(), hash) != OK, ERR_BUG);
@@ -136,8 +168,12 @@ Error FileAccessEncrypted::open_internal(const String &p_path, int p_mode_flags)
 
 void FileAccessEncrypted::_close() {
 	if (file.is_null()) {
+		// A failed open can still leave the key (and the decrypted prefix) behind.
+		SecretWiper wipe = { key, data };
 		return;
 	}
+
+	SecretWiper wipe = { key, data };
 
 	if (writing) {
 		LocalVector<uint8_t> compressed;
@@ -167,6 +203,7 @@ void FileAccessEncrypted::_close() {
 		ctx.encrypt_cfb(len, iv.ptrw(), compressed.ptr(), compressed.ptr());
 
 		file->store_buffer(compressed.ptr(), compressed.size());
+		SecureMemory::zero(data.ptrw(), data.size());
 		data.clear();
 	}
 
