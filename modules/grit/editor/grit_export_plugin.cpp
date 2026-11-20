@@ -91,6 +91,16 @@ static bool _is_fast_platform(const Ref<EditorExportPlatform> &p_platform) {
 void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_export_platform, List<EditorExportPlatform::ExportOption> *r_options) const {
 	last_platform = p_export_platform;
 
+	// A Fast template is a real engine build, so link-time optimization is a build
+	// choice worth exposing per preset. "Automatic" keeps the historical policy
+	// (LTO where the toolchain's compiler can do it, none elsewhere); the other
+	// modes force it, and the build helper rejects modes the compiler cannot do.
+	if (_is_fast_platform(p_export_platform)) {
+		r_options->push_back(EditorExportPlatform::ExportOption(
+				PropertyInfo(Variant::STRING, "grit/lto", PROPERTY_HINT_ENUM, "Automatic,None,Thin,Full"),
+				"Automatic"));
+	}
+
 	// Give a macOS preset with no output path a sensible default: an .app bundle.
 	// Other extensions are still accepted, this only fills an empty field.
 	Ref<EditorExportPreset> preset = get_export_preset();
@@ -382,6 +392,18 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			}
 		}
 	}
+	// Link-time optimization for this template. Only the preset decides; the
+	// helper applies the default policy when this is "auto".
+	String lto_mode = "auto";
+	{
+		const Ref<EditorExportPreset> lto_preset = get_export_preset();
+		if (lto_preset.is_valid() && lto_preset->has("grit/lto")) {
+			const String requested = String(lto_preset->get("grit/lto")).strip_edges().to_lower();
+			if (requested == "none" || requested == "thin" || requested == "full") {
+				lto_mode = requested;
+			}
+		}
+	}
 	String wrapped_key_hex;
 	if (encrypt_pck) {
 		Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
@@ -458,15 +480,21 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		ERR_PRINT("Grit: build helper not found: " + script);
 		return ERR_FILE_NOT_FOUND;
 	}
-	// Encryption needs a helper that passes the key to SCons. Toolchains created
-	// before that read this file from an older 4.7.2 snapshot; refuse instead of
-	// building a template that cannot decrypt its own pack.
+	// Encryption needs a helper that passes the key to SCons, and the LTO option
+	// needs one that reads it. Toolchains created before either read this file
+	// from an older 4.7.2 snapshot; refuse rather than silently ignoring the
+	// setting (an encryption-less template cannot decrypt its own pack, and an
+	// ignored LTO mode would just be a lie in the preset).
+	const String helper_source = FileAccess::get_file_as_string(script);
 	if (!script_encryption_key.is_empty()) {
-		const String helper_source = FileAccess::get_file_as_string(script);
 		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1 || (encrypt_pck && helper_source.find("GRIT_WRAPPED_KEY") == -1)) {
 			ERR_PRINT("Grit: the toolchain's build helper does not support PCK encryption. Re-download the build tools with this editor; an older toolchain builds a template that cannot decrypt its own pack.");
 			return ERR_UNAVAILABLE;
 		}
+	}
+	if (lto_mode != "auto" && helper_source.find("GRIT_LTO") == -1) {
+		ERR_PRINT("Grit: the toolchain's build helper does not support the LTO option. Re-download the build tools with this editor, or set the preset's LTO option back to Automatic.");
+		return ERR_UNAVAILABLE;
 	}
 	// The template belongs to the project (<project>/exports), under whichever name the
 	// target platform resolves. Nothing is written into the preset's custom_template
@@ -589,6 +617,9 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 
 	args.push_back(key_path);
 	args.push_back(wrapped_key_path);
+	// "auto" | "none" | "thin" | "full": the last argument on purpose, so an
+	// older helper simply ignores it.
+	args.push_back(lto_mode);
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 

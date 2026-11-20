@@ -305,6 +305,12 @@ def export_main(argv):
             wrapped_key = ""
     if wrapped_key and (len(wrapped_key) != 64 or any(c not in "0123456789abcdef" for c in wrapped_key)):
         fail("Grit: invalid wrapped PCK data key; expected 64 hexadecimal characters.", 8)
+    # Optional 12th argument: the preset's LTO mode ("auto", "none", "thin",
+    # "full"). "auto" keeps the default policy; older helpers ignore the argument.
+    # GRIT_LTO is the marker the editor looks for before offering the option.
+    lto_mode = argv[11].strip().lower() if len(argv) > 11 else "auto"
+    if lto_mode not in ("auto", "none", "thin", "full"):
+        fail("Grit: invalid LTO mode %r; expected auto, none, thin or full." % lto_mode, 9)
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -357,11 +363,32 @@ def export_main(argv):
     bundled_gcc = platform == "linuxbsd" and os.path.isfile(
         os.path.join(toolchain_root, "gcc", "bin", "g++")
     )
-    # The bundled Linux compiler is GCC, which can do LTO, so Linux release
-    # templates get it. Everything else stays without: the web wasm was
-    # byte-for-byte the same with and without emscripten's thin LTO, macOS
-    # defaults to none, and the older Zig bundles could not do it at all.
-    extra.append("lto=full" if bundled_gcc else "lto=none")
+    # Link-time optimization. "auto" keeps the historical policy: the bundled
+    # Linux GCC does full LTO cheaply, the web wasm was byte-for-byte the same
+    # with and without Emscripten's thin LTO (so it only cost build time), macOS
+    # defaults to none upstream, and the older Zig bundles could not do it at
+    # all. A preset can force a mode; thin needs an LLVM compiler and full needs
+    # a compiler that has an LTO pipeline, so the combinations that cannot work
+    # are refused here instead of failing inside the linker.
+    # GRIT_LTO
+    if lto_mode == "auto":
+        lto_mode = "full" if bundled_gcc else "none"
+    if lto_mode == "thin" and platform in ("linuxbsd", "windows"):
+        fail(
+            "Grit: thin LTO needs an LLVM compiler, but %s templates use GCC. "
+            "Choose Full or None for this preset."
+            % ("Linux" if platform == "linuxbsd" else "Windows"),
+            9,
+        )
+    if lto_mode == "full" and platform == "linuxbsd" and not bundled_gcc:
+        fail(
+            "Grit: this Linux toolchain compiles with Zig, which cannot do LTO. "
+            "Choose None, or re-download the build tools to get the bundled GCC 9.",
+            9,
+        )
+    extra = [arg for arg in extra if not arg.startswith("lto=")]
+    extra.append("lto=" + lto_mode)
+    print("Grit: template LTO mode: %s" % lto_mode, flush=True)
     extra_paths = list(env.get("path_add") or [])
     if platform == "linuxbsd":
         # A Linux toolchain can carry its own compiler (focal GCC 9, or the older
