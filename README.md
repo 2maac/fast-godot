@@ -161,6 +161,12 @@ project's template on export anyway, so the key can simply be configured:
    **random-key button** at the end of the field: it fills in a fresh 256-bit key
    from the operating system's CSPRNG (not reproducible, so store it).
 
+The **include filters** default to `*` when PCK encryption is enabled (and the
+window fixes up a preset that was enabled with an empty filter list), so
+enabling encryption always actually encrypts the pack. Narrow the filters to
+encrypt only some files; enable **Encrypt Index** as well if the file names/info
+should be hidden too.
+
 That's all: the export builds the project's Fast template with
 `SCRIPT_AES256_ENCRYPTION_KEY` set to the same key, so the runtime can decrypt
 the PCK it ships with, and the pack itself is written encrypted. The key is

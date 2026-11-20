@@ -149,6 +149,16 @@ static String _absolute_dir(const String &p_path) {
 	return path.simplify_path().trim_suffix("/");
 }
 
+// PCK encryption only encrypts files that match the include filters, so an
+// enabled-but-empty preset would export a plaintext pack. The export dialog
+// defaults the field to "*"; do the same for paths that never open the dialog
+// (CLI exports, Export All).
+static void _ensure_pck_encryption_filters(const Ref<EditorExportPreset> &p_preset) {
+	if (p_preset.is_valid() && p_preset->get_enc_pck() && p_preset->get_enc_in_filter().strip_edges().is_empty()) {
+		p_preset->set_enc_in_filter("*");
+	}
+}
+
 static bool _is_inside(const String &p_path, const String &p_root) {
 	return !p_path.is_empty() && (p_path == p_root || p_path.begins_with(p_root + "/"));
 }
@@ -792,6 +802,7 @@ Error GritExportPlugin::_prepare_compiled(const Ref<EditorExportPreset> &p_prese
 Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path) {
 
 	const Ref<EditorExportPreset> platform_preset = get_export_preset();
+	_ensure_pck_encryption_filters(platform_preset);
 	if (platform_preset.is_valid() && platform_preset->get_platform().is_valid() && platform_preset->get_platform()->get_os_name() == "macOS") {
 		_apply_default_bundle_identifier(platform_preset);
 	}
@@ -879,6 +890,7 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 		stripped_sources.clear();
 		return;
 	}
+	_ensure_pck_encryption_filters(preset);
 
 	// The normal path: prepare_export() already generated the code and built the
 	// template, and the platform is about to pack with it.

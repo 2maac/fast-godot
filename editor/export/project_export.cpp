@@ -475,6 +475,14 @@ void ProjectExportDialog::_edit_preset(int p_index) {
 
 	bool enc_pck_mode = current->get_enc_pck();
 	enc_pck->set_pressed(enc_pck_mode);
+	// Encryption with no include filters encrypts no files at all. Default an
+	// enabled-but-empty preset to "everything" instead of silently exporting a
+	// plaintext pack whenever the window opens.
+	if (enc_pck_mode && !updating_enc_filters && enc_in_filters_str.strip_edges().is_empty()) {
+		enc_in_filters_str = "*";
+		enc_in_filters->set_text(enc_in_filters_str);
+		current->set_enc_in_filter(enc_in_filters_str);
+	}
 
 	uint64_t seed = current->get_seed();
 	if (!updating_seed) {
@@ -705,6 +713,12 @@ void ProjectExportDialog::_enc_pck_changed(bool p_pressed) {
 	ERR_FAIL_COND(current.is_null());
 
 	current->set_enc_pck(p_pressed);
+	// Enabling PCK encryption without filters would encrypt nothing; default to
+	// all files so the toggle does what it says.
+	if (p_pressed && enc_in_filters->get_text().strip_edges().is_empty()) {
+		enc_in_filters->set_text("*");
+		current->set_enc_in_filter("*");
+	}
 	enc_directory->set_disabled(!p_pressed);
 	enc_in_filters->set_editable(p_pressed);
 	enc_ex_filters->set_editable(p_pressed);
