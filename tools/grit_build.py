@@ -311,6 +311,13 @@ def export_main(argv):
     lto_mode = argv[11].strip().lower() if len(argv) > 11 else "auto"
     if lto_mode not in ("auto", "none", "thin", "full"):
         fail("Grit: invalid LTO mode %r; expected auto, none, thin or full." % lto_mode, 9)
+    # Optional 13th argument: the preset's optimization level ("none", "speed",
+    # "size"). Older helpers ignore it and keep the historical defaults (native
+    # release is -O3, web is -Os unless the legacy "optimized" flag says -O3).
+    # GRIT_OPTIMIZE is the marker the editor looks for before offering the option.
+    optimize_mode = argv[12].strip().lower() if len(argv) > 12 else ""
+    if optimize_mode and optimize_mode not in ("none", "speed", "size"):
+        fail("Grit: invalid optimization level %r; expected none, speed or size." % optimize_mode, 10)
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -437,8 +444,15 @@ def export_main(argv):
         # headers). A Fast export has to run from any static host, so build the
         # template single-threaded; this also drops proxy_to_pthread.
         extra.append("threads=no")
-        if optimized:
-            extra.append("optimize=speed")
+
+    # Optimization level. The preset's mode wins; without one, fall back to the
+    # historical behaviour (web -O3 only when the legacy "optimized" flag asked
+    # for it, native whatever SCons infers for the target).
+    if optimize_mode:
+        extra = [arg for arg in extra if not arg.startswith("optimize=")]
+        extra.append("optimize=" + optimize_mode)
+    elif platform == "web" and optimized:
+        extra.append("optimize=speed")
 
     with open(profile, "rb") as handle:
         key = hashlib.sha256(handle.read())

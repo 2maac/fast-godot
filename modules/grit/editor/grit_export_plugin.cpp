@@ -99,6 +99,12 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 		r_options->push_back(EditorExportPlatform::ExportOption(
 				PropertyInfo(Variant::STRING, "grit/lto", PROPERTY_HINT_ENUM, "Automatic,None,Thin,Full"),
 				"Automatic"));
+		// Optimization level of the template build. Speed is what native release
+		// templates always used; the web platform defaults to Size (-Os) to keep the
+		// download small, but Grit-compiled code is measurably faster at -O3.
+		r_options->push_back(EditorExportPlatform::ExportOption(
+				PropertyInfo(Variant::STRING, "grit/optimize", PROPERTY_HINT_ENUM, "None,Speed,Size"),
+				"Speed"));
 	}
 
 	// Give a macOS preset with no output path a sensible default: an .app bundle.
@@ -404,6 +410,17 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			}
 		}
 	}
+	// Optimization level for this template: None, Speed or Size.
+	String optimize_mode = "speed";
+	{
+		const Ref<EditorExportPreset> optimize_preset = get_export_preset();
+		if (optimize_preset.is_valid() && optimize_preset->has("grit/optimize")) {
+			const String requested = String(optimize_preset->get("grit/optimize")).strip_edges().to_lower();
+			if (requested == "none" || requested == "speed" || requested == "size") {
+				optimize_mode = requested;
+			}
+		}
+	}
 	String wrapped_key_hex;
 	if (encrypt_pck) {
 		Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
@@ -494,6 +511,10 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	}
 	if (lto_mode != "auto" && helper_source.find("GRIT_LTO") == -1) {
 		ERR_PRINT("Grit: the toolchain's build helper does not support the LTO option. Re-download the build tools with this editor, or set the preset's LTO option back to Automatic.");
+		return ERR_UNAVAILABLE;
+	}
+	if (optimize_mode != "speed" && helper_source.find("GRIT_OPTIMIZE") == -1) {
+		ERR_PRINT("Grit: the toolchain's build helper does not support the Optimize option. Re-download the build tools with this editor, or set the preset's Optimize option back to Speed.");
 		return ERR_UNAVAILABLE;
 	}
 	// The template belongs to the project (<project>/exports), under whichever name the
@@ -603,23 +624,18 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	}
 	args.push_back(build_profile);
 	args.push_back(arch);
-	// "Optimized" (HTML5 Fast only) asks for -O3 instead of the web platform's
-	// default -Os. It is passed as an extra argument: the helper ignores it for
-	// the native platforms, and an older helper simply does not read it.
-	String web_optimization = "size";
-	{
-		const Ref<EditorExportPreset> optimization_preset = get_export_preset();
-		if (optimization_preset.is_valid() && optimization_preset->has("grit/optimized") && bool(optimization_preset->get("grit/optimized"))) {
-			web_optimization = "optimized";
-		}
-	}
+	// Legacy argument for helpers that predate the Optimize option: the web
+	// platform reads "optimized" as -O3 and anything else as -Os. Native platforms
+	// ignore it, and newer helpers use the explicit mode passed further down.
+	String web_optimization = optimize_mode == "size" ? "size" : "optimized";
 	args.push_back(web_optimization);
 
 	args.push_back(key_path);
 	args.push_back(wrapped_key_path);
-	// "auto" | "none" | "thin" | "full": the last argument on purpose, so an
-	// older helper simply ignores it.
+	// "auto" | "none" | "thin" | "full" and "none" | "speed" | "size": the last
+	// arguments on purpose, so an older helper simply ignores them.
 	args.push_back(lto_mode);
+	args.push_back(optimize_mode);
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 
