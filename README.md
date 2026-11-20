@@ -202,6 +202,12 @@ template; a missing or non-hex key fails the export before anything is built, an
 a toolchain whose build helper predates encryption support is refused (re-download
 the build tools with this editor to get the updated 4.7.2 source).
 
+Every encrypted export generates a new per-export data key, so the template is
+regenerated and relinked each time (the generated key file is dropped from the
+profile tree before the build). Without that, a cached template would keep an
+older wrapped key than the PCK and the exported game would fail at startup with
+"MD5 sum ... does not match" and "Couldn't load project data ... .pck missing".
+
 ## Building the editor itself
 
 `tools/build-editor.sh` (Linux, macOS) and `build-editor.cmd` in the Windows
