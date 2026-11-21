@@ -88,6 +88,48 @@ static bool _is_fast_platform(const Ref<EditorExportPlatform> &p_platform) {
 	return p_platform.is_valid() && p_platform->get_name().ends_with(" Fast");
 }
 
+// GRIT_DISABLE=1 in the editor's environment disables Grit for every export, the
+// same variable the game honours at runtime. The preset's grit/enabled option is
+// the per-preset switch; the environment wins so CI can force a VM-only build
+// without editing (or committing) presets.
+static bool _grit_disabled_by_env() {
+	const String value = OS::get_singleton()->get_environment("GRIT_DISABLE").strip_edges().to_lower();
+	return value == "1" || value == "true";
+}
+
+bool GritExportPlugin::_grit_enabled(const Ref<EditorExportPreset> &p_preset) const {
+	if (_grit_disabled_by_env()) {
+		return false;
+	}
+	if (p_preset.is_valid() && p_preset->has("grit/enabled")) {
+		return bool(p_preset->get("grit/enabled"));
+	}
+	return true;
+}
+
+// A compiled template and a VM-only template are different binaries under the same
+// file name (macOS and HTML5 even share one archive for debug and release), so each
+// build records its mode next to the template and a mismatch forces a rebuild.
+static String _template_mode_path(const String &p_template_path) {
+	return p_template_path + ".gritmode";
+}
+
+static bool _template_matches_mode(const String &p_template_path, bool p_grit) {
+	const String marker_path = _template_mode_path(p_template_path);
+	if (!FileAccess::exists(marker_path)) {
+		// Templates built before the marker existed are compiled builds.
+		return p_grit;
+	}
+	return FileAccess::get_file_as_string(marker_path).strip_edges() == (p_grit ? "grit" : "vm");
+}
+
+static void _write_template_mode(const String &p_template_path, bool p_grit) {
+	Ref<FileAccess> file = FileAccess::open(_template_mode_path(p_template_path), FileAccess::WRITE);
+	if (file.is_valid()) {
+		file->store_string(p_grit ? "grit" : "vm");
+	}
+}
+
 void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_export_platform, List<EditorExportPlatform::ExportOption> *r_options) const {
 	last_platform = p_export_platform;
 
@@ -96,6 +138,13 @@ void GritExportPlugin::_get_export_options(const Ref<EditorExportPlatform> &p_ex
 	// (LTO where the toolchain's compiler can do it, none elsewhere); the other
 	// modes force it, and the build helper rejects modes the compiler cannot do.
 	if (_is_fast_platform(p_export_platform)) {
+		// The Grit switch. Off means: no code generation, no stripping, and a plain
+		// engine template, so the game runs entirely on the GDScript VM. The
+		// GRIT_DISABLE=1 environment variable forces it off for every export
+		// (CI/CLI), matching the runtime variable of the same name.
+		r_options->push_back(EditorExportPlatform::ExportOption(
+				PropertyInfo(Variant::BOOL, "grit/enabled"),
+				true));
 		r_options->push_back(EditorExportPlatform::ExportOption(
 				PropertyInfo(Variant::STRING, "grit/lto", PROPERTY_HINT_ENUM, "Automatic,None,Thin,Full"),
 				"Automatic"));
@@ -254,17 +303,27 @@ void GritExportPlugin::export_platform_added(const Ref<EditorExportPreset> &p_pr
 	// Every platform here is a Fast platform, and each is only registered on its own
 	// host, so the template can always be built natively. Build both variants now so
 	// the first export does not spend minutes compiling.
+	const bool grit_enabled = _grit_enabled(p_preset);
 	for (int i = 0; i < 2; i++) {
 		const bool debug = i == 1;
 		String expected = _compiled_template_path(debug);
-		if (!_template_needs_rebuild(expected)) {
-			print_line(vformat("Grit: the %s compiled template already exists and is newer than the project's scripts; not rebuilding it.", debug ? "debug" : "release"));
+		const String mode_name = grit_enabled ? "compiled" : "VM-only";
+		if (!_template_needs_rebuild(expected, grit_enabled)) {
+			print_line(vformat("Grit: the %s %s template already exists and is newer than the project's scripts; not rebuilding it.", debug ? "debug" : "release", mode_name));
 			continue;
 		}
-		print_line(vformat("Grit: building the %s compiled template for this project.", debug ? "debug" : "release"));
+		print_line(vformat("Grit: building the %s %s template for this project.", debug ? "debug" : "release", mode_name));
 		String built;
-		if (_generate_and_build(debug, built) != OK) {
-			ERR_PRINT(vformat("Grit: the %s compiled template could not be built; the export will report this again.", debug ? "debug" : "release"));
+		Error build_error = OK;
+		if (grit_enabled) {
+			build_error = _generate_and_build(debug, built);
+		} else {
+			const String vm_dir = ProjectSettings::get_singleton()->globalize_path(GLOBAL_GET(SETTING_GENERATED_DIRECTORY)).get_base_dir().path_join("vm");
+			DirAccess::make_dir_recursive_absolute(vm_dir);
+			build_error = _build_template(vm_dir, debug, built, false);
+		}
+		if (build_error != OK) {
+			ERR_PRINT(vformat("Grit: the %s %s template could not be built; the export will report this again.", debug ? "debug" : "release", mode_name));
 		}
 	}
 }
@@ -369,7 +428,7 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 
 
 
-Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path) {
+Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path, bool p_grit) {
 	// PCK encryption (hybrid): the export encrypts the pack with a random data key
 	// generated here, and the template only carries that data key wrapped with the
 	// user's 256-bit key. At pack-open the template unwraps it, so neither the pack
@@ -646,6 +705,9 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	args.push_back(optimize_mode);
 	// Empty unless the helper knows the keystream mode (GRIT_WB_KEYSTREAM).
 	args.push_back(keystream_mode ? "keystream" : "");
+	// "vm" tells the helper to build without `grit_generated`, which is what makes
+	// the engine compile its fallback (empty) registry instead of this project's code.
+	args.push_back(p_grit ? "" : "vm");
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 
@@ -761,6 +823,7 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	if (platform_name.begins_with("macOS")) {
 		r_template_path += ".zip";
 	}
+	_write_template_mode(final_path, p_grit);
 	print_line("Grit: compiled executable written to " + r_template_path + ".");
 	return OK;
 }
@@ -828,8 +891,14 @@ static void _newest_project_source(const String &p_dir, uint64_t &r_newest) {
 	dir->list_dir_end();
 }
 
-bool GritExportPlugin::_template_needs_rebuild(const String &p_template_path) const {
+bool GritExportPlugin::_template_needs_rebuild(const String &p_template_path, bool p_grit) const {
 	if (p_template_path.is_empty() || !FileAccess::exists(p_template_path)) {
+		return true;
+	}
+	if (!_template_matches_mode(p_template_path, p_grit)) {
+		// Built for the other mode: a compiled binary cannot stand in for a VM-only
+		// export (it carries native code), and the reverse would run on the VM while
+		// the preset asked for native code.
 		return true;
 	}
 	uint64_t newest = 0;
@@ -870,6 +939,25 @@ String GritExportPlugin::_compiled_template_path(bool p_debug) const {
 	return EditorExportPlatformMacOSFast::template_path();
 }
 
+Error GritExportPlugin::_prepare_vm(const Ref<EditorExportPreset> &p_preset, bool p_debug) {
+	script_mode = p_preset.is_valid() ? p_preset->get_script_export_mode() : EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
+	stripped_sources.clear();
+	prepared_compiled = false;
+	prepared_vm = true;
+	prepared_debug = p_debug;
+
+	// Always go through the build: an encrypted export gets a fresh pack key, so the
+	// template's generated key file must be regenerated and the template relinked
+	// (a warm tree does that in a few seconds, exactly like the compiled path).
+	print_line("Grit: Grit is disabled for this export; building a VM-only template (the game runs on the GDScript VM).");
+	// A scratch directory for the key files and profile: it deliberately holds no
+	// generated code, which is what makes the build a plain engine template.
+	const String vm_dir = ProjectSettings::get_singleton()->globalize_path(GLOBAL_GET(SETTING_GENERATED_DIRECTORY)).get_base_dir().path_join("vm");
+	DirAccess::make_dir_recursive_absolute(vm_dir);
+	String built;
+	return _build_template(vm_dir, p_debug, built, false);
+}
+
 Error GritExportPlugin::_prepare_compiled(const Ref<EditorExportPreset> &p_preset, bool p_debug) {
 	script_mode = p_preset.is_valid() ? p_preset->get_script_export_mode() : EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
 
@@ -883,6 +971,7 @@ Error GritExportPlugin::_prepare_compiled(const Ref<EditorExportPreset> &p_prese
 	// template in the default templates directory by name.
 	(void)template_path;
 	prepared_compiled = true;
+	prepared_vm = false;
 	prepared_debug = p_debug;
 	return OK;
 }
@@ -961,6 +1050,14 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 			}
 		}
 	}
+	if (!_grit_enabled(p_preset)) {
+		print_line("Grit: Grit is disabled for this export (preset option or GRIT_DISABLE); the game runs on the GDScript VM.");
+		const Error vm_error = _prepare_vm(p_preset, p_debug);
+		if (vm_error != OK) {
+			ERR_PRINT("Grit: the VM-only template did not build; the export is cancelled and nothing was written.");
+		}
+		return vm_error;
+	}
 	const Error error = _prepare_compiled(p_preset, p_debug);
 	if (error != OK) {
 		ERR_PRINT("Grit: compiled build did not complete; the export is cancelled and nothing was written.");
@@ -979,6 +1076,23 @@ void GritExportPlugin::_export_begin(const HashSet<String> &p_features, bool p_d
 		return;
 	}
 	_ensure_pck_encryption_filters(preset);
+
+	// Grit disabled: nothing is compiled or stripped, and no fingerprint is added.
+	// The template's fallback registry has no native functions, so the game runs
+	// every script on the GDScript VM.
+	if (!_grit_enabled(preset)) {
+		if (prepared_vm && prepared_debug == p_debug) {
+			return;
+		}
+		stripped_sources.clear();
+		if (_prepare_vm(preset, p_debug) != OK) {
+			if (preset.is_valid()) {
+				preset->set(p_debug ? "custom_template/debug" : "custom_template/release", "res://.grit-build-did-not-complete");
+				ERR_PRINT("Grit: the VM-only template did not build; the export is abandoned.");
+			}
+		}
+		return;
+	}
 
 	// The normal path: prepare_export() already generated the code and built the
 	// template, and the platform is about to pack with it.
@@ -1029,6 +1143,7 @@ void GritExportPlugin::_export_end() {
 		previous_template_release = String();
 	}
 	prepared_compiled = false;
+	prepared_vm = false;
 	prepared_debug = false;
 	prepared_fingerprint = PackedByteArray();
 	stripped_sources.clear();

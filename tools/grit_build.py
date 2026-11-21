@@ -328,6 +328,11 @@ def export_main(argv):
     # for before it stops wrapping the pack key (older helpers ignore the argument
     # and keep the wrapped form).
     keystream_mode = len(argv) > 13 and argv[13].strip().lower() == "keystream"
+    # Optional 15th argument: "vm" builds the template without this project's
+    # generated code, so the module compiles its fallback (empty) registry and the
+    # game runs on the GDScript VM. The editor passes it when the preset's Grit
+    # option is off (or GRIT_DISABLE=1 is set); older helpers ignore it.
+    vm_mode = len(argv) > 14 and argv[14].strip().lower() == "vm"
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -368,7 +373,7 @@ def export_main(argv):
     sys.stderr = log
     print("Grit: helper started (python %s)" % sys.version.split()[0], flush=True)
 
-    if not os.path.isdir(generated):
+    if not vm_mode and not os.path.isdir(generated):
         fail("Grit: no generated code in %s" % generated, 3)
     if not profile or not os.path.isfile(profile):
         fail("Grit: build profile not found: %s" % profile, 4)
@@ -479,6 +484,10 @@ def export_main(argv):
     # rebuilt instead of reusing) a keyless one: the key is compiled into the
     # binary, so it is part of the build identity.
     key.update(("enc:" + encryption_key).encode("utf-8"))
+    if vm_mode:
+        # A VM-only tree shares nothing with a compiled one: separate directories so
+        # switching the option never reuses the other mode's objects.
+        key.update(b"vm-only")
     profile_hash = key.hexdigest()[:16]
     work_root = os.environ.get("GRIT_PROFILE_WORKDIR") or os.path.join(engine, "out", "grit-profiles")
     source = os.path.join(work_root, "%s-%s-%s-%s" % (profile_hash, platform, arch, target))
@@ -488,6 +497,8 @@ def export_main(argv):
     else:
         announce("Grit: seeding isolated tree %s (first build for this profile is a full one)" % source)
         os.makedirs(source, exist_ok=True)
+    if vm_mode:
+        announce("Grit: building a VM-only template (no generated code)")
     announce("Grit: rebuild with build profile in %s" % source)
     seed_tree(engine, source, generated)
     announce("Grit: rebuild with build profile in %s" % source)
@@ -498,9 +509,10 @@ def export_main(argv):
         "target=template_%s" % target,
         "arch=%s" % arch,
         "build_profile=%s" % profile,
-        "grit_generated=%s" % generated,
-        "-j%s" % jobs,
     ]
+    if not vm_mode:
+        command.append("grit_generated=%s" % generated)
+    command.append("-j%s" % jobs)
 
     # The build has to see the toolchain it was provisioned with, even though the
     # editor process it was started from does not.

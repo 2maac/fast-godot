@@ -24,13 +24,19 @@ class GritExportPlugin : public EditorExportPlugin {
 	bool templates_saved = false;
 	// Set by prepare_export(): code generation and the template build already ran.
 	bool prepared_compiled = false;
+	// A VM-only export (Grit disabled) prepared its plain template instead.
+	bool prepared_vm = false;
 	bool prepared_debug = false;
 	PackedByteArray prepared_fingerprint;
 
 	Error _prepare_compiled(const Ref<EditorExportPreset> &p_preset, bool p_debug);
+	// Grit disabled for this export: no code generation, no stripping, and a plain
+	// engine template, so the game runs entirely on the GDScript VM.
+	Error _prepare_vm(const Ref<EditorExportPreset> &p_preset, bool p_debug);
+	bool _grit_enabled(const Ref<EditorExportPreset> &p_preset) const;
 	Error _generate_and_build(bool p_debug, String &r_template_path);
 	String _compiled_template_path(bool p_debug) const;
-	bool _template_needs_rebuild(const String &p_template_path) const;
+	bool _template_needs_rebuild(const String &p_template_path, bool p_grit) const;
 	// Finds the engine tree on first use (and saves it as a project setting), then
 	// makes sure a VM export has a stock template to fall back on.
 	String _resolve_engine_root() const;
@@ -45,7 +51,7 @@ class GritExportPlugin : public EditorExportPlugin {
 	String previous_script_key_env;
 	bool script_key_env_injected = false;
 
-	Error _build_template(const String &p_generated_dir, bool p_debug, String &r_template_path);
+	Error _build_template(const String &p_generated_dir, bool p_debug, String &r_template_path, bool p_grit = true);
 	uint64_t customization_hash = 0;
 	EditorExportPreset::ScriptExportMode script_mode = EditorExportPreset::MODE_SCRIPT_BINARY_TOKENS_COMPRESSED;
 

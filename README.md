@@ -57,8 +57,15 @@ templates are all produced locally. The CFFI reference is at
   (None, Speed, Size) choose link-time optimization and the optimization level of that
   preset's template — Speed is the default, Size shrinks the template. A debug template maps
   Speed to the engine's `speed_trace` (`-O2`) so backtraces stay usable.
-- **CI-friendly**: `GODOT_SCRIPT_ENCRYPTION_KEY` overrides the preset encryption key, and
-  `--export-release` works headless from the command line.
+- **Grit can be switched off per preset**: turn off `grit/enabled` in the preset's Grit
+  section (or set `GRIT_DISABLE=1` in the editor's environment — the variable wins, and the
+  running game honours it too) and the export compiles no script: nothing is stripped, a plain
+  engine template is built, and the game runs entirely on the GDScript VM. Useful for a
+  baseline build, to isolate a generated-code problem, or for projects that must not ship
+  native code.
+- **CI-friendly**: `GODOT_SCRIPT_ENCRYPTION_KEY` overrides the preset encryption key,
+  `GRIT_DISABLE=1` forces a VM-only export, and `--export-release` works headless from the
+  command line.
 
 ### PCK encryption
 
