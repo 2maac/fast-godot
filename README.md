@@ -73,22 +73,23 @@ templates are all produced locally. The CFFI reference is at
   **random-key button** (operating-system CSPRNG, not reproducible). Include filters default to
   `*` when encryption is enabled; *Encrypt Index* hides file names too. No custom engine build
   per key is needed, because the template is built per project anyway.
-- **Each export encrypts the pack with a new random 256-bit data key**, and the template embeds
-  only that key *wrapped* with yours.
-- **White-box unwrap**: the wrapped key is opened by an AES-256 table network with your key
-  baked into randomized lookup tables, so neither your key nor the pack key exists in the
-  binary as bytes or instruction immediates. Table entries are masked, the tables are shuffled
-  with decoys, and the wrapped key is split over a random pool.
-- **Anti-debug check before unwrapping** (macOS `ptrace(PT_DENY_ATTACH)`/`P_TRACED`, Windows
-  `IsDebuggerPresent`, Linux `TracerPid`): a traced game does not get the key. Web builds have
-  no equivalent hook, which makes HTML5 the weakest target.
-- **Memory hygiene**: the key is locked into RAM, excluded from dumps, and wiped — together
-  with the decrypted payload — when the file closes. Release templates get no core dumps, and
-  on Linux a non-dumpable process.
+- **Each export encrypts the pack with a new random 256-bit pack key** and builds the template
+  against that same key, so there is nothing to wrap and nothing to unwrap.
+- **White-box keystream**: the pack key is baked into an AES-256 table network with randomized
+  lookup tables and per-binary layout, so it never exists in the game as bytes or instruction
+  immediates. The game decodes the pack's CFB stream one block at a time through the tables
+  (on demand, not by buffering the file), so no key ever reaches the process. Table entries are
+  masked and the tables are shuffled with decoys; your own key only selects the layout and the
+  build tree.
+- **Anti-debug check before the first block** (macOS `ptrace(PT_DENY_ATTACH)`/`P_TRACED`, Windows
+  `IsDebuggerPresent`, Linux `TracerPid`): a traced game gets only zeroed blocks, so the pack
+  fails to open. Web builds have no equivalent hook, which makes HTML5 the weakest target.
+- **Memory hygiene**: the decrypted payload is excluded from dumps and wiped when the file
+  closes. Release templates get no core dumps, and on Linux a non-dumpable process.
 - The key is stored in `.godot/export_credentials.cfg`, never in `export_presets.cfg`.
 - **Caveat**: this is hardened obfuscation, not DRM. It defeats automated key recovery, but a
-  determined analyst can still disassemble and emulate the unwrap, or dump the decrypted assets
-  from a running game.
+  determined analyst can still disassemble the tables and emulate the keystream, or dump the
+  decrypted assets from a running game.
 
 ### Toolchain
 

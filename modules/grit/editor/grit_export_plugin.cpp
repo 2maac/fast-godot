@@ -226,11 +226,11 @@ static void _ensure_pck_encryption_filters(const Ref<EditorExportPreset> &p_pres
 	}
 }
 
-// The generated key file (in each profile tree) embeds the per-export wrapped
-// data key. Older build scripts do not track that value, so an existing tree
-// would keep a previous export's key and the template would not be able to
-// decrypt the pack that was encrypted with the new key. Remove the generated
-// files so the build regenerates them (and relinks the template) every time.
+// The generated key file (in each profile tree) embeds the per-export pack key.
+// Older build scripts do not track that value, so an existing tree would keep a
+// previous export's key and the template would not be able to decrypt the pack
+// that was encrypted with the new key. Remove the generated files so the build
+// regenerates them (and relinks the template) every time.
 static void _invalidate_generated_encryption_keys(const String &p_engine_root) {
 	const String profiles = p_engine_root.path_join("out").path_join("grit-profiles");
 	Ref<DirAccess> dir = DirAccess::open(profiles);
@@ -429,12 +429,14 @@ void GritExportPlugin::export_platform_removed(const Ref<EditorExportPreset> &p_
 
 
 Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_debug, String &r_template_path, bool p_grit) {
-	// PCK encryption (hybrid): the export encrypts the pack with a random data key
-	// generated here, and the template only carries that data key wrapped with the
-	// user's 256-bit key. At pack-open the template unwraps it, so neither the pack
-	// key nor an encoded copy of it is embedded in the game. The user key comes
-	// from the preset, or from GODOT_SCRIPT_ENCRYPTION_KEY for CI (which wins, like
-	// EditorExportPlatform::_get_script_encryption_key()).
+	// PCK encryption (white-box keystream): the export encrypts the pack with a
+	// random 256-bit pack key generated here, and the template is built with that
+	// very key baked into its white-box AES tables. At pack-open the game asks the
+	// tables for AES block encryptions and decodes the CFB stream through them, so
+	// the pack key never exists in the exported process. The user key comes from
+	// the preset, or from GODOT_SCRIPT_ENCRYPTION_KEY for CI (which wins, like
+	// EditorExportPlatform::_get_script_encryption_key()); it keys the table layout
+	// and the isolated build tree, not the pack.
 	String script_encryption_key;
 	bool encrypt_pck = false;
 	{
@@ -496,14 +498,14 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// setting (an encryption-less template cannot decrypt its own pack, and an
 	// ignored LTO mode would just be a lie in the preset).
 	const String helper_source = FileAccess::get_file_as_string(script);
-	// Keystream mode: the helper hands the pack key itself to the generator, which
-	// bakes it into the white-box tables and exposes only AES block encryption, so
-	// the exported game never materializes the key. Helpers that do not know the
-	// mode keep the wrapped form below.
-	const bool keystream_mode = encrypt_pck && helper_source.find("GRIT_WB_KEYSTREAM") != -1;
+	// GRIT_WB_KEYSTREAM: the helper knows the white-box keystream form, which is the
+	// only encrypted-template form there is (the earlier wrapped form was retired on
+	// 11-21). Refuse an older helper instead of building a template this editor's
+	// export cannot feed.
+	const bool keystream_mode = helper_source.find("GRIT_WB_KEYSTREAM") != -1;
 	if (!script_encryption_key.is_empty()) {
-		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1 || (!keystream_mode && encrypt_pck && helper_source.find("GRIT_WRAPPED_KEY") == -1)) {
-			ERR_PRINT("Grit: the toolchain's build helper does not support PCK encryption. Re-download the build tools with this editor; an older toolchain builds a template that cannot decrypt its own pack.");
+		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1 || !keystream_mode) {
+			ERR_PRINT("Grit: the toolchain's build helper predates the white-box keystream PCK encryption this editor produces. Re-download the build tools with this editor; an older toolchain builds a template that cannot decrypt its own pack.");
 			return ERR_UNAVAILABLE;
 		}
 	}
@@ -515,55 +517,29 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		ERR_PRINT("Grit: the toolchain's build helper does not support the Optimize option. Re-download the build tools with this editor, or set the preset's Optimize option back to Speed.");
 		return ERR_UNAVAILABLE;
 	}
-	String wrapped_key_hex;
 	String pack_key_hex;
 	if (encrypt_pck) {
-		Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
-		if (user_key_bytes.size() != 32) {
-			ERR_PRINT("Grit: could not decode the script encryption key.");
-			return ERR_INVALID_PARAMETER;
-		}
 		uint8_t data_key[32];
 		CryptoCore::RandomGenerator random;
 		if (random.init() != OK || random.get_random_bytes(data_key, sizeof(data_key)) != OK) {
 			ERR_PRINT("Grit: could not generate the PCK data key.");
 			return ERR_CANT_CREATE;
 		}
-		if (keystream_mode) {
-			// No wrapping: the template bakes this key into its tables, and the
-			// pack is encrypted with the very same key, so there is nothing to unwrap.
-			pack_key_hex = String::hex_encode_buffer(data_key, 32);
-		} else {
-			uint8_t wrapped[32];
-			CryptoCore::AESContext key_wrapper;
-			if (key_wrapper.set_decode_key(user_key_bytes.ptr(), 256) != OK) {
-				ERR_PRINT("Grit: could not prepare the PCK key wrapping (AES-256).");
-				return ERR_CANT_CREATE;
-			}
-			// The key schedule now lives in key_wrapper; the editor does not need the
-			// user key bytes any longer.
-			for (int block = 0; block < 2; block++) {
-				if (key_wrapper.decrypt_ecb(data_key + block * 16, wrapped + block * 16) != OK) {
-					ERR_PRINT("Grit: could not wrap the PCK data key.");
-					return ERR_CANT_CREATE;
-				}
-			}
-			wrapped_key_hex = String::hex_encode_buffer(wrapped, 32);
-			SecureMemory::zero(wrapped, sizeof(wrapped));
-		}
-		SecureMemory::zero(user_key_bytes.ptrw(), user_key_bytes.size());
-		// The stock exporter encrypts the pack with the data key; the template
-		// rebuilds it from `wrapped` (or holds it in its tables) when it opens the pack.
+		// No wrapping: the template bakes this key into its tables, and the pack is
+		// encrypted with the very same key, so there is nothing to unwrap.
+		pack_key_hex = String::hex_encode_buffer(data_key, 32);
+		// The stock exporter encrypts the pack with this key, and the template holds
+		// it inside its tables and decodes the CFB stream through them.
 		if (!script_key_env_injected) {
 			previous_script_key_env = OS::get_singleton()->get_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
 			script_key_env_injected = true;
 		}
-		OS::get_singleton()->set_environment("GODOT_SCRIPT_ENCRYPTION_KEY", String::hex_encode_buffer(data_key, 32));
+		OS::get_singleton()->set_environment("GODOT_SCRIPT_ENCRYPTION_KEY", pack_key_hex);
 		SecureMemory::zero(data_key, sizeof(data_key));
 	}
 	// The helper reads both as files (the export build does not inherit the editor's
-	// environment). The user key also keys the isolated template tree; the per-export
-	// key changes every export and only triggers a rebuild of the generated file.
+	// environment). The user key also keys the isolated template tree; the pack key
+	// changes every export and only triggers a rebuild of the generated file.
 	const String key_path = p_generated_dir.path_join("script_encryption_key.txt");
 	{
 		Ref<FileAccess> key_file = FileAccess::open(key_path, FileAccess::WRITE);
@@ -574,15 +550,21 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 		key_file->store_string(script_encryption_key);
 		key_file->close();
 	}
-	const String wrapped_key_path = p_generated_dir.path_join("script_wrapped_key.txt");
+	// Retired: older exports wrote the wrapped key under this name. Nothing reads it
+	// any more; drop a leftover so it cannot be mistaken for this export's key.
+	const String legacy_key_path = p_generated_dir.path_join("script_wrapped_key.txt");
+	if (FileAccess::exists(legacy_key_path)) {
+		DirAccess::remove_absolute(legacy_key_path);
+	}
+	const String pack_key_path = p_generated_dir.path_join("script_pack_key.txt");
 	{
-		Ref<FileAccess> wrapped_file = FileAccess::open(wrapped_key_path, FileAccess::WRITE);
-		if (wrapped_file.is_null()) {
-			ERR_PRINT("Grit: could not write the per-export PCK key next to the generated sources.");
+		Ref<FileAccess> pack_key_file = FileAccess::open(pack_key_path, FileAccess::WRITE);
+		if (pack_key_file.is_null()) {
+			ERR_PRINT("Grit: could not write the per-export PCK pack key next to the generated sources.");
 			return ERR_CANT_CREATE;
 		}
-		wrapped_file->store_string(keystream_mode ? pack_key_hex : wrapped_key_hex);
-		wrapped_file->close();
+		pack_key_file->store_string(pack_key_hex);
+		pack_key_file->close();
 	}
 	// The template belongs to the project (<project>/exports), under whichever name the
 	// target platform resolves. Nothing is written into the preset's custom_template
@@ -698,13 +680,14 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	args.push_back(web_optimization);
 
 	args.push_back(key_path);
-	args.push_back(wrapped_key_path);
+	args.push_back(pack_key_path);
 	// "auto" | "none" | "thin" | "full" and "none" | "speed" | "size": the last
 	// arguments on purpose, so an older helper simply ignores them.
 	args.push_back(lto_mode);
 	args.push_back(optimize_mode);
-	// Empty unless the helper knows the keystream mode (GRIT_WB_KEYSTREAM).
-	args.push_back(keystream_mode ? "keystream" : "");
+	// The 11th argument is the pack key itself when this says "keystream" (the only
+	// encrypted-template form); empty when the template is not encrypted.
+	args.push_back(encrypt_pck ? "keystream" : "");
 	// "vm" tells the helper to build without `grit_generated`, which is what makes
 	// the engine compile its fallback (empty) registry instead of this project's code.
 	args.push_back(p_grit ? "" : "vm");

@@ -51,12 +51,14 @@ const unsigned long long GODOT_VERSION_TIMESTAMP = {git_timestamp};
 
 
 
-# --- White-box AES-256 for the PCK key unwrap -------------------------------
+# --- White-box AES-256 for the PCK keystream --------------------------------
 # A Chow-style table network: AES-256 encryption with the key baked into
 # randomized lookup tables and random invertible GF(2) byte encodings between
 # rounds, so the working key never exists as bytes in the binary or in code
-# immediates. Only a 32-byte block is ever encrypted (the wrapped pack key), so
-# the table lookups are far too few to matter at runtime.
+# immediates. The export is encrypted with the very key the tables are built
+# for; decoding only ever needs AES block *encryption* of the previous
+# ciphertext block, so a game asks the tables for its CFB keystream one block at
+# a time and never holds the key.
 _WB_SBOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -151,10 +153,9 @@ def _wb_invert_lin(rows):
 
 
 _WB_DECOYS = 64
-_WB_POOL = 512
 
 
-def _wb_make_tables(key, seed, wrapped=None):
+def _wb_make_tables(key, seed):
     rng = random.Random(seed)
     round_keys = _wb_key_expand(key)
     enc = [[_wb_rand_linear(rng) for _ in range(16)] for _ in range(_WB_ROUNDS)]
@@ -191,10 +192,10 @@ def _wb_make_tables(key, seed, wrapped=None):
         final_tables.append(bytes(table))
 
     # The tables are no longer stored as recognizable permutations: every entry is
-    # XORed with its own random mask, the real tables are shuffled into a larger
-    # blob together with random decoy tables, and the wrapped key bytes are spread
-    # over a random pool. Recovering the key from the binary now needs the lookup
-    # structures and the XOR masks, not just a pattern match on the table bytes.
+    # XORed with its own random mask and the real tables are shuffled into a larger
+    # blob together with random decoy tables. Recovering the key from the binary now
+    # needs the lookup structures and the XOR masks, not just a pattern match on the
+    # table bytes.
     n_real = _WB_ROUNDS * 16 * 4
     n_final = 16
     total = n_real + _WB_DECOYS + n_final
@@ -224,21 +225,7 @@ def _wb_make_tables(key, seed, wrapped=None):
         "masks": masks,
         "real_slots": real_slots,
         "final_slots": final_slots,
-        "wrap_pool": [],
-        "wrap_index": [],
-        "wrap_mask": [],
     }
-    # Only the wrapped mode carries a wrapped key: the keystream mode has no key
-    # to reconstruct, so it needs no pool (and no wrapped value at all).
-    if wrapped is not None:
-        wrap_mask = bytearray(rng.getrandbits(8) for _ in range(32))
-        wrap_pool = bytearray(rng.getrandbits(8) for _ in range(_WB_POOL))
-        wrap_index = rng.sample(range(_WB_POOL), 32)
-        for i in range(32):
-            wrap_pool[wrap_index[i]] = wrapped[i] ^ wrap_mask[i]
-        bundle["wrap_pool"] = wrap_pool
-        bundle["wrap_index"] = wrap_index
-        bundle["wrap_mask"] = wrap_mask
 
     return bundle
 
@@ -263,14 +250,6 @@ def _wb_emit_tables(bundle):
     for rk in bundle["round_keys"]:
         parts.append("{" + ",".join("0x%02x" % b for b in rk) + "},")
     parts.append("};")
-    # volatile: otherwise the optimizer constant-folds the wrap reconstruction and
-    # emits the plain wrapped key instead of the pool/mask arrays.
-    if bundle["wrap_pool"]:
-        parts.append("static const volatile uint8_t grit_wrap_pool[%d] = {" % len(bundle["wrap_pool"]))
-        parts.append(",".join("0x%02x" % b for b in bundle["wrap_pool"]))
-        parts.append("};")
-        parts.append("static const volatile uint16_t grit_wrap_index[32] = {" + ",".join(str(i) for i in bundle["wrap_index"]) + "};")
-        parts.append("static const volatile uint8_t grit_wrap_mask[32] = {" + ",".join("0x%02x" % b for b in bundle["wrap_mask"]) + "};")
     return "\n".join(parts)
 
 
@@ -415,18 +394,17 @@ def encryption_key_builder(target, source, env):
             raise
         return raw
 
-    wrapped = _hex32(1, "GRIT_WRAPPED_KEY", "wrapped PCK data key")
-    pack_key = _hex32(3, "GRIT_PACK_KEY", "PCK pack key")
-    wb_seed = _wb_source_value(source, 2) or os.environ.get("GRIT_WB_SEED") or ""
+    pack_key = _hex32(2, "GRIT_PACK_KEY", "PCK pack key")
+    wb_seed = _wb_source_value(source, 1) or os.environ.get("GRIT_WB_SEED") or ""
 
     if pack_key is not None:
-        # Keystream mode: the template is built for exactly one pack, so the tables
-        # are keyed with the pack key itself. CFB decoding only needs AES
-        # *encryption* of the previous ciphertext block, which is what the table
-        # network computes, so the key never has to exist as bytes anywhere in the
-        # process: a dump yields tables, a breakpoint yields one block of keystream.
-        # The user key still selects the table layout (so the binary depends on it)
-        # but plays no part at runtime.
+        # Encrypted template (the only form there is): the template is built for
+        # exactly one pack, so the tables are keyed with the pack key itself. CFB
+        # decoding only needs AES *encryption* of the previous ciphertext block,
+        # which is what the table network computes, so the key never has to exist as
+        # bytes anywhere in the process: a dump yields tables, a breakpoint yields
+        # one block of keystream. The user key still selects the table layout (so the
+        # binary depends on it) but plays no part at runtime.
         seed_material = wb_seed + buffer.hex() + pack_key.hex()
         seed = int.from_bytes(hashlib.sha256(b"grit-wb-keystream:" + seed_material.encode("utf-8")).digest(), "big")
         table_source = _wb_emit_tables(_wb_make_tables(pack_key, seed))
@@ -443,7 +421,7 @@ def encryption_key_builder(target, source, env):
 
 // Keystream provider: AES-256 block encryption under the pack key, expressed only
 // through the tables above. FileAccessEncrypted uses it for CFB decoding, so the
-// unwrapped pack key never enters the process.
+// pack key never enters the process.
 bool script_encryption_key_keystream_available() {{
 	return grit_tracing_allowed();
 }}
@@ -460,52 +438,6 @@ bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[1
 // Nothing to recover in a keystream build: the key exists only inside the tables.
 void script_encryption_key_get(uint8_t *p_key) {{
 	memset(p_key, 0, 32);
-}}
-"""
-            )
-        return
-
-    if wrapped is not None:
-        # Hybrid white-box mode: the exported pack is encrypted with a random data
-        # key, and the template only carries that data key wrapped with the user's
-        # key. A Chow-style table network for AES-256 with the user key baked into
-        # randomized tables recomputes the data key at pack-open; neither key
-        # exists as bytes or immediates in the binary.
-        seed_material = wb_seed + buffer.hex() + wrapped.hex()
-        seed = int.from_bytes(hashlib.sha256(b"grit-wb-aes256:" + seed_material.encode("utf-8")).digest(), "big")
-        table_source = _wb_emit_tables(_wb_make_tables(buffer, seed, wrapped))
-        with methods.generated_wrapper(str(target[0])) as file:
-            file.write(
-                f"""\
-#include <cstdint>
-#include <cstring>
-
-#include "core/os/secure_memory.h"
-
-{_WB_DEBUG_PRELUDE}
-{table_source}
-
-{_WB_ENCRYPT_BLOCK}
-
-{_WB_NO_KEYSTREAM}
-
-// Rebuilds the key the exported pack was encrypted with. The user key lives only
-// inside the white-box tables above, and the pack key only in wrapped form.
-void script_encryption_key_get(uint8_t *p_key) {{
-	if (!grit_tracing_allowed()) {{
-		memset(p_key, 0, 32);
-		return;
-	}}
-	uint8_t wrapped[32];
-	for (int i = 0; i < 32; i++) {{
-		wrapped[i] = grit_wrap_pool[grit_wrap_index[i]] ^ grit_wrap_mask[i];
-	}}
-	uint8_t data_key[32];
-	grit_wb_encrypt_block(wrapped, data_key);
-	grit_wb_encrypt_block(wrapped + 16, data_key + 16);
-	memcpy(p_key, data_key, 32);
-	SecureMemory::zero(data_key, sizeof(data_key));
-	SecureMemory::zero(wrapped, sizeof(wrapped));
 }}
 """
             )
