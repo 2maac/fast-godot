@@ -270,4 +270,88 @@ TEST_CASE("[FileAccessEncrypted] Keystream integrity check is lazy for pack file
 	keystream_key.clear();
 }
 
+TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel windows") {
+	// Above the parallel threshold (1 MiB) and not a multiple of the block size, so
+	// the head, the middle windows and the trailing bytes are all exercised.
+	const Vector<uint8_t> key = make_key(0x50);
+	const Vector<uint8_t> payload = make_bytes(3 * 1024 * 1024 + 7, 0x60);
+	const String path = write_encrypted(payload, key);
+	keystream_key = key;
+
+	// One read of the whole file: aligned head, parallel middle, 7-byte tail. The
+	// lazy digest is fed from the plaintext and compared at EOF.
+	{
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+		REQUIRE(reader->get_length() == payload.size());
+
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == payload.size());
+		REQUIRE(got == payload);
+		REQUIRE(reader->get_error() != ERR_FILE_CORRUPT);
+	}
+
+	// A read that starts and ends inside blocks: one decoded head block, parallel
+	// windows in the middle, one decoded tail block.
+	{
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+
+		const uint64_t offset = 11;
+		const uint64_t want = 2 * 1024 * 1024 + 5;
+		Vector<uint8_t> got;
+		got.resize(want);
+		reader->seek(offset);
+		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == want);
+		REQUIRE(memcmp(got.ptr(), payload.ptr() + offset, want) == 0);
+	}
+
+	// Sequentially in odd chunks, every read above the threshold: the data must be
+	// identical and the trailing MD5 must still pass.
+	{
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		uint64_t done = 0;
+		const uint64_t chunk = 1024 * 1024 + 3;
+		while (done < got.size()) {
+			const uint64_t take = MIN<uint64_t>(chunk, got.size() - done);
+			const uint64_t read = reader->get_buffer(got.ptrw() + done, take);
+			REQUIRE(read == take);
+			done += read;
+		}
+		REQUIRE(got == payload);
+		REQUIRE(reader->get_error() != ERR_FILE_CORRUPT);
+	}
+
+	// A wrong provider must still be caught after the parallel decode.
+	keystream_key = make_key(0x93);
+	{
+		ERR_PRINT_OFF;
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == 0);
+		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
+		ERR_PRINT_ON;
+	}
+	keystream_key.clear();
+}
+
 } // namespace TestFileAccessEncrypted

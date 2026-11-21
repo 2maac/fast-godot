@@ -91,6 +91,10 @@ private:
 	Error _read_encrypted(Ref<FileAccess> p_base, bool p_with_magic, bool p_verify_at_open);
 	bool _verify_stream_md5(const unsigned char p_expected[16]);
 	bool _stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const;
+	// Large reads: independent CFB windows decoded by the thread pool (the caller
+	// thread keeps doing the file I/O). Same blocks, same providers, same tables.
+	bool _stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len, int p_tasks) const;
+	bool _stream_decrypt_block(uint64_t p_block, uint8_t *r_dst) const;
 	bool _lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const;
 
 public:

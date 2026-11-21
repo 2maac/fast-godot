@@ -30,6 +30,8 @@
 
 #include "file_access_encrypted.h"
 
+#include "core/object/worker_thread_pool.h"
+#include "core/os/os.h"
 #include "core/os/secure_memory.h"
 #include "core/variant/variant.h"
 
@@ -57,6 +59,78 @@ struct SecretWiper {
 void protect_key(Vector<uint8_t> &p_key) {
 	SecureMemory::lock(p_key.ptrw(), p_key.size());
 	SecureMemory::exclude_from_dumps(p_key.ptrw(), p_key.size());
+}
+
+} // namespace
+
+namespace {
+
+// One worker-side unit of the parallel streaming decode. CFB decryption of a
+// block needs only the previous *ciphertext* block, which is already in the file,
+// so independent windows can be decoded concurrently: the calling thread does the
+// file I/O, the tasks run exactly the same white-box lookups. Nothing about the
+// tables, the amount of work per byte or the order of the keystream changes.
+struct StreamDecodeChunk {
+	FileAccessEncrypted::BlockEncryptFunc block_encrypt = nullptr;
+	const uint8_t *ciphertext = nullptr; // Blocks [ct_base .. first_block + block_count).
+	const uint8_t *iv = nullptr; // Previous block for block 0 (the file IV).
+	uint8_t *plaintext = nullptr;
+	uint64_t ct_base = 0;
+	uint64_t first_block = 0;
+	uint64_t block_count = 0;
+	bool ok = true;
+};
+
+void _decode_stream_chunk(void *p_userdata) {
+	StreamDecodeChunk *chunk = static_cast<StreamDecodeChunk *>(p_userdata);
+	uint8_t keystream[16];
+	for (uint64_t j = 0; j < chunk->block_count; j++) {
+		const uint64_t block = chunk->first_block + j;
+		const uint8_t *prev = block == 0 ? chunk->iv : chunk->ciphertext + (block - 1 - chunk->ct_base) * 16;
+		const uint8_t *ct = chunk->ciphertext + (block - chunk->ct_base) * 16;
+		uint8_t *pt = chunk->plaintext + j * 16;
+		if (!chunk->block_encrypt(prev, keystream)) {
+			SecureMemory::zero(keystream, sizeof(keystream));
+			chunk->ok = false;
+			return;
+		}
+		for (int i = 0; i < 16; i++) {
+			pt[i] = ct[i] ^ keystream[i];
+		}
+	}
+	SecureMemory::zero(keystream, sizeof(keystream));
+}
+
+// Below this the pool hand-off costs more than the decode itself, so small reads
+// (the common case: configs, scripts) stay on the calling thread.
+constexpr uint64_t STREAM_PARALLEL_MIN_BYTES = 1024 * 1024;
+constexpr uint64_t STREAM_PARALLEL_CHUNK_BLOCKS = 16 * 1024; // 256 KiB of blocks.
+// Four decoders is where a big read stops being latency bound on this class of
+// hardware (measured on an M5: 1 -> 7.45 s, 2 -> 4.00 s, 4 -> 2.36 s, 8 -> 1.96 s
+// for a 256 MiB read, while CPU went 7.6 / 7.8 / 8.6 / 11.3 s — the extra four
+// mostly land on efficiency cores). A game can raise it to 8, or drop to 1.
+constexpr int STREAM_PARALLEL_DEFAULT_TASKS = 4;
+constexpr int STREAM_PARALLEL_MAX_TASKS = 8;
+
+// Worker decode threads for a large read. The pool's size decides the default; the
+// running game can cap it with GRIT_DECODE_THREADS (0/1 decodes on the calling
+// thread), which is also how the default was tuned.
+int stream_parallel_task_limit() {
+	static int cached = -1;
+	if (cached >= 0) {
+		return cached;
+	}
+	const int pool = WorkerThreadPool::get_singleton() ? WorkerThreadPool::get_singleton()->get_thread_count() : 1;
+	int limit = MIN(pool, STREAM_PARALLEL_DEFAULT_TASKS);
+	const OS *os = OS::get_singleton();
+	if (os != nullptr) {
+		const String requested = os->get_environment("GRIT_DECODE_THREADS").strip_edges();
+		if (!requested.is_empty() && requested.is_valid_int()) {
+			limit = CLAMP(requested.to_int(), 1, STREAM_PARALLEL_MAX_TASKS);
+		}
+	}
+	cached = MAX(limit, 1);
+	return cached;
 }
 
 } // namespace
@@ -238,6 +312,154 @@ bool FileAccessEncrypted::_verify_stream_md5(const unsigned char p_expected[16])
 	return String::md5(hash) == String::md5(p_expected);
 }
 
+bool FileAccessEncrypted::_stream_decrypt_block(uint64_t p_block, uint8_t *r_dst) const {
+	// Head/tail block of a request that does not line up with the block size, and
+	// the fallback when the pool is unavailable.
+	uint8_t previous[16];
+	const uint8_t *prev = iv.ptr();
+	if (p_block != 0) {
+		file->seek(base + (p_block - 1) * 16);
+		if (file->get_buffer(previous, 16) != 16) {
+			return false;
+		}
+		prev = previous;
+	}
+	uint8_t ct[16];
+	file->seek(base + p_block * 16);
+	if (file->get_buffer(ct, 16) != 16) {
+		SecureMemory::zero(previous, sizeof(previous));
+		return false;
+	}
+	uint8_t keystream[16];
+	if (!block_encrypt(prev, keystream)) {
+		SecureMemory::zero(keystream, sizeof(keystream));
+		SecureMemory::zero(previous, sizeof(previous));
+		return false;
+	}
+	for (int i = 0; i < 16; i++) {
+		r_dst[i] = ct[i] ^ keystream[i];
+	}
+	SecureMemory::zero(keystream, sizeof(keystream));
+	SecureMemory::zero(previous, sizeof(previous));
+	return true;
+}
+
+bool FileAccessEncrypted::_stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len, int p_tasks) const {
+	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
+	ERR_FAIL_NULL_V(pool, false);
+
+	const uint64_t end = p_pos + p_len;
+	uint64_t dst_offset = 0;
+	uint64_t block = p_pos / 16;
+
+	// A request that starts inside a block decodes that block here; the rest is
+	// block aligned and goes to the workers.
+	if (p_pos % 16 != 0) {
+		uint8_t head[16];
+		if (!_stream_decrypt_block(block, head)) {
+			SecureMemory::zero(head, sizeof(head));
+			return false;
+		}
+		const uint64_t take = MIN<uint64_t>(16 - (p_pos % 16), p_len);
+		memcpy(p_dst, head + (p_pos % 16), take);
+		SecureMemory::zero(head, sizeof(head));
+		dst_offset += take;
+		block += 1;
+	}
+
+	const uint64_t full_end_block = end / 16;
+	const uint64_t middle_blocks = full_end_block > block ? full_end_block - block : 0;
+	bool ok = true;
+
+	if (middle_blocks > 0) {
+		uint8_t *middle_dst = p_dst + dst_offset;
+		const uint64_t chunks_total = (middle_blocks + STREAM_PARALLEL_CHUNK_BLOCKS - 1) / STREAM_PARALLEL_CHUNK_BLOCKS;
+		const int buffers_count = int(MIN<uint64_t>(uint64_t(p_tasks), MIN<uint64_t>(chunks_total, STREAM_PARALLEL_MAX_TASKS)));
+		const uint64_t chunk_bytes = STREAM_PARALLEL_CHUNK_BLOCKS * 16;
+
+		// Ciphertext chunks (one extra block each for the CFB feedback) live in one
+		// slab and are reused round-robin; the tasks write plaintext straight into
+		// the caller's buffer.
+		Vector<uint8_t> ct_slab;
+		ct_slab.resize(buffers_count * (chunk_bytes + 16));
+		Vector<StreamDecodeChunk> chunks;
+		chunks.resize(chunks_total);
+		Vector<WorkerThreadPool::TaskID> task_ids;
+		task_ids.resize(chunks_total);
+
+		auto join_chunk = [&](uint64_t p_chunk) -> bool {
+			if (pool->wait_for_task_completion(task_ids[p_chunk]) != OK) {
+				return false;
+			}
+			return chunks[p_chunk].ok;
+		};
+
+		uint64_t submitted = 0;
+		for (uint64_t c = 0; c < chunks_total; c++) {
+			const int buf_index = int(c % uint64_t(buffers_count));
+			// Reusing a slot waits for the task that owns it: that is both the
+			// pipeline's flow control and the bound on the ciphertext memory (one
+			// chunk per buffer, no copy of the whole file).
+			if (c >= uint64_t(buffers_count)) {
+				if (!join_chunk(c - uint64_t(buffers_count))) {
+					ok = false;
+					break;
+				}
+			}
+			const uint64_t first = block + c * STREAM_PARALLEL_CHUNK_BLOCKS;
+			const uint64_t count = MIN<uint64_t>(STREAM_PARALLEL_CHUNK_BLOCKS, full_end_block - first);
+			const uint64_t ct_base = first == 0 ? 0 : first - 1;
+			const uint64_t ct_blocks = count + (first == 0 ? 0 : 1);
+			uint8_t *ct_buffer = ct_slab.ptrw() + uint64_t(buf_index) * (chunk_bytes + 16);
+			file->seek(base + ct_base * 16);
+			if (file->get_buffer(ct_buffer, ct_blocks * 16) != ct_blocks * 16) {
+				ok = false;
+				break;
+			}
+
+			StreamDecodeChunk &chunk = chunks.write[c];
+			chunk.block_encrypt = block_encrypt;
+			chunk.ciphertext = ct_buffer;
+			chunk.iv = iv.ptr();
+			chunk.plaintext = middle_dst + (first - block) * 16;
+			chunk.ct_base = ct_base;
+			chunk.first_block = first;
+			chunk.block_count = count;
+			chunk.ok = true;
+			task_ids.write[c] = pool->add_native_task(&_decode_stream_chunk, &chunk, true, "Decode encrypted pack");
+			submitted = c + 1;
+		}
+
+		// Every submitted task writes into p_dst, so they must all be joined before
+		// this call returns (also on the error paths above).
+		const uint64_t joined_from = submitted > uint64_t(buffers_count) ? submitted - uint64_t(buffers_count) : 0;
+		for (uint64_t c = joined_from; c < submitted; c++) {
+			if (!join_chunk(c)) {
+				ok = false;
+			}
+		}
+		if (ok) {
+			dst_offset += middle_blocks * 16;
+		}
+	}
+
+	if (!ok) {
+		return false;
+	}
+
+	// Trailing partial block.
+	if (dst_offset < p_len) {
+		uint8_t tail[16];
+		if (!_stream_decrypt_block(block + middle_blocks, tail)) {
+			SecureMemory::zero(tail, sizeof(tail));
+			return false;
+		}
+		memcpy(p_dst + dst_offset, tail, p_len - dst_offset);
+		SecureMemory::zero(tail, sizeof(tail));
+	}
+	return true;
+}
+
 bool FileAccessEncrypted::_lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const {
 	if (!verify_active) {
 		return true;
@@ -278,6 +500,15 @@ bool FileAccessEncrypted::_stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64
 	// read at any offset costs one block lookup, not a replay from the IV.
 	ERR_FAIL_COND_V(p_len == 0, true);
 	ERR_FAIL_COND_V(p_pos + p_len > length, false);
+
+#ifdef THREADS_ENABLED
+	if (p_len >= STREAM_PARALLEL_MIN_BYTES) {
+		const int tasks = stream_parallel_task_limit();
+		if (tasks > 1) {
+			return _stream_decrypt_parallel(p_dst, p_pos, p_len, tasks);
+		}
+	}
+#endif
 
 	constexpr uint64_t window_blocks = 1024; // 16 KiB of ciphertext per window.
 	uint64_t done = 0;

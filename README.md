@@ -80,9 +80,10 @@ templates are all produced locally. The CFFI reference is at
   immediates. The game decodes the pack's CFB stream one block at a time through the tables
   (on demand, not by buffering the file), so no key ever reaches the process. Each file is
   integrity-checked while it is read (the pack index is checked at load, so a wrong or stale
-  pack still fails immediately), which keeps a full read to a single pass over the data. Table
-  entries are masked and the tables are shuffled with decoys; your own key only selects the
-  layout and the build tree.
+  pack still fails immediately), which keeps a full read to a single pass over the data, and a
+  read of a megabyte or more is decoded as independent CFB windows on the worker pool (four by
+  default; `GRIT_DECODE_THREADS=1..8` caps it). Table entries are masked and the tables are
+  shuffled with decoys; your own key only selects the layout and the build tree.
 - **Anti-debug check before the first block** (macOS `ptrace(PT_DENY_ATTACH)`/`P_TRACED`, Windows
   `IsDebuggerPresent`, Linux `TracerPid`): a traced game gets only zeroed blocks, so the pack
   fails to open. Web builds have no equivalent hook, which makes HTML5 the weakest target.
