@@ -34,6 +34,7 @@ TEST_FORCE_LINK(test_file_access_encrypted)
 
 #include "core/crypto/crypto_core.h"
 #include "core/io/file_access.h"
+#include "core/os/os.h"
 #include "core/io/file_access_encrypted.h"
 #include "tests/test_utils.h"
 
@@ -65,9 +66,12 @@ static Vector<uint8_t> make_key(uint8_t p_seed) {
 	return key;
 }
 
-// Writes `p_payload` through the key path and returns the file path.
+// Writes `p_payload` through the key path and returns the file path. The name
+// carries the process id: TestUtils::get_temp_path() is a fixed path, so two test
+// processes running at the same time would otherwise read and rewrite the same
+// file and fail each other (seen on WSL when a stress loop overlapped the suite).
 static String write_encrypted(const Vector<uint8_t> &p_payload, const Vector<uint8_t> &p_key) {
-	const String path = TestUtils::get_temp_path("fae_keystream.bin");
+	const String path = TestUtils::get_temp_path("fae_keystream_" + itos((int)OS::get_singleton()->get_process_id()) + ".bin");
 	Ref<FileAccess> base = FileAccess::open(path, FileAccess::WRITE);
 	REQUIRE(base.is_valid());
 	Ref<FileAccessEncrypted> writer;
@@ -204,6 +208,10 @@ TEST_CASE("[FileAccessEncrypted] Keystream integrity check is lazy for pack file
 			const uint64_t want = MIN<uint64_t>(chunk, got.size() - done);
 			const uint64_t read = reader->get_buffer(got.ptrw() + done, want);
 			REQUIRE(read == want);
+			if (read == 0) {
+				// Do not spin when the read fails; REQUIRE is the report.
+				break;
+			}
 			done += read;
 		}
 		REQUIRE(got == payload);
@@ -330,6 +338,10 @@ TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel window
 			const uint64_t take = MIN<uint64_t>(chunk, got.size() - done);
 			const uint64_t read = reader->get_buffer(got.ptrw() + done, take);
 			REQUIRE(read == take);
+			if (read == 0) {
+				// A failed read must fail the case, not spin on the same offset.
+				break;
+			}
 			done += read;
 		}
 		REQUIRE(got == payload);

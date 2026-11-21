@@ -327,6 +327,7 @@ bool FileAccessEncrypted::_stream_decrypt_block(uint64_t p_block, uint8_t *r_dst
 	uint8_t ct[16];
 	file->seek(base + p_block * 16);
 	if (file->get_buffer(ct, 16) != 16) {
+		ERR_PRINT(vformat("Grit: encrypted read failed at block %d (short ciphertext block).", int64_t(p_block)));
 		SecureMemory::zero(previous, sizeof(previous));
 		return false;
 	}
@@ -357,6 +358,7 @@ bool FileAccessEncrypted::_stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_po
 	if (p_pos % 16 != 0) {
 		uint8_t head[16];
 		if (!_stream_decrypt_block(block, head)) {
+			ERR_PRINT(vformat("Grit: encrypted read failed on the first block %d of the request.", int64_t(block)));
 			SecureMemory::zero(head, sizeof(head));
 			return false;
 		}
@@ -389,9 +391,14 @@ bool FileAccessEncrypted::_stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_po
 
 		auto join_chunk = [&](uint64_t p_chunk) -> bool {
 			if (pool->wait_for_task_completion(task_ids[p_chunk]) != OK) {
+				ERR_PRINT(vformat("Grit: could not wait for the decode of block %d.", int64_t(chunks[p_chunk].first_block)));
 				return false;
 			}
-			return chunks[p_chunk].ok;
+			if (!chunks[p_chunk].ok) {
+				ERR_PRINT(vformat("Grit: the keystream provider refused block %d (a debugger may be attached).", int64_t(chunks[p_chunk].first_block)));
+				return false;
+			}
+			return true;
 		};
 
 		uint64_t submitted = 0;
@@ -413,6 +420,7 @@ bool FileAccessEncrypted::_stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_po
 			uint8_t *ct_buffer = ct_slab.ptrw() + uint64_t(buf_index) * (chunk_bytes + 16);
 			file->seek(base + ct_base * 16);
 			if (file->get_buffer(ct_buffer, ct_blocks * 16) != ct_blocks * 16) {
+				ERR_PRINT(vformat("Grit: encrypted read failed at chunk block %d (%d blocks wanted).", int64_t(first), int64_t(ct_blocks)));
 				ok = false;
 				break;
 			}
