@@ -77,6 +77,10 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 	pos = 0;
 	eofed = false;
 	use_magic = p_with_magic;
+	verify_failed = false;
+	lazy_verify = false;
+	verify_active = false;
+	verify_next = 0;
 
 	if (p_mode == MODE_WRITE_AES256) {
 		data.clear();
@@ -110,13 +114,13 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 		key = p_key;
 		protect_key(key);
 
-		return _read_encrypted(p_base, p_with_magic);
+		return _read_encrypted(p_base, p_with_magic, false);
 	}
 
 	return OK;
 }
 
-Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic) {
+Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic, bool p_verify_at_open) {
 	ERR_FAIL_COND_V_MSG(file.is_valid(), ERR_ALREADY_IN_USE, vformat("Can't open file while another file from path '%s' is open.", file->get_path_absolute()));
 	ERR_FAIL_COND_V(p_block_encrypt == nullptr, ERR_INVALID_PARAMETER);
 
@@ -126,11 +130,15 @@ Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, Bloc
 	block_encrypt = p_block_encrypt;
 	// No key at all in this mode: the keystream comes from the provider.
 	key.clear();
+	verify_failed = false;
+	lazy_verify = false;
+	verify_active = false;
+	verify_next = 0;
 
-	return _read_encrypted(p_base, p_with_magic);
+	return _read_encrypted(p_base, p_with_magic, p_verify_at_open);
 }
 
-Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_magic) {
+Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_magic, bool p_verify_at_open) {
 	use_magic = p_with_magic;
 
 	if (use_magic) {
@@ -149,15 +157,25 @@ Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_m
 	ERR_FAIL_COND_V(p_base->get_length() < base + length, ERR_FILE_CORRUPT);
 
 	if (block_encrypt != nullptr) {
-		// Keystream build: verify the payload through the provider in windows, then
-		// decode blocks on demand. The whole-file plaintext buffer is never built.
+		// Keystream build: decode blocks on demand, never build the whole plaintext.
+		// The pack directory is verified at open (it is small, and a template/pack
+		// mismatch must stop the pack from loading); every other file is verified
+		// while it is read, so a file that is opened and read once is decoded once
+		// instead of twice.
 		streaming = true;
 		file = p_base;
-		if (!_verify_stream_md5(md5d)) {
-			file.unref();
-			streaming = false;
-			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value, or the decryption keystream is unavailable (a debugger may be attached). The file is corrupt or the template does not match the pack.");
+		if (p_verify_at_open) {
+			if (!_verify_stream_md5(md5d)) {
+				file.unref();
+				streaming = false;
+				ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value, or the decryption keystream is unavailable (a debugger may be attached). The file is corrupt or the template does not match the pack.");
+			}
+			return OK;
 		}
+		memcpy(verify_digest, md5d, sizeof(verify_digest));
+		verify_next = 0;
+		verify_active = verify_ctx.start() == OK;
+		lazy_verify = true;
 		return OK;
 	}
 
@@ -218,6 +236,39 @@ bool FileAccessEncrypted::_verify_stream_md5(const unsigned char p_expected[16])
 	unsigned char hash[16];
 	ERR_FAIL_COND_V(ctx.finish(hash) != OK, false);
 	return String::md5(hash) == String::md5(p_expected);
+}
+
+bool FileAccessEncrypted::_lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const {
+	if (!verify_active) {
+		return true;
+	}
+	if (p_pos != verify_next) {
+		// The caller skipped ahead or went back, so this is not a full sequential
+		// pass and the digest cannot be completed. Stock packs do not verify file
+		// contents at all, so the only thing lost here is the diagnostic.
+		verify_active = false;
+		return true;
+	}
+	if (verify_ctx.update(p_data, p_len) != OK) {
+		verify_active = false;
+		return true;
+	}
+	verify_next += p_len;
+	if (verify_next < length) {
+		return true;
+	}
+
+	unsigned char digest[16];
+	verify_active = false;
+	if (verify_ctx.finish(digest) != OK) {
+		return true;
+	}
+	if (memcmp(digest, verify_digest, sizeof(digest)) == 0) {
+		return true;
+	}
+	verify_failed = true;
+	ERR_PRINT("The MD5 sum of the decrypted file does not match the expected value, or the decryption keystream is unavailable (a debugger may be attached). The file is corrupt or the template does not match the pack.");
+	return false;
 }
 
 bool FileAccessEncrypted::_stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const {
@@ -346,6 +397,9 @@ void FileAccessEncrypted::_close() {
 	}
 
 	streaming = false;
+	lazy_verify = false;
+	verify_active = false;
+	verify_next = 0;
 	block_encrypt = nullptr;
 	file.unref();
 }
@@ -407,7 +461,19 @@ uint64_t FileAccessEncrypted::get_buffer(uint8_t *p_dst, uint64_t p_length) cons
 	uint64_t to_copy = MIN(p_length, get_length() - pos);
 
 	if (streaming) {
+		if (verify_failed) {
+			// The integrity check already failed: keep handing out nothing rather
+			// than garbage from a later read.
+			eofed = true;
+			return 0;
+		}
 		if (to_copy && !_stream_decrypt(p_dst, pos, to_copy)) {
+			eofed = true;
+			return 0;
+		}
+		if (to_copy && lazy_verify && !_lazy_verify_update(p_dst, pos, to_copy)) {
+			// The digest failed with this chunk: refuse to hand it back so the caller
+			// sees a short read, and get_error() reports ERR_FILE_CORRUPT.
 			eofed = true;
 			return 0;
 		}
@@ -424,6 +490,9 @@ uint64_t FileAccessEncrypted::get_buffer(uint8_t *p_dst, uint64_t p_length) cons
 }
 
 Error FileAccessEncrypted::get_error() const {
+	if (verify_failed) {
+		return ERR_FILE_CORRUPT;
+	}
 	return eofed ? ERR_FILE_EOF : OK;
 }
 

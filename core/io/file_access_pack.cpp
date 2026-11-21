@@ -357,7 +357,10 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 
 		Error err = OK;
 		if (use_keystream) {
-			err = fae->open_and_parse_keystream(f, script_encryption_key_encrypt_block, false);
+			// The directory is verified at open: it is small, and a template/pack
+			// mismatch has to stop the pack from loading instead of surfacing as
+			// corrupted resources later. Files verify while they are read.
+			err = fae->open_and_parse_keystream(f, script_encryption_key_encrypt_block, false, true);
 		} else {
 			err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
 			SecureMemory::zero(key.ptrw(), key.size());

@@ -78,9 +78,11 @@ templates are all produced locally. The CFFI reference is at
 - **White-box keystream**: the pack key is baked into an AES-256 table network with randomized
   lookup tables and per-binary layout, so it never exists in the game as bytes or instruction
   immediates. The game decodes the pack's CFB stream one block at a time through the tables
-  (on demand, not by buffering the file), so no key ever reaches the process. Table entries are
-  masked and the tables are shuffled with decoys; your own key only selects the layout and the
-  build tree.
+  (on demand, not by buffering the file), so no key ever reaches the process. Each file is
+  integrity-checked while it is read (the pack index is checked at load, so a wrong or stale
+  pack still fails immediately), which keeps a full read to a single pass over the data. Table
+  entries are masked and the tables are shuffled with decoys; your own key only selects the
+  layout and the build tree.
 - **Anti-debug check before the first block** (macOS `ptrace(PT_DENY_ATTACH)`/`P_TRACED`, Windows
   `IsDebuggerPresent`, Linux `TracerPid`): a traced game gets only zeroed blocks, so the pack
   fails to open. Web builds have no equivalent hook, which makes HTML5 the weakest target.

@@ -145,7 +145,9 @@ TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 		REQUIRE(keyed_all == payload);
 	}
 
-	// A provider that decrypts with another key must fail the integrity check.
+	// A provider that decrypts with another key must fail the integrity check. Pack
+	// files verify while they are read, so with this payload the check has already
+	// completed (one read covers the whole file) and the failing chunk is refused.
 	// The engine logs the failure, which is expected here.
 	keystream_key = make_key(0x90);
 	{
@@ -154,7 +156,115 @@ TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 		REQUIRE(base.is_valid());
 		Ref<FileAccessEncrypted> reader;
 		reader.instantiate();
-		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == ERR_FILE_CORRUPT);
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == 0);
+		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
+		ERR_PRINT_ON;
+	}
+	// The pack-directory form verifies at open and must fail there.
+	{
+		ERR_PRINT_OFF;
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true, true) == ERR_FILE_CORRUPT);
+		ERR_PRINT_ON;
+	}
+	keystream_key.clear();
+}
+
+TEST_CASE("[FileAccessEncrypted] Keystream integrity check is lazy for pack files") {
+	const Vector<uint8_t> key = make_key(0x30);
+	// Larger than one decode window: the old open-time pass would have decoded the
+	// whole payload once before returning.
+	const Vector<uint8_t> payload = make_bytes(200 * 1024, 0x40);
+	const String path = write_encrypted(payload, key);
+	keystream_key = key;
+
+	// Chunk size deliberately neither a divisor of the payload nor a block multiple.
+	constexpr uint64_t chunk = 7919;
+
+	// Sequential reads are hashed as they decode: the bytes are identical, the check
+	// passes at the end of the file, and the error is a plain EOF.
+	{
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+		REQUIRE(reader->get_length() == payload.size());
+
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		uint64_t done = 0;
+		while (done < got.size()) {
+			const uint64_t want = MIN<uint64_t>(chunk, got.size() - done);
+			const uint64_t read = reader->get_buffer(got.ptrw() + done, want);
+			REQUIRE(read == want);
+			done += read;
+		}
+		REQUIRE(got == payload);
+
+		uint8_t extra = 0;
+		REQUIRE(reader->get_buffer(&extra, 1) == 0);
+		REQUIRE(reader->eof_reached() == true);
+		REQUIRE(reader->get_error() == ERR_FILE_EOF);
+	}
+
+	// A seek breaks the sequential pass: the data stays correct, but the check is
+	// dropped instead of decoding bytes the caller did not ask for.
+	{
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+
+		uint8_t head[64];
+		REQUIRE(reader->get_buffer(head, sizeof(head)) == sizeof(head));
+		REQUIRE(memcmp(head, payload.ptr(), sizeof(head)) == 0);
+
+		reader->seek(150000);
+		uint8_t mid[4096];
+		REQUIRE(reader->get_buffer(mid, sizeof(mid)) == sizeof(mid));
+		REQUIRE(memcmp(mid, payload.ptr() + 150000, sizeof(mid)) == 0);
+		REQUIRE(reader->get_error() == OK);
+	}
+
+	// A wrong provider is caught at the end of the read: the failing chunk is
+	// refused, get_error() reports corruption, and later reads stay empty.
+	keystream_key = make_key(0x91);
+	{
+		ERR_PRINT_OFF;
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
+
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == 0);
+		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
+
+		uint8_t again[16];
+		REQUIRE(reader->get_buffer(again, sizeof(again)) == 0);
+		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
+		ERR_PRINT_ON;
+	}
+
+	// The pack-directory form verifies at open, so a template/pack mismatch cannot
+	// load the pack at all.
+	{
+		ERR_PRINT_OFF;
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true, true) == ERR_FILE_CORRUPT);
 		ERR_PRINT_ON;
 	}
 	keystream_key.clear();

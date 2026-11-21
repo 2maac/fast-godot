@@ -72,15 +72,38 @@ private:
 	bool streaming = false;
 	mutable Vector<uint8_t> stream_ct;
 	mutable Vector<uint8_t> stream_pt;
-	Error _read_encrypted(Ref<FileAccess> p_base, bool p_with_magic);
+
+	// Integrity check for the streaming path. Decoding the whole payload up front
+	// only to compare its MD5 doubles the cost of every file that is opened and
+	// read once (the tables run at ~21 MiB/s), so pack files verify as they are
+	// read instead: plaintext read sequentially from offset 0 is hashed on the way
+	// through and compared when the file reaches its end. A random-access pattern
+	// simply turns the check off rather than decoding bytes nobody asked for (stock
+	// packs never check file contents at all). The pack directory opts into the
+	// eager form, because a pack/template mismatch must fail the pack immediately.
+	mutable CryptoCore::MD5Context verify_ctx;
+	mutable uint64_t verify_next = 0;
+	mutable bool verify_active = false;
+	mutable bool verify_failed = false;
+	unsigned char verify_digest[16] = {};
+	bool lazy_verify = false;
+
+	Error _read_encrypted(Ref<FileAccess> p_base, bool p_with_magic, bool p_verify_at_open);
 	bool _verify_stream_md5(const unsigned char p_expected[16]);
 	bool _stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const;
+	bool _lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const;
 
 public:
 	Error open_and_parse(Ref<FileAccess> p_base, const Vector<uint8_t> &p_key, Mode p_mode, bool p_with_magic = true, const Vector<uint8_t> &p_iv = Vector<uint8_t>());
 	// Read mode only: decodes CFB through the keystream provider instead of a key,
 	// so the pack key itself never exists in this process.
-	Error open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic = true);
+	//
+	// With `p_verify_at_open` the whole payload is decoded and its MD5 checked
+	// before returning (the pack directory uses this, since it is small and a
+	// mismatch there has to stop the pack from loading). Otherwise the check runs
+	// during the caller's sequential reads and is compared at EOF, so opening a
+	// large encrypted file no longer decodes it once up front.
+	Error open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic = true, bool p_verify_at_open = false);
 	Error open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode);
 
 	Vector<uint8_t> get_iv() const { return iv; }
