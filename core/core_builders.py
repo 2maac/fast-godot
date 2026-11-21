@@ -152,103 +152,125 @@ def _wb_invert_lin(rows):
     return inverse
 
 
-_WB_DECOYS = 64
+_WB_T_DECOYS = 64  # Whole 32-bit tables that are never used.
+_WB_F_DECOYS = 16  # Decoys for the byte-wide final-round tables.
 
 
 def _wb_make_tables(key, seed):
+    """Four 32-bit T-tables per output column instead of 64 byte lookups per round.
+
+    Each round's ShiftRows + SubBytes + MixColumns is folded into four 32-bit tables
+    per output column, indexed by the encoded input byte of one row/column position.
+    The four tables of a column are XORed into the encoded output word, so a round
+    costs 16 loads instead of 64 and the encoded round key rides on the first table
+    of each column. The per-byte output encodings, the per-entry masking and the
+    decoy shuffling are the same hardening as the byte-wise network.
+    """
     rng = random.Random(seed)
     round_keys = _wb_key_expand(key)
     enc = [[_wb_rand_linear(rng) for _ in range(16)] for _ in range(_WB_ROUNDS)]
     enc_inv = [[_wb_invert_lin(enc[r][p]) for p in range(16)] for r in range(_WB_ROUNDS)]
+
     tables = []
-    enc_keys = []
     for r in range(1, _WB_ROUNDS + 1):
-        rk_lut = [_wb_apply_lin(enc[r - 1][p], round_keys[r][p]) for p in range(16)]
-        enc_keys.append(rk_lut)
         round_tables = []
-        for out_pos in range(16):
-            out_row, out_col = out_pos % 4, out_pos // 4
-            pos_tables = []
+        for c in range(4):
             for k in range(4):
-                in_pos = k + 4 * ((out_col + k) % 4)
-                table = bytearray(256)
+                in_pos = k + 4 * ((c + k) % 4)
+                table = [0] * 256
                 for idx in range(256):
                     if r == 1:
+                        # The whitening key is folded into the first round's input,
+                        # so this round indexes by the real plaintext byte.
                         real_in = idx ^ round_keys[0][in_pos]
                     else:
                         real_in = enc_inv[r - 2][in_pos][idx]
-                    contribution = _wb_gmul(_WB_MC[out_row][k], _WB_SBOX[real_in])
-                    table[idx] = _wb_apply_lin(enc[r - 1][out_pos], contribution)
-                pos_tables.append(bytes(table))
-            round_tables.append(pos_tables)
+                    sb = _WB_SBOX[real_in]
+                    word = 0
+                    for out_row in range(4):
+                        out_pos = out_row + 4 * c
+                        contribution = _wb_gmul(_WB_MC[out_row][k], sb)
+                        encoded = _wb_apply_lin(enc[r - 1][out_pos], contribution)
+                        if k == 0:
+                            # One contribution per column carries the encoded round
+                            # key: the four tables are XORed, so exactly one must.
+                            encoded ^= _wb_apply_lin(enc[r - 1][out_pos], round_keys[r][out_pos])
+                        word |= encoded << (8 * out_row)
+                    table[idx] = word
+                round_tables.append(table)
         tables.append(round_tables)
+
     final_tables = []
     for out_pos in range(16):
         out_row, out_col = out_pos % 4, out_pos // 4
         in_pos = out_row + 4 * ((out_col + out_row) % 4)
-        table = bytearray(256)
+        table = [0] * 256
         for idx in range(256):
             table[idx] = _WB_SBOX[enc_inv[_WB_ROUNDS - 1][in_pos][idx]] ^ round_keys[14][out_pos]
-        final_tables.append(bytes(table))
+        final_tables.append(table)
 
-    # The tables are no longer stored as recognizable permutations: every entry is
-    # XORed with its own random mask and the real tables are shuffled into a larger
-    # blob together with random decoy tables. Recovering the key from the binary now
-    # needs the lookup structures and the XOR masks, not just a pattern match on the
-    # table bytes.
-    n_real = _WB_ROUNDS * 16 * 4
-    n_final = 16
-    total = n_real + _WB_DECOYS + n_final
+    # Hardening: every entry is XOR-masked with its own 32-bit mask and the real
+    # tables are shuffled among random decoys, so the blob does not look like a
+    # table network (the same scheme as the byte-wise layout).
+    n_real = _WB_ROUNDS * 16
+    total = n_real + _WB_T_DECOYS
     slots = list(range(total))
     rng.shuffle(slots)
     real_slots = slots[:n_real]
-    final_slots = slots[n_real + _WB_DECOYS:]
-    blob = [bytearray(rng.getrandbits(8) for _ in range(256)) for _ in range(total)]
-    masks = [bytearray(rng.getrandbits(8) for _ in range(256)) for _ in range(total)]
+    t_blob = [[rng.getrandbits(32) for _ in range(256)] for _ in range(total)]
+    t_masks = [[rng.getrandbits(32) for _ in range(256)] for _ in range(total)]
     flat = 0
-    for r in range(_WB_ROUNDS):
-        for out_pos in range(16):
-            for k in range(4):
-                slot = real_slots[flat]
-                flat += 1
-                table = tables[r][out_pos][k]
-                for i in range(256):
-                    blob[slot][i] = table[i] ^ masks[slot][i]
+    for round_tables in tables:
+        for table in round_tables:
+            slot = real_slots[flat]
+            flat += 1
+            for i in range(256):
+                t_blob[slot][i] = table[i] ^ t_masks[slot][i]
+
+    n_final = 16
+    f_total = n_final + _WB_F_DECOYS
+    f_slots = list(range(f_total))
+    rng.shuffle(f_slots)
+    f_real = f_slots[:n_final]
+    f_blob = [[rng.getrandbits(8) for _ in range(256)] for _ in range(f_total)]
+    f_masks = [[rng.getrandbits(8) for _ in range(256)] for _ in range(f_total)]
     for i, table in enumerate(final_tables):
-        slot = final_slots[i]
+        slot = f_real[i]
         for j in range(256):
-            blob[slot][j] = table[j] ^ masks[slot][j]
+            f_blob[slot][j] = table[j] ^ f_masks[slot][j]
 
-    bundle = {
-        "round_keys": enc_keys,
-        "blob": blob,
-        "masks": masks,
-        "real_slots": real_slots,
-        "final_slots": final_slots,
+    return {
+        "t_blob": t_blob,
+        "t_masks": t_masks,
+        "t_slots": real_slots,
+        "f_blob": f_blob,
+        "f_masks": f_masks,
+        "f_slots": f_real,
     }
-
-    return bundle
 
 
 def _wb_emit_tables(bundle):
-    total = len(bundle["blob"])
-    # One 16-bit entry per lookup: the masked value in the low byte, its mask in
-    # the high byte. Same bytes, same obfuscation, one load instead of two.
-    parts = ["static const uint16_t grit_wb_pairs[%d][256] = {" % total]
-    for slot in range(total):
-        table = bundle["blob"][slot]
-        masks = bundle["masks"][slot]
-        parts.append("{" + ",".join("0x%02x%02x" % (masks[i], table[i]) for i in range(256)) + "},")
+    # One 64-bit entry per T-box lookup: the 32-bit mask in the high half and the
+    # masked value in the low half, so a lookup is a single load.
+    t_total = len(bundle["t_blob"])
+    parts = ["static const uint64_t grit_wb_t[%d][256] = {" % t_total]
+    for slot in range(t_total):
+        blob = bundle["t_blob"][slot]
+        masks = bundle["t_masks"][slot]
+        parts.append("{" + ",".join("0x%08x%08x" % (masks[i], blob[i]) for i in range(256)) + "},")
     parts.append("};")
-    parts.append("static const uint16_t grit_wb_slots[%d] = {" % (_WB_ROUNDS * 16 * 4))
-    parts.append(",".join(str(s) for s in bundle["real_slots"]))
+    parts.append("static const uint16_t grit_wb_t_slots[%d] = {" % len(bundle["t_slots"]))
+    parts.append(",".join(str(s) for s in bundle["t_slots"]))
     parts.append("};")
-    parts.append("static const uint16_t grit_wb_final_slots[16] = {")
-    parts.append(",".join(str(s) for s in bundle["final_slots"]))
+    f_total = len(bundle["f_blob"])
+    parts.append("static const uint16_t grit_wb_f[%d][256] = {" % f_total)
+    for slot in range(f_total):
+        blob = bundle["f_blob"][slot]
+        masks = bundle["f_masks"][slot]
+        parts.append("{" + ",".join("0x%02x%02x" % (masks[i], blob[i]) for i in range(256)) + "},")
     parts.append("};")
-    parts.append("static const uint8_t grit_wb_round_keys[%d][16] = {" % _WB_ROUNDS)
-    for rk in bundle["round_keys"]:
-        parts.append("{" + ",".join("0x%02x" % b for b in rk) + "},")
+    parts.append("static const uint8_t grit_wb_f_slots[16] = {")
+    parts.append(",".join(str(s) for s in bundle["f_slots"]))
     parts.append("};")
     return "\n".join(parts)
 
@@ -331,38 +353,48 @@ static bool grit_tracing_allowed() {
 # load per lookup is ~1.75x faster (the lookup tables are the hot path, ~40% of a
 # pack read).
 _WB_ENCRYPT_BLOCK = """\
-static inline uint8_t grit_wb_lookup(const unsigned slot, const uint8_t key) {
-	const uint16_t pair = grit_wb_pairs[slot][key];
+static inline uint32_t grit_wb_t_lookup(const uint16_t slot, const uint8_t key) {
+	const uint64_t pair = grit_wb_t[slot][key];
+	return uint32_t(pair) ^ uint32_t(pair >> 32);
+}
+
+static inline uint8_t grit_wb_f_lookup(const uint8_t slot, const uint8_t key) {
+	const uint16_t pair = grit_wb_f[slot][key];
 	return uint8_t(pair) ^ uint8_t(pair >> 8);
 }
 
 static void grit_wb_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {
-	uint8_t s[16];
-	uint8_t o[16];
-	memcpy(s, p_in, 16);
-	for (int round = 0; round < %d; round++) {
-		for (int out_pos = 0; out_pos < 16; out_pos++) {
-			const int out_col = out_pos / 4;
-			uint8_t value = grit_wb_round_keys[round][out_pos];
-			for (int k = 0; k < 4; k++) {
-				const int in_pos = k + 4 * ((out_col + k) %% 4);
-				const unsigned slot = grit_wb_slots[(round * 16 + out_pos) * 4 + k];
-				value ^= grit_wb_lookup(slot, s[in_pos]);
-			}
-			o[out_pos] = value;
+	uint32_t s[4];
+	uint32_t o[4];
+	// Round 1 folds the whitening key into its tables, so it indexes by the real
+	// plaintext byte; later rounds index by the encoded byte of the previous word.
+	for (int c = 0; c < 4; c++) {
+		uint32_t value = 0;
+		for (int k = 0; k < 4; k++) {
+			const int in_pos = k + 4 * ((c + k) %% 4);
+			value ^= grit_wb_t_lookup(grit_wb_t_slots[c * 4 + k], p_in[in_pos]);
 		}
-		memcpy(s, o, 16);
+		o[c] = value;
+	}
+	for (int round = 1; round < %d; round++) {
+		for (int c = 0; c < 4; c++) {
+			uint32_t value = 0;
+			for (int k = 0; k < 4; k++) {
+				const int col = (c + k) %% 4;
+				value ^= grit_wb_t_lookup(grit_wb_t_slots[(round * 4 + c) * 4 + k], uint8_t(o[col] >> (8 * k)));
+			}
+			s[c] = value;
+		}
+		memcpy(o, s, sizeof(o));
 	}
 	for (int out_pos = 0; out_pos < 16; out_pos++) {
 		const int out_row = out_pos %% 4;
-		const int in_pos = out_row + 4 * ((out_pos / 4 + out_row) %% 4);
-		o[out_pos] = grit_wb_lookup(grit_wb_final_slots[out_pos], s[in_pos]);
+		const int col = (out_pos / 4 + out_row) %% 4;
+		r_out[out_pos] = grit_wb_f_lookup(grit_wb_f_slots[out_pos], uint8_t(o[col] >> (8 * out_row)));
 	}
-	memcpy(r_out, o, 16);
 }
 """ % _WB_ROUNDS
 
-# Every build must define the keystream API; only the keystream build has one.
 _WB_NO_KEYSTREAM = """\
 bool script_encryption_key_keystream_available() {
 	return false;
