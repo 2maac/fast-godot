@@ -81,6 +81,7 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 	if (p_mode == MODE_WRITE_AES256) {
 		data.clear();
 		writing = true;
+		streaming = false;
 		block_encrypt = nullptr;
 		file = p_base;
 		key = p_key;
@@ -104,6 +105,7 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 
 	} else if (p_mode == MODE_READ) {
 		writing = false;
+		streaming = false;
 		block_encrypt = nullptr;
 		key = p_key;
 		protect_key(key);
@@ -145,6 +147,20 @@ Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_m
 
 	base = p_base->get_position();
 	ERR_FAIL_COND_V(p_base->get_length() < base + length, ERR_FILE_CORRUPT);
+
+	if (block_encrypt != nullptr) {
+		// Keystream build: verify the payload through the provider in windows, then
+		// decode blocks on demand. The whole-file plaintext buffer is never built.
+		streaming = true;
+		file = p_base;
+		if (!_verify_stream_md5(md5d)) {
+			file.unref();
+			streaming = false;
+			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value, or the decryption keystream is unavailable (a debugger may be attached). The file is corrupt or the template does not match the pack.");
+		}
+		return OK;
+	}
+
 	uint64_t ds = length;
 	if (ds % 16) {
 		ds += 16 - (ds % 16);
@@ -154,13 +170,7 @@ Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_m
 	uint64_t blen = p_base->get_buffer(data.ptrw(), ds);
 	ERR_FAIL_COND_V(blen != ds, ERR_FILE_CORRUPT);
 
-	if (block_encrypt != nullptr) {
-		if (!_decrypt_keystream()) {
-			SecureMemory::zero(data.ptrw(), data.size());
-			data.clear();
-			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The decryption keystream is unavailable for this pack (a debugger may be attached, or the template does not match the pack).");
-		}
-	} else {
+	{
 		CryptoCore::AESContext ctx;
 
 		ctx.set_encode_key(key.ptrw(), 256); // Due to the nature of CFB, same key schedule is used for both encryption and decryption!
@@ -180,32 +190,91 @@ Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_m
 	return OK;
 }
 
-bool FileAccessEncrypted::_decrypt_keystream() {
+bool FileAccessEncrypted::_verify_stream_md5(const unsigned char p_expected[16]) {
+	// One pass over the payload: decrypt each window through the keystream provider
+	// and feed it to an incremental MD5. The plaintext window is reused, so memory
+	// stays bounded regardless of the file size.
+	CryptoCore::MD5Context ctx;
+	ERR_FAIL_COND_V(ctx.start() != OK, false);
+
+	constexpr uint64_t chunk_size = 64 * 1024;
+	Vector<uint8_t> chunk;
+	chunk.resize(chunk_size);
+	uint64_t done = 0;
+	while (done < length) {
+		const uint64_t take = MIN(chunk_size, length - done);
+		if (!_stream_decrypt(chunk.ptrw(), done, take)) {
+			SecureMemory::zero(chunk.ptrw(), chunk.size());
+			return false;
+		}
+		if (ctx.update(chunk.ptr(), take) != OK) {
+			SecureMemory::zero(chunk.ptrw(), chunk.size());
+			return false;
+		}
+		done += take;
+	}
+	SecureMemory::zero(chunk.ptrw(), chunk.size());
+
+	unsigned char hash[16];
+	ERR_FAIL_COND_V(ctx.finish(hash) != OK, false);
+	return String::md5(hash) == String::md5(p_expected);
+}
+
+bool FileAccessEncrypted::_stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const {
 	// CFB: keystream block = E(key, previous ciphertext block); plaintext = ct XOR ks.
 	// Only AES encryption is needed, which is what a white-box keystream provider
-	// computes, so no key material is involved here.
-	uint8_t prev[16];
-	memcpy(prev, iv.ptr(), 16);
-	uint8_t block[16];
-	uint8_t keystream[16];
-	uint8_t *dst = data.ptrw();
-	const uint64_t padded = data.size();
-	bool ok = true;
-	for (uint64_t offset = 0; offset < padded; offset += 16) {
-		memcpy(block, dst + offset, 16);
-		if (!block_encrypt(prev, keystream)) {
-			ok = false;
-			break;
+	// computes. The previous ciphertext block is readable from the base file, so a
+	// read at any offset costs one block lookup, not a replay from the IV.
+	ERR_FAIL_COND_V(p_len == 0, true);
+	ERR_FAIL_COND_V(p_pos + p_len > length, false);
+
+	constexpr uint64_t window_blocks = 1024; // 16 KiB of ciphertext per window.
+	uint64_t done = 0;
+	uint64_t offset = p_pos;
+	const uint64_t end = p_pos + p_len;
+	while (offset < end) {
+		const uint64_t block = offset / 16;
+		const uint64_t block_offset = offset % 16;
+		const uint64_t window_end = MIN(end, (block + window_blocks) * 16);
+		const uint64_t last_block = (window_end + 15) / 16 - 1;
+		const uint64_t ct_first = block == 0 ? 0 : block - 1;
+		const uint64_t window_bytes = (last_block - ct_first + 1) * 16;
+
+		stream_ct.resize(window_bytes);
+		stream_pt.resize(window_bytes);
+		SecureMemory::exclude_from_dumps(stream_pt.ptrw(), window_bytes);
+
+		file->seek(base + ct_first * 16);
+		if (file->get_buffer(stream_ct.ptrw(), window_bytes) != window_bytes) {
+			return false;
 		}
-		for (int i = 0; i < 16; i++) {
-			dst[offset + i] = block[i] ^ keystream[i];
+
+		uint8_t keystream[16];
+		for (uint64_t b = block; b <= last_block; b++) {
+			const uint8_t *prev = b == 0 ? iv.ptr() : stream_ct.ptr() + (b - 1 - ct_first) * 16;
+			const uint8_t *ct = stream_ct.ptr() + (b - ct_first) * 16;
+			uint8_t *pt = stream_pt.ptrw() + (b - ct_first) * 16;
+			if (!block_encrypt(prev, keystream)) {
+				SecureMemory::zero(keystream, sizeof(keystream));
+				return false;
+			}
+			for (int i = 0; i < 16; i++) {
+				pt[i] = ct[i] ^ keystream[i];
+			}
 		}
-		memcpy(prev, block, 16);
+		SecureMemory::zero(keystream, sizeof(keystream));
+
+		const uint64_t copy_len = window_end - offset;
+		// `stream_pt` starts at `ct_first`, which is one block before `block` for
+		// every block but the first (its plaintext is there only to provide the CFB
+		// feedback), so the requested bytes start one block further in.
+		const uint64_t pt_offset = (block - ct_first) * 16 + block_offset;
+		memcpy(p_dst + done, stream_pt.ptr() + pt_offset, copy_len);
+		done += copy_len;
+		offset += copy_len;
 	}
-	SecureMemory::zero(prev, sizeof(prev));
-	SecureMemory::zero(block, sizeof(block));
-	SecureMemory::zero(keystream, sizeof(keystream));
-	return ok;
+
+	return true;
 }
 
 Error FileAccessEncrypted::open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode) {
@@ -225,13 +294,24 @@ Error FileAccessEncrypted::open_internal(const String &p_path, int p_mode_flags)
 }
 
 void FileAccessEncrypted::_close() {
-	if (file.is_null()) {
-		// A failed open can still leave the key (and the decrypted prefix) behind.
-		SecretWiper wipe = { key, data };
-		return;
+	// A failed open can still leave the key (and a decrypted window) behind, so the
+	// wipers are armed before any early return.
+	SecretWiper wipe = { key, data };
+
+	if (!stream_ct.is_empty()) {
+		SecureMemory::zero(stream_ct.ptrw(), stream_ct.size());
+		stream_ct.clear();
+	}
+	if (!stream_pt.is_empty()) {
+		SecureMemory::zero(stream_pt.ptrw(), stream_pt.size());
+		stream_pt.clear();
 	}
 
-	SecretWiper wipe = { key, data };
+	if (file.is_null()) {
+		streaming = false;
+		block_encrypt = nullptr;
+		return;
+	}
 
 	if (writing) {
 		LocalVector<uint8_t> compressed;
@@ -265,6 +345,7 @@ void FileAccessEncrypted::_close() {
 		data.clear();
 	}
 
+	streaming = false;
 	block_encrypt = nullptr;
 	file.unref();
 }
@@ -307,7 +388,7 @@ uint64_t FileAccessEncrypted::get_position() const {
 }
 
 uint64_t FileAccessEncrypted::get_length() const {
-	return data.size();
+	return streaming ? length : data.size();
 }
 
 bool FileAccessEncrypted::eof_reached() const {
@@ -325,7 +406,14 @@ uint64_t FileAccessEncrypted::get_buffer(uint8_t *p_dst, uint64_t p_length) cons
 
 	uint64_t to_copy = MIN(p_length, get_length() - pos);
 
-	memcpy(p_dst, data.ptr() + pos, to_copy);
+	if (streaming) {
+		if (to_copy && !_stream_decrypt(p_dst, pos, to_copy)) {
+			eofed = true;
+			return 0;
+		}
+	} else {
+		memcpy(p_dst, data.ptr() + pos, to_copy);
+	}
 	pos += to_copy;
 
 	if (to_copy < p_length) {

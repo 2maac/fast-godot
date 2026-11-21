@@ -52,7 +52,7 @@ private:
 	Vector<uint8_t> iv;
 	Vector<uint8_t> key;
 	bool writing = false;
-	Ref<FileAccess> file;
+	mutable Ref<FileAccess> file;
 	uint64_t base = 0;
 	uint64_t length = 0;
 	Vector<uint8_t> data;
@@ -66,10 +66,15 @@ private:
 
 	// A white-box build has no pack key to hand out, so CFB decoding asks for one
 	// AES block encryption at a time instead (the CFB keystream). When this is set,
-	// `key` stays empty.
+	// `key` stays empty and the file is not buffered: blocks are decoded on demand
+	// from the base file, so only the requested window is ever in memory.
 	BlockEncryptFunc block_encrypt = nullptr;
+	bool streaming = false;
+	mutable Vector<uint8_t> stream_ct;
+	mutable Vector<uint8_t> stream_pt;
 	Error _read_encrypted(Ref<FileAccess> p_base, bool p_with_magic);
-	bool _decrypt_keystream();
+	bool _verify_stream_md5(const unsigned char p_expected[16]);
+	bool _stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const;
 
 public:
 	Error open_and_parse(Ref<FileAccess> p_base, const Vector<uint8_t> &p_key, Mode p_mode, bool p_with_magic = true, const Vector<uint8_t> &p_iv = Vector<uint8_t>());
