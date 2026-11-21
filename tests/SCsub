@@ -7,6 +7,11 @@ import test_builders
 
 Import("env")
 
+# Grit's headers include each other as "grit/...", which resolves against
+# modules/ (its own SCsub adds that to its private env). The test runner pulls
+# those headers into the global env, so it needs the same directory.
+env.Prepend(CPPPATH=[Dir("#modules")])
+
 # Sources with tests must be explicitly linked first.
 force_link_sources = glob.glob("*/**/*.cpp", recursive=True)
 force_link_header = env.CommandNoCache(
