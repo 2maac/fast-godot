@@ -190,9 +190,11 @@ env.add_source_files(env.core_sources, gen_hash)
 # white-box seed also change every export, so they are part of the command's
 # dependencies: otherwise SCons would keep a generated file from a previous export
 # (the template would then carry an old wrapped key while the PCK is encrypted
-# with the new one).
+# with the new one). GRIT_PACK_KEY switches the generator to the keystream form,
+# which needs no wrapped key at all.
 encryption_key = os.environ.get("SCRIPT_AES256_ENCRYPTION_KEY")
 wrapped_key = os.environ.get("GRIT_WRAPPED_KEY")
+pack_key = os.environ.get("GRIT_PACK_KEY")
 wb_seed = os.environ.get("GRIT_WB_SEED")
 if encryption_key:
     print(
@@ -201,7 +203,7 @@ if encryption_key:
     )
 gen_encrypt = env.CommandNoCache(
     "script_encryption_key.gen.cpp",
-    [env.Value(encryption_key), env.Value(wrapped_key or ""), env.Value(wb_seed or "")],
+    [env.Value(encryption_key), env.Value(wrapped_key or ""), env.Value(wb_seed or ""), env.Value(pack_key or "")],
     env.Run(core_builders.encryption_key_builder),
 )
 env.add_source_files(env.core_sources, gen_encrypt)

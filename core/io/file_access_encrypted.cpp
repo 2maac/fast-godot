@@ -81,6 +81,7 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 	if (p_mode == MODE_WRITE_AES256) {
 		data.clear();
 		writing = true;
+		block_encrypt = nullptr;
 		file = p_base;
 		key = p_key;
 		protect_key(key);
@@ -103,51 +104,108 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 
 	} else if (p_mode == MODE_READ) {
 		writing = false;
+		block_encrypt = nullptr;
 		key = p_key;
 		protect_key(key);
 
-		if (use_magic) {
-			uint32_t magic = p_base->get_32();
-			ERR_FAIL_COND_V(magic != ENCRYPTED_HEADER_MAGIC, ERR_FILE_UNRECOGNIZED);
-		}
-
-		unsigned char md5d[16];
-		p_base->get_buffer(md5d, 16);
-		length = p_base->get_64();
-
-		iv.resize(16);
-		p_base->get_buffer(iv.ptrw(), 16);
-
-		base = p_base->get_position();
-		ERR_FAIL_COND_V(p_base->get_length() < base + length, ERR_FILE_CORRUPT);
-		uint64_t ds = length;
-		if (ds % 16) {
-			ds += 16 - (ds % 16);
-		}
-		data.resize(ds);
-
-		uint64_t blen = p_base->get_buffer(data.ptrw(), ds);
-		ERR_FAIL_COND_V(blen != ds, ERR_FILE_CORRUPT);
-
-		{
-			CryptoCore::AESContext ctx;
-
-			ctx.set_encode_key(key.ptrw(), 256); // Due to the nature of CFB, same key schedule is used for both encryption and decryption!
-			ctx.decrypt_cfb(ds, iv.ptrw(), data.ptrw(), data.ptrw());
-		}
-
-		data.resize(length);
-		SecureMemory::exclude_from_dumps(data.ptrw(), data.size());
-
-		unsigned char hash[16];
-		ERR_FAIL_COND_V(CryptoCore::md5(data.ptr(), data.size(), hash) != OK, ERR_BUG);
-
-		ERR_FAIL_COND_V_MSG(String::md5(hash) != String::md5(md5d), ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value. It could be that the file is corrupt, or that the provided decryption key is invalid.");
-
-		file = p_base;
+		return _read_encrypted(p_base, p_with_magic);
 	}
 
 	return OK;
+}
+
+Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic) {
+	ERR_FAIL_COND_V_MSG(file.is_valid(), ERR_ALREADY_IN_USE, vformat("Can't open file while another file from path '%s' is open.", file->get_path_absolute()));
+	ERR_FAIL_COND_V(p_block_encrypt == nullptr, ERR_INVALID_PARAMETER);
+
+	pos = 0;
+	eofed = false;
+	writing = false;
+	block_encrypt = p_block_encrypt;
+	// No key at all in this mode: the keystream comes from the provider.
+	key.clear();
+
+	return _read_encrypted(p_base, p_with_magic);
+}
+
+Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_magic) {
+	use_magic = p_with_magic;
+
+	if (use_magic) {
+		uint32_t magic = p_base->get_32();
+		ERR_FAIL_COND_V(magic != ENCRYPTED_HEADER_MAGIC, ERR_FILE_UNRECOGNIZED);
+	}
+
+	unsigned char md5d[16];
+	p_base->get_buffer(md5d, 16);
+	length = p_base->get_64();
+
+	iv.resize(16);
+	p_base->get_buffer(iv.ptrw(), 16);
+
+	base = p_base->get_position();
+	ERR_FAIL_COND_V(p_base->get_length() < base + length, ERR_FILE_CORRUPT);
+	uint64_t ds = length;
+	if (ds % 16) {
+		ds += 16 - (ds % 16);
+	}
+	data.resize(ds);
+
+	uint64_t blen = p_base->get_buffer(data.ptrw(), ds);
+	ERR_FAIL_COND_V(blen != ds, ERR_FILE_CORRUPT);
+
+	if (block_encrypt != nullptr) {
+		if (!_decrypt_keystream()) {
+			SecureMemory::zero(data.ptrw(), data.size());
+			data.clear();
+			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The decryption keystream is unavailable for this pack (a debugger may be attached, or the template does not match the pack).");
+		}
+	} else {
+		CryptoCore::AESContext ctx;
+
+		ctx.set_encode_key(key.ptrw(), 256); // Due to the nature of CFB, same key schedule is used for both encryption and decryption!
+		ctx.decrypt_cfb(ds, iv.ptrw(), data.ptrw(), data.ptrw());
+	}
+
+	data.resize(length);
+	SecureMemory::exclude_from_dumps(data.ptrw(), data.size());
+
+	unsigned char hash[16];
+	ERR_FAIL_COND_V(CryptoCore::md5(data.ptr(), data.size(), hash) != OK, ERR_BUG);
+
+	ERR_FAIL_COND_V_MSG(String::md5(hash) != String::md5(md5d), ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value. It could be that the file is corrupt, or that the provided decryption key is invalid.");
+
+	file = p_base;
+
+	return OK;
+}
+
+bool FileAccessEncrypted::_decrypt_keystream() {
+	// CFB: keystream block = E(key, previous ciphertext block); plaintext = ct XOR ks.
+	// Only AES encryption is needed, which is what a white-box keystream provider
+	// computes, so no key material is involved here.
+	uint8_t prev[16];
+	memcpy(prev, iv.ptr(), 16);
+	uint8_t block[16];
+	uint8_t keystream[16];
+	uint8_t *dst = data.ptrw();
+	const uint64_t padded = data.size();
+	bool ok = true;
+	for (uint64_t offset = 0; offset < padded; offset += 16) {
+		memcpy(block, dst + offset, 16);
+		if (!block_encrypt(prev, keystream)) {
+			ok = false;
+			break;
+		}
+		for (int i = 0; i < 16; i++) {
+			dst[offset + i] = block[i] ^ keystream[i];
+		}
+		memcpy(prev, block, 16);
+	}
+	SecureMemory::zero(prev, sizeof(prev));
+	SecureMemory::zero(block, sizeof(block));
+	SecureMemory::zero(keystream, sizeof(keystream));
+	return ok;
 }
 
 Error FileAccessEncrypted::open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode) {
@@ -207,6 +265,7 @@ void FileAccessEncrypted::_close() {
 		data.clear();
 	}
 
+	block_encrypt = nullptr;
 	file.unref();
 }
 

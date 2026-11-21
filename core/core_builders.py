@@ -154,7 +154,7 @@ _WB_DECOYS = 64
 _WB_POOL = 512
 
 
-def _wb_make_tables(key, seed, wrapped):
+def _wb_make_tables(key, seed, wrapped=None):
     rng = random.Random(seed)
     round_keys = _wb_key_expand(key)
     enc = [[_wb_rand_linear(rng) for _ in range(16)] for _ in range(_WB_ROUNDS)]
@@ -218,22 +218,29 @@ def _wb_make_tables(key, seed, wrapped):
         for j in range(256):
             blob[slot][j] = table[j] ^ masks[slot][j]
 
-    wrap_mask = bytearray(rng.getrandbits(8) for _ in range(32))
-    wrap_pool = bytearray(rng.getrandbits(8) for _ in range(_WB_POOL))
-    wrap_index = rng.sample(range(_WB_POOL), 32)
-    for i in range(32):
-        wrap_pool[wrap_index[i]] = wrapped[i] ^ wrap_mask[i]
-
-    return {
+    bundle = {
         "round_keys": enc_keys,
         "blob": blob,
         "masks": masks,
         "real_slots": real_slots,
         "final_slots": final_slots,
-        "wrap_pool": wrap_pool,
-        "wrap_index": wrap_index,
-        "wrap_mask": wrap_mask,
+        "wrap_pool": [],
+        "wrap_index": [],
+        "wrap_mask": [],
     }
+    # Only the wrapped mode carries a wrapped key: the keystream mode has no key
+    # to reconstruct, so it needs no pool (and no wrapped value at all).
+    if wrapped is not None:
+        wrap_mask = bytearray(rng.getrandbits(8) for _ in range(32))
+        wrap_pool = bytearray(rng.getrandbits(8) for _ in range(_WB_POOL))
+        wrap_index = rng.sample(range(_WB_POOL), 32)
+        for i in range(32):
+            wrap_pool[wrap_index[i]] = wrapped[i] ^ wrap_mask[i]
+        bundle["wrap_pool"] = wrap_pool
+        bundle["wrap_index"] = wrap_index
+        bundle["wrap_mask"] = wrap_mask
+
+    return bundle
 
 
 def _wb_emit_tables(bundle):
@@ -258,11 +265,12 @@ def _wb_emit_tables(bundle):
     parts.append("};")
     # volatile: otherwise the optimizer constant-folds the wrap reconstruction and
     # emits the plain wrapped key instead of the pool/mask arrays.
-    parts.append("static const volatile uint8_t grit_wrap_pool[%d] = {" % len(bundle["wrap_pool"]))
-    parts.append(",".join("0x%02x" % b for b in bundle["wrap_pool"]))
-    parts.append("};")
-    parts.append("static const volatile uint16_t grit_wrap_index[32] = {" + ",".join(str(i) for i in bundle["wrap_index"]) + "};")
-    parts.append("static const volatile uint8_t grit_wrap_mask[32] = {" + ",".join("0x%02x" % b for b in bundle["wrap_mask"]) + "};")
+    if bundle["wrap_pool"]:
+        parts.append("static const volatile uint8_t grit_wrap_pool[%d] = {" % len(bundle["wrap_pool"]))
+        parts.append(",".join("0x%02x" % b for b in bundle["wrap_pool"]))
+        parts.append("};")
+        parts.append("static const volatile uint16_t grit_wrap_index[32] = {" + ",".join(str(i) for i in bundle["wrap_index"]) + "};")
+        parts.append("static const volatile uint8_t grit_wrap_mask[32] = {" + ",".join("0x%02x" % b for b in bundle["wrap_mask"]) + "};")
     return "\n".join(parts)
 
 
@@ -275,6 +283,109 @@ def _wb_source_value(source, index):
         if value:
             return str(value)
     return ""
+
+
+# Anti-debug prelude shared by every generated key file that derives key material:
+# an encrypted template never hands out a key or a keystream to a traced process.
+_WB_DEBUG_PRELUDE = """\
+// A debugger attached to the game could read the key material derived below.
+// Encrypted templates refuse to run under one: the derived value comes out zeroed
+// and the pack cannot be opened.
+#if defined(MACOS_ENABLED)
+#include <sys/proc.h>
+#include <sys/ptrace.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#include <unistd.h>
+static bool grit_debugger_attached() {
+	ptrace(PT_DENY_ATTACH, 0, nullptr, 0);
+	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)getpid() };
+	struct kinfo_proc info;
+	size_t size = sizeof(info);
+	memset(&info, 0, sizeof(info));
+	if (sysctl(mib, 4, &info, &size, nullptr, 0) == 0 && (info.kp_proc.p_flag & P_TRACED) != 0) {
+		return true;
+	}
+	return false;
+}
+#elif defined(WINDOWS_ENABLED)
+#include <windows.h>
+static bool grit_debugger_attached() {
+	return IsDebuggerPresent() != 0;
+}
+#elif defined(LINUXBSD_ENABLED) && !defined(WEB_ENABLED)
+#include <cstdio>
+#include <cstdlib>
+static bool grit_debugger_attached() {
+	FILE *status = fopen("/proc/self/status", "r");
+	if (status == nullptr) {
+		return false;
+	}
+	char line[256];
+	bool traced = false;
+	while (fgets(line, sizeof(line), status)) {
+		if (strncmp(line, "TracerPid:", 10) == 0) {
+			traced = atoi(line + 10) != 0;
+			break;
+		}
+	}
+	fclose(status);
+	return traced;
+}
+#else
+static bool grit_debugger_attached() {
+	return false;
+}
+#endif
+
+// Checked once: ptrace(PT_DENY_ATTACH) only takes effect the first time, and a
+// per-block check would be wasted work.
+static bool grit_tracing_allowed() {
+	static const bool allowed = !grit_debugger_attached();
+	return allowed;
+}
+"""
+
+# The table network itself, parameterized only by the round count.
+_WB_ENCRYPT_BLOCK = """\
+static void grit_wb_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {
+	uint8_t s[16];
+	uint8_t o[16];
+	memcpy(s, p_in, 16);
+	for (int round = 0; round < %d; round++) {
+		for (int out_pos = 0; out_pos < 16; out_pos++) {
+			const int out_col = out_pos / 4;
+			uint8_t value = grit_wb_round_keys[round][out_pos];
+			for (int k = 0; k < 4; k++) {
+				const int in_pos = k + 4 * ((out_col + k) %% 4);
+				const unsigned slot = grit_wb_slots[(round * 16 + out_pos) * 4 + k];
+				value ^= grit_wb_blob[slot][s[in_pos]] ^ grit_wb_masks[slot][s[in_pos]];
+			}
+			o[out_pos] = value;
+		}
+		memcpy(s, o, 16);
+	}
+	for (int out_pos = 0; out_pos < 16; out_pos++) {
+		const int out_row = out_pos %% 4;
+		const int in_pos = out_row + 4 * ((out_pos / 4 + out_row) %% 4);
+		const unsigned slot = grit_wb_final_slots[out_pos];
+		o[out_pos] = grit_wb_blob[slot][s[in_pos]] ^ grit_wb_masks[slot][s[in_pos]];
+	}
+	memcpy(r_out, o, 16);
+}
+""" % _WB_ROUNDS
+
+# Every build must define the keystream API; only the keystream build has one.
+_WB_NO_KEYSTREAM = """\
+bool script_encryption_key_keystream_available() {
+	return false;
+}
+
+bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {
+	memset(r_out, 0, 16);
+	return false;
+}
+"""
 
 
 def encryption_key_builder(target, source, env):
@@ -291,18 +402,68 @@ def encryption_key_builder(target, source, env):
         )
         raise
 
-    wrapped_hex = (_wb_source_value(source, 1) or os.environ.get("GRIT_WRAPPED_KEY") or "").strip().lower()
-    wrapped = None
-    if wrapped_hex:
+    def _hex32(index, env_name, label):
+        value = (_wb_source_value(source, index) or os.environ.get(env_name) or "").strip().lower()
+        if not value:
+            return None
         try:
-            wrapped = bytes.fromhex(wrapped_hex)
-            if len(wrapped) != 32:
+            raw = bytes.fromhex(value)
+            if len(raw) != 32:
                 raise ValueError
         except ValueError:
-            methods.print_error(
-                f'Invalid wrapped PCK data key (expected 64 hexadecimal characters): "{wrapped_hex}".'
-            )
+            methods.print_error(f'Invalid {label} (expected 64 hexadecimal characters): "{value}".')
             raise
+        return raw
+
+    wrapped = _hex32(1, "GRIT_WRAPPED_KEY", "wrapped PCK data key")
+    pack_key = _hex32(3, "GRIT_PACK_KEY", "PCK pack key")
+    wb_seed = _wb_source_value(source, 2) or os.environ.get("GRIT_WB_SEED") or ""
+
+    if pack_key is not None:
+        # Keystream mode: the template is built for exactly one pack, so the tables
+        # are keyed with the pack key itself. CFB decoding only needs AES
+        # *encryption* of the previous ciphertext block, which is what the table
+        # network computes, so the key never has to exist as bytes anywhere in the
+        # process: a dump yields tables, a breakpoint yields one block of keystream.
+        # The user key still selects the table layout (so the binary depends on it)
+        # but plays no part at runtime.
+        seed_material = wb_seed + buffer.hex() + pack_key.hex()
+        seed = int.from_bytes(hashlib.sha256(b"grit-wb-keystream:" + seed_material.encode("utf-8")).digest(), "big")
+        table_source = _wb_emit_tables(_wb_make_tables(pack_key, seed))
+        with methods.generated_wrapper(str(target[0])) as file:
+            file.write(
+                f"""\
+#include <cstdint>
+#include <cstring>
+
+{_WB_DEBUG_PRELUDE}
+{table_source}
+
+{_WB_ENCRYPT_BLOCK}
+
+// Keystream provider: AES-256 block encryption under the pack key, expressed only
+// through the tables above. FileAccessEncrypted uses it for CFB decoding, so the
+// unwrapped pack key never enters the process.
+bool script_encryption_key_keystream_available() {{
+	return grit_tracing_allowed();
+}}
+
+bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {{
+	if (!grit_tracing_allowed()) {{
+		memset(r_out, 0, 16);
+		return false;
+	}}
+	grit_wb_encrypt_block(p_in, r_out);
+	return true;
+}}
+
+// Nothing to recover in a keystream build: the key exists only inside the tables.
+void script_encryption_key_get(uint8_t *p_key) {{
+	memset(p_key, 0, 32);
+}}
+"""
+            )
+        return
 
     if wrapped is not None:
         # Hybrid white-box mode: the exported pack is encrypted with a random data
@@ -310,8 +471,7 @@ def encryption_key_builder(target, source, env):
         # key. A Chow-style table network for AES-256 with the user key baked into
         # randomized tables recomputes the data key at pack-open; neither key
         # exists as bytes or immediates in the binary.
-        wb_seed = _wb_source_value(source, 2) or os.environ.get("GRIT_WB_SEED") or ""
-        seed_material = wb_seed + buffer.hex() + wrapped_hex
+        seed_material = wb_seed + buffer.hex() + wrapped.hex()
         seed = int.from_bytes(hashlib.sha256(b"grit-wb-aes256:" + seed_material.encode("utf-8")).digest(), "big")
         table_source = _wb_emit_tables(_wb_make_tables(buffer, seed, wrapped))
         with methods.generated_wrapper(str(target[0])) as file:
@@ -322,88 +482,17 @@ def encryption_key_builder(target, source, env):
 
 #include "core/os/secure_memory.h"
 
-// A debugger attached to the game could read the unwrapped pack key from memory.
-// The encrypted template refuses to run under one: the pack key comes out zeroed
-// and the pack cannot be opened.
-#if defined(MACOS_ENABLED)
-#include <sys/proc.h>
-#include <sys/ptrace.h>
-#include <sys/sysctl.h>
-#include <sys/types.h>
-#include <unistd.h>
-static bool grit_debugger_attached() {{
-	ptrace(PT_DENY_ATTACH, 0, nullptr, 0);
-	int mib[4] = {{ CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)getpid() }};
-	struct kinfo_proc info;
-	size_t size = sizeof(info);
-	memset(&info, 0, sizeof(info));
-	if (sysctl(mib, 4, &info, &size, nullptr, 0) == 0 && (info.kp_proc.p_flag & P_TRACED) != 0) {{
-		return true;
-	}}
-	return false;
-}}
-#elif defined(WINDOWS_ENABLED)
-#include <windows.h>
-static bool grit_debugger_attached() {{
-	return IsDebuggerPresent() != 0;
-}}
-#elif defined(LINUXBSD_ENABLED) && !defined(WEB_ENABLED)
-#include <cstdio>
-#include <cstdlib>
-static bool grit_debugger_attached() {{
-	FILE *status = fopen("/proc/self/status", "r");
-	if (status == nullptr) {{
-		return false;
-	}}
-	char line[256];
-	bool traced = false;
-	while (fgets(line, sizeof(line), status)) {{
-		if (strncmp(line, "TracerPid:", 10) == 0) {{
-			traced = atoi(line + 10) != 0;
-			break;
-		}}
-	}}
-	fclose(status);
-	return traced;
-}}
-#else
-static bool grit_debugger_attached() {{
-	return false;
-}}
-#endif
-
+{_WB_DEBUG_PRELUDE}
 {table_source}
 
-static void grit_wb_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {{
-	uint8_t s[16];
-	uint8_t o[16];
-	memcpy(s, p_in, 16);
-	for (int round = 0; round < {_WB_ROUNDS}; round++) {{
-		for (int out_pos = 0; out_pos < 16; out_pos++) {{
-			const int out_col = out_pos / 4;
-			uint8_t value = grit_wb_round_keys[round][out_pos];
-			for (int k = 0; k < 4; k++) {{
-				const int in_pos = k + 4 * ((out_col + k) % 4);
-				const unsigned slot = grit_wb_slots[(round * 16 + out_pos) * 4 + k];
-				value ^= grit_wb_blob[slot][s[in_pos]] ^ grit_wb_masks[slot][s[in_pos]];
-			}}
-			o[out_pos] = value;
-		}}
-		memcpy(s, o, 16);
-	}}
-	for (int out_pos = 0; out_pos < 16; out_pos++) {{
-		const int out_row = out_pos % 4;
-		const int in_pos = out_row + 4 * ((out_pos / 4 + out_row) % 4);
-		const unsigned slot = grit_wb_final_slots[out_pos];
-		o[out_pos] = grit_wb_blob[slot][s[in_pos]] ^ grit_wb_masks[slot][s[in_pos]];
-	}}
-	memcpy(r_out, o, 16);
-}}
+{_WB_ENCRYPT_BLOCK}
+
+{_WB_NO_KEYSTREAM}
 
 // Rebuilds the key the exported pack was encrypted with. The user key lives only
 // inside the white-box tables above, and the pack key only in wrapped form.
 void script_encryption_key_get(uint8_t *p_key) {{
-	if (grit_debugger_attached()) {{
+	if (!grit_tracing_allowed()) {{
 		memset(p_key, 0, 32);
 		return;
 	}}
@@ -441,6 +530,7 @@ void script_encryption_key_get(uint8_t *p_key) {{
         file.write(
             f"""\
 #include <cstdint>
+#include <cstring>
 
 // Rebuilds the script/PCK encryption key compiled into this build. The key is
 // split into XOR shares written byte by byte in a build-specific order through
@@ -450,6 +540,7 @@ void script_encryption_key_get(uint8_t *p_key) {{
 	volatile uint8_t *p = p_key;
 {''.join(stores)}}}
 
+{_WB_NO_KEYSTREAM}
 """
         )
 

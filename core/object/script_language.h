@@ -477,6 +477,16 @@ VARIANT_ENUM_CAST(ScriptLanguage::ScriptNameCasing);
 // The key is not stored as a plaintext array in the binary.
 void script_encryption_key_get(uint8_t p_key[32]);
 
+// True when this build carries a white-box keystream provider instead of a
+// recoverable key: the pack key exists only inside the table network, and CFB
+// decoding asks for one encrypted block at a time. Returns false under a debugger.
+bool script_encryption_key_keystream_available();
+
+// AES-256 block encryption under the build's pack key (E(key, p_in) -> r_out),
+// i.e. the CFB keystream for the block p_in. Returns false when this build has no
+// keystream provider or a debugger is attached (r_out is zeroed then).
+bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]);
+
 class PlaceHolderScriptInstance : public ScriptInstance {
 	Object *owner = nullptr;
 	List<PropertyInfo> properties;

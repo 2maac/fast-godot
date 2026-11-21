@@ -293,9 +293,10 @@ def export_main(argv):
             encryption_key = ""
     if encryption_key and (len(encryption_key) != 64 or any(c not in "0123456789abcdef" for c in encryption_key)):
         fail("Grit: invalid script encryption key; expected 64 hexadecimal characters.", 7)
-    # Optional 11th argument: the per-export pack data key wrapped with the user
-    # key. Only this wrapped form is handed to the template build; the pack key
-    # itself never leaves the editor.
+    # Optional 11th argument: the per-export pack key. In the keystream form it is
+    # the pack data key itself, baked into the template's white-box tables; in the
+    # older wrapped form it is that key wrapped with the user key, and only the
+    # wrapped form reaches the template.
     wrapped_key_file = argv[10] if len(argv) > 10 else ""
     wrapped_key = ""
     if wrapped_key_file:
@@ -305,7 +306,8 @@ def export_main(argv):
         except OSError:
             wrapped_key = ""
     if wrapped_key and (len(wrapped_key) != 64 or any(c not in "0123456789abcdef" for c in wrapped_key)):
-        fail("Grit: invalid wrapped PCK data key; expected 64 hexadecimal characters.", 8)
+        what = "PCK pack key" if keystream_mode else "wrapped PCK data key"
+        fail("Grit: invalid %s; expected 64 hexadecimal characters." % what, 8)
     # Optional 12th argument: the preset's LTO mode ("auto", "none", "thin",
     # "full"). "auto" keeps the default policy; older helpers ignore the argument.
     # GRIT_LTO is the marker the editor looks for before offering the option.
@@ -319,6 +321,13 @@ def export_main(argv):
     optimize_mode = argv[12].strip().lower() if len(argv) > 12 else ""
     if optimize_mode and optimize_mode not in ("none", "speed", "size"):
         fail("Grit: invalid optimization level %r; expected none, speed or size." % optimize_mode, 10)
+    # Optional 14th argument: "keystream" means the 11th argument's file holds the
+    # pack key itself rather than a wrapped copy. The generator bakes it into the
+    # white-box tables and exposes only AES block encryption, so the exported game
+    # never materializes the key. GRIT_WB_KEYSTREAM is the marker the editor looks
+    # for before it stops wrapping the pack key (older helpers ignore the argument
+    # and keep the wrapped form).
+    keystream_mode = len(argv) > 13 and argv[13].strip().lower() == "keystream"
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -506,13 +515,20 @@ def export_main(argv):
     else:
         child_env.pop("SCRIPT_AES256_ENCRYPTION_KEY", None)
     if encryption_key and wrapped_key:
-        child_env["GRIT_WRAPPED_KEY"] = wrapped_key
         # Randomizes the white-box table encodings, so every export has a
-        # different table network for the same user key.
+        # different table network for the same key.
         child_env["GRIT_WB_SEED"] = secrets.token_hex(16)
-        announce("Grit: template will unwrap the per-export PCK data key")
+        if keystream_mode:
+            child_env["GRIT_PACK_KEY"] = wrapped_key
+            child_env.pop("GRIT_WRAPPED_KEY", None)
+            announce("Grit: template will decode the pack through its white-box keystream")
+        else:
+            child_env["GRIT_WRAPPED_KEY"] = wrapped_key
+            child_env.pop("GRIT_PACK_KEY", None)
+            announce("Grit: template will unwrap the per-export PCK data key")
     else:
         child_env.pop("GRIT_WRAPPED_KEY", None)
+        child_env.pop("GRIT_PACK_KEY", None)
         child_env.pop("GRIT_WB_SEED", None)
     if env.get("pythonpath"):
         child_env["PYTHONPATH"] = env["pythonpath"]

@@ -39,6 +39,9 @@ class FileAccessEncrypted : public FileAccess {
 	GDSOFTCLASS(FileAccessEncrypted, FileAccess);
 
 public:
+	// AES-256 block encryption under the pack key: E(key, p_in) -> r_out.
+	typedef bool (*BlockEncryptFunc)(const uint8_t p_in[16], uint8_t r_out[16]);
+
 	enum Mode : int32_t {
 		MODE_READ,
 		MODE_WRITE_AES256,
@@ -61,8 +64,18 @@ private:
 
 	static CryptoCore::RandomGenerator *_fae_static_rng;
 
+	// A white-box build has no pack key to hand out, so CFB decoding asks for one
+	// AES block encryption at a time instead (the CFB keystream). When this is set,
+	// `key` stays empty.
+	BlockEncryptFunc block_encrypt = nullptr;
+	Error _read_encrypted(Ref<FileAccess> p_base, bool p_with_magic);
+	bool _decrypt_keystream();
+
 public:
 	Error open_and_parse(Ref<FileAccess> p_base, const Vector<uint8_t> &p_key, Mode p_mode, bool p_with_magic = true, const Vector<uint8_t> &p_iv = Vector<uint8_t>());
+	// Read mode only: decodes CFB through the keystream provider instead of a key,
+	// so the pack key itself never exists in this process.
+	Error open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic = true);
 	Error open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode);
 
 	Vector<uint8_t> get_iv() const { return iv; }

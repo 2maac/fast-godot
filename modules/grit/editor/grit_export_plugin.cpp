@@ -421,7 +421,43 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			}
 		}
 	}
+	const String engine_root = _resolve_engine_root();
+	if (engine_root.is_empty()) {
+		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Install the build tools from the export window (the toolchain carries the engine source), or run an editor built from a checkout, then export again.", OS::get_singleton()->get_executable_path()));
+		return ERR_UNCONFIGURED;
+	}
+	const String script = engine_root.path_join("tools/grit_build.py");
+	if (!FileAccess::exists(script)) {
+		ERR_PRINT(vformat("Grit: the engine tree at \"%s\" has no tools/grit_build.py. It is older than this editor; use the current toolchain bundle or checkout.", engine_root));
+		return ERR_FILE_NOT_FOUND;
+	}
+	// Encryption needs a helper that passes the key to SCons, and the LTO option
+	// needs one that reads it. Toolchains created before either read this file
+	// from an older 4.7.2 snapshot; refuse rather than silently ignoring the
+	// setting (an encryption-less template cannot decrypt its own pack, and an
+	// ignored LTO mode would just be a lie in the preset).
+	const String helper_source = FileAccess::get_file_as_string(script);
+	// Keystream mode: the helper hands the pack key itself to the generator, which
+	// bakes it into the white-box tables and exposes only AES block encryption, so
+	// the exported game never materializes the key. Helpers that do not know the
+	// mode keep the wrapped form below.
+	const bool keystream_mode = encrypt_pck && helper_source.find("GRIT_WB_KEYSTREAM") != -1;
+	if (!script_encryption_key.is_empty()) {
+		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1 || (!keystream_mode && encrypt_pck && helper_source.find("GRIT_WRAPPED_KEY") == -1)) {
+			ERR_PRINT("Grit: the toolchain's build helper does not support PCK encryption. Re-download the build tools with this editor; an older toolchain builds a template that cannot decrypt its own pack.");
+			return ERR_UNAVAILABLE;
+		}
+	}
+	if (lto_mode != "auto" && helper_source.find("GRIT_LTO") == -1) {
+		ERR_PRINT("Grit: the toolchain's build helper does not support the LTO option. Re-download the build tools with this editor, or set the preset's LTO option back to Automatic.");
+		return ERR_UNAVAILABLE;
+	}
+	if (optimize_mode != "speed" && helper_source.find("GRIT_OPTIMIZE") == -1) {
+		ERR_PRINT("Grit: the toolchain's build helper does not support the Optimize option. Re-download the build tools with this editor, or set the preset's Optimize option back to Speed.");
+		return ERR_UNAVAILABLE;
+	}
 	String wrapped_key_hex;
+	String pack_key_hex;
 	if (encrypt_pck) {
 		Vector<uint8_t> user_key_bytes = script_encryption_key.hex_decode();
 		if (user_key_bytes.size() != 32) {
@@ -429,40 +465,46 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 			return ERR_INVALID_PARAMETER;
 		}
 		uint8_t data_key[32];
-		uint8_t wrapped[32];
 		CryptoCore::RandomGenerator random;
 		if (random.init() != OK || random.get_random_bytes(data_key, sizeof(data_key)) != OK) {
 			ERR_PRINT("Grit: could not generate the PCK data key.");
 			return ERR_CANT_CREATE;
 		}
-		CryptoCore::AESContext key_wrapper;
-		if (key_wrapper.set_decode_key(user_key_bytes.ptr(), 256) != OK) {
-			ERR_PRINT("Grit: could not prepare the PCK key wrapping (AES-256).");
-			return ERR_CANT_CREATE;
-		}
-		// The key schedule now lives in key_wrapper; the editor does not need the
-		// user key bytes any longer.
-		SecureMemory::zero(user_key_bytes.ptrw(), user_key_bytes.size());
-		for (int block = 0; block < 2; block++) {
-			if (key_wrapper.decrypt_ecb(data_key + block * 16, wrapped + block * 16) != OK) {
-				ERR_PRINT("Grit: could not wrap the PCK data key.");
+		if (keystream_mode) {
+			// No wrapping: the template bakes this key into its tables, and the
+			// pack is encrypted with the very same key, so there is nothing to unwrap.
+			pack_key_hex = String::hex_encode_buffer(data_key, 32);
+		} else {
+			uint8_t wrapped[32];
+			CryptoCore::AESContext key_wrapper;
+			if (key_wrapper.set_decode_key(user_key_bytes.ptr(), 256) != OK) {
+				ERR_PRINT("Grit: could not prepare the PCK key wrapping (AES-256).");
 				return ERR_CANT_CREATE;
 			}
+			// The key schedule now lives in key_wrapper; the editor does not need the
+			// user key bytes any longer.
+			for (int block = 0; block < 2; block++) {
+				if (key_wrapper.decrypt_ecb(data_key + block * 16, wrapped + block * 16) != OK) {
+					ERR_PRINT("Grit: could not wrap the PCK data key.");
+					return ERR_CANT_CREATE;
+				}
+			}
+			wrapped_key_hex = String::hex_encode_buffer(wrapped, 32);
+			SecureMemory::zero(wrapped, sizeof(wrapped));
 		}
-		wrapped_key_hex = String::hex_encode_buffer(wrapped, 32);
+		SecureMemory::zero(user_key_bytes.ptrw(), user_key_bytes.size());
 		// The stock exporter encrypts the pack with the data key; the template
-		// rebuilds it from `wrapped` when it opens the pack.
+		// rebuilds it from `wrapped` (or holds it in its tables) when it opens the pack.
 		if (!script_key_env_injected) {
 			previous_script_key_env = OS::get_singleton()->get_environment("GODOT_SCRIPT_ENCRYPTION_KEY");
 			script_key_env_injected = true;
 		}
 		OS::get_singleton()->set_environment("GODOT_SCRIPT_ENCRYPTION_KEY", String::hex_encode_buffer(data_key, 32));
 		SecureMemory::zero(data_key, sizeof(data_key));
-		SecureMemory::zero(wrapped, sizeof(wrapped));
 	}
 	// The helper reads both as files (the export build does not inherit the editor's
-	// environment). The user key also keys the isolated template tree; the wrapped
-	// key changes per export and only triggers a rebuild of the generated file.
+	// environment). The user key also keys the isolated template tree; the per-export
+	// key changes every export and only triggers a rebuild of the generated file.
 	const String key_path = p_generated_dir.path_join("script_encryption_key.txt");
 	{
 		Ref<FileAccess> key_file = FileAccess::open(key_path, FileAccess::WRITE);
@@ -477,45 +519,11 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	{
 		Ref<FileAccess> wrapped_file = FileAccess::open(wrapped_key_path, FileAccess::WRITE);
 		if (wrapped_file.is_null()) {
-			ERR_PRINT("Grit: could not write the wrapped PCK data key next to the generated sources.");
+			ERR_PRINT("Grit: could not write the per-export PCK key next to the generated sources.");
 			return ERR_CANT_CREATE;
 		}
-		wrapped_file->store_string(wrapped_key_hex);
+		wrapped_file->store_string(keystream_mode ? pack_key_hex : wrapped_key_hex);
 		wrapped_file->close();
-	}
-	const String engine_root = _resolve_engine_root();
-	if (engine_root.is_empty()) {
-		ERR_PRINT(vformat("Grit: could not find the Fast_Godot source tree for \"%s\". Install the build tools from the export window (the toolchain carries the engine source), or run an editor built from a checkout, then export again.", OS::get_singleton()->get_executable_path()));
-		return ERR_UNCONFIGURED;
-	}
-	const String script = engine_root.path_join("tools/grit_build.py");
-	if (!FileAccess::exists(script)) {
-		ERR_PRINT(vformat("Grit: the engine tree at \"%s\" has no tools/grit_build.py. It is older than this editor; use the current toolchain bundle or checkout.", engine_root));
-		return ERR_FILE_NOT_FOUND;
-	}
-	if (!FileAccess::exists(script)) {
-		ERR_PRINT("Grit: build helper not found: " + script);
-		return ERR_FILE_NOT_FOUND;
-	}
-	// Encryption needs a helper that passes the key to SCons, and the LTO option
-	// needs one that reads it. Toolchains created before either read this file
-	// from an older 4.7.2 snapshot; refuse rather than silently ignoring the
-	// setting (an encryption-less template cannot decrypt its own pack, and an
-	// ignored LTO mode would just be a lie in the preset).
-	const String helper_source = FileAccess::get_file_as_string(script);
-	if (!script_encryption_key.is_empty()) {
-		if (helper_source.find("SCRIPT_AES256_ENCRYPTION_KEY") == -1 || (encrypt_pck && helper_source.find("GRIT_WRAPPED_KEY") == -1)) {
-			ERR_PRINT("Grit: the toolchain's build helper does not support PCK encryption. Re-download the build tools with this editor; an older toolchain builds a template that cannot decrypt its own pack.");
-			return ERR_UNAVAILABLE;
-		}
-	}
-	if (lto_mode != "auto" && helper_source.find("GRIT_LTO") == -1) {
-		ERR_PRINT("Grit: the toolchain's build helper does not support the LTO option. Re-download the build tools with this editor, or set the preset's LTO option back to Automatic.");
-		return ERR_UNAVAILABLE;
-	}
-	if (optimize_mode != "speed" && helper_source.find("GRIT_OPTIMIZE") == -1) {
-		ERR_PRINT("Grit: the toolchain's build helper does not support the Optimize option. Re-download the build tools with this editor, or set the preset's Optimize option back to Speed.");
-		return ERR_UNAVAILABLE;
 	}
 	// The template belongs to the project (<project>/exports), under whichever name the
 	// target platform resolves. Nothing is written into the preset's custom_template
@@ -636,6 +644,8 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// arguments on purpose, so an older helper simply ignores them.
 	args.push_back(lto_mode);
 	args.push_back(optimize_mode);
+	// Empty unless the helper knows the keystream mode (GRIT_WB_KEYSTREAM).
+	args.push_back(keystream_mode ? "keystream" : "");
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 

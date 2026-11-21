@@ -340,16 +340,28 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files, 
 			if (memcmp(script_key, empty_key, sizeof(empty_key)) == 0) {
 				key = p_decryption_key;
 			}
-		} else
+		}
 #endif
-		{
-			key.resize(32);
-			memcpy(key.ptrw(), script_key, 32);
+		bool use_keystream = false;
+		if (key.is_empty()) {
+			// A white-box build has no pack key to copy: decode through the
+			// keystream provider instead, so the key never enters this process.
+			if (script_encryption_key_keystream_available()) {
+				use_keystream = true;
+			} else {
+				key.resize(32);
+				memcpy(key.ptrw(), script_key, 32);
+			}
 		}
 		SecureMemory::zero(script_key, sizeof(script_key));
 
-		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
-		SecureMemory::zero(key.ptrw(), key.size());
+		Error err = OK;
+		if (use_keystream) {
+			err = fae->open_and_parse_keystream(f, script_encryption_key_encrypt_block, false);
+		} else {
+			err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+			SecureMemory::zero(key.ptrw(), key.size());
+		}
 		ERR_FAIL_COND_V_MSG(err, false, "Can't open encrypted pack directory.");
 		f = fae;
 	}
@@ -572,16 +584,28 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
 			if (memcmp(script_key, empty_key, sizeof(empty_key)) == 0) {
 				key = p_decryption_key;
 			}
-		} else
+		}
 #endif
-		{
-			key.resize(32);
-			memcpy(key.ptrw(), script_key, 32);
+		bool use_keystream = false;
+		if (key.is_empty()) {
+			// White-box build: no pack key exists to copy, decode through the
+			// keystream provider (see FileAccessEncrypted::open_and_parse_keystream).
+			if (script_encryption_key_keystream_available()) {
+				use_keystream = true;
+			} else {
+				key.resize(32);
+				memcpy(key.ptrw(), script_key, 32);
+			}
 		}
 		SecureMemory::zero(script_key, sizeof(script_key));
 
-		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
-		SecureMemory::zero(key.ptrw(), key.size());
+		Error err = OK;
+		if (use_keystream) {
+			err = fae->open_and_parse_keystream(f, script_encryption_key_encrypt_block, false);
+		} else {
+			err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+			SecureMemory::zero(key.ptrw(), key.size());
+		}
 		ERR_FAIL_COND_MSG(err != OK, vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s" due to error "%s".)", p_path, pf.pack, error_names[err]));
 		f = fae;
 		off = 0;
