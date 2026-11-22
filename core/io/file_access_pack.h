@@ -184,9 +184,9 @@ class FileAccessPack : public FileAccess {
 	PackedData::PackedFile pf;
 
 	String path;
-	mutable uint64_t pos;
-	mutable bool eof;
-	uint64_t off;
+	mutable uint64_t pos = 0;
+	mutable bool eof = false;
+	uint64_t off = 0;
 
 	Ref<FileAccess> f;
 	virtual Error open_internal(const String &p_path, int p_mode_flags) override;

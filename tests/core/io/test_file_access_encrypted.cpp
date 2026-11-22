@@ -1,5 +1,5 @@
 /**************************************************************************/
-/*  test_file_access_encrypted.cpp                                                  */
+/*  test_file_access_encrypted.cpp                                        */
 /**************************************************************************/
 /*                         This file is part of:                          */
 /*                             GODOT ENGINE                               */
@@ -35,16 +35,40 @@ TEST_FORCE_LINK(test_file_access_encrypted)
 #include "core/crypto/crypto_core.h"
 #include "core/io/file_access.h"
 #include "core/io/file_access_encrypted.h"
+
 #include "tests/test_utils.h"
 
 namespace TestFileAccessEncrypted {
 
+// V2 header layout, with the magic:
+//   0 magic u32 | 4 signature[16] | 20 length u64 | 28 chunk_count u64
+//   36 chunk_blocks u32 | 40 reserved u32 | 44 iv[16] | 60 tags[16 * chunks]
+constexpr uint64_t V2_LENGTH_OFFSET = 20;
+constexpr uint64_t V2_CHUNK_COUNT_OFFSET = 28;
+constexpr uint64_t V2_TAGS_OFFSET = 60;
+constexpr uint64_t CHUNK_BYTES = 64 * 1024;
+
 // Stands in for the white-box tables: AES-256 block encryption under `keystream_key`.
 static Vector<uint8_t> keystream_key;
+// Per-thread key schedule: the provider is called per block, and on worker
+// threads too, so it must not rebuild the AES context every time.
+static thread_local Vector<uint8_t> keystream_cached_key;
+static thread_local CryptoCore::AESContext keystream_ctx;
 static bool keystream_block(const uint8_t p_in[16], uint8_t r_out[16]) {
-	CryptoCore::AESContext ctx;
-	ERR_FAIL_COND_V(ctx.set_encode_key(keystream_key.ptrw(), 256) != OK, false);
-	return ctx.encrypt_ecb(p_in, r_out) == OK;
+	// Called from worker threads too. Read the shared global through its const
+	// pointer (ptrw() may copy-on-write and is not thread safe) and keep the
+	// per-thread copy that the key schedule is built from.
+	if (keystream_key.size() != 32) {
+		ERR_FAIL_V_MSG(false, "The keystream provider has no key.");
+	}
+	if (keystream_cached_key.size() != 32 || memcmp(keystream_cached_key.ptr(), keystream_key.ptr(), 32) != 0) {
+		uint8_t raw[32];
+		memcpy(raw, keystream_key.ptr(), 32);
+		ERR_FAIL_COND_V(keystream_ctx.set_encode_key(raw, 256) != OK, false);
+		keystream_cached_key.resize(32);
+		memcpy(keystream_cached_key.ptrw(), raw, 32);
+	}
+	return keystream_ctx.encrypt_ecb(p_in, r_out) == OK;
 }
 
 static Vector<uint8_t> make_bytes(int p_count, uint8_t p_seed) {
@@ -65,14 +89,15 @@ static Vector<uint8_t> make_key(uint8_t p_seed) {
 	return key;
 }
 
-// Writes `p_payload` through the key path and returns the file path.
-static String write_encrypted(const Vector<uint8_t> &p_payload, const Vector<uint8_t> &p_key) {
+// Writes `p_payload` through the key path (the writer always emits V2) and
+// returns the file path.
+static String write_encrypted(const Vector<uint8_t> &p_payload, const Vector<uint8_t> &p_key, bool p_with_magic = true) {
 	const String path = TestUtils::get_temp_path("fae_keystream.bin");
 	Ref<FileAccess> base = FileAccess::open(path, FileAccess::WRITE);
 	REQUIRE(base.is_valid());
 	Ref<FileAccessEncrypted> writer;
 	writer.instantiate();
-	REQUIRE(writer->open_and_parse(base, p_key, FileAccessEncrypted::MODE_WRITE_AES256, true) == OK);
+	REQUIRE(writer->open_and_parse(base, p_key, FileAccessEncrypted::MODE_WRITE_AES256, p_with_magic) == OK);
 	REQUIRE(writer->store_buffer(p_payload.ptr(), p_payload.size()));
 	writer->close();
 	REQUIRE(base->get_error() == OK);
@@ -80,11 +105,123 @@ static String write_encrypted(const Vector<uint8_t> &p_payload, const Vector<uin
 	return path;
 }
 
+// Builds a V1 (MD5, no tags) file by hand: the reader has to keep accepting packs
+// written by earlier builds.
+static String write_v1(const Vector<uint8_t> &p_payload, const Vector<uint8_t> &p_key) {
+	const String path = TestUtils::get_temp_path("fae_v1.bin");
+	Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
+	REQUIRE(file.is_valid());
+
+	unsigned char hash[16];
+	REQUIRE(CryptoCore::md5(p_payload.ptr(), p_payload.size(), hash) == OK);
+
+	file->store_32(ENCRYPTED_HEADER_MAGIC);
+	file->store_buffer(hash, 16);
+	file->store_64(p_payload.size());
+
+	uint8_t iv[16];
+	for (int i = 0; i < 16; i++) {
+		iv[i] = uint8_t(0x80 + i);
+	}
+	file->store_buffer(iv, 16);
+
+	uint64_t ct_len = p_payload.size();
+	if (ct_len % 16) {
+		ct_len += 16 - (ct_len % 16);
+	}
+	Vector<uint8_t> ciphertext;
+	ciphertext.resize(ct_len);
+	if (p_payload.size() != 0) {
+		memcpy(ciphertext.ptrw(), p_payload.ptr(), p_payload.size());
+	}
+	if (ct_len > p_payload.size()) {
+		memset(ciphertext.ptrw() + p_payload.size(), 0, ct_len - p_payload.size());
+	}
+
+	CryptoCore::AESContext ctx;
+	Vector<uint8_t> key_copy = p_key;
+	REQUIRE(ctx.set_encode_key(key_copy.ptrw(), 256) == OK);
+	uint8_t cfb_iv[16];
+	memcpy(cfb_iv, iv, 16);
+	if (ct_len != 0) {
+		uint8_t *ct_ptr = ciphertext.ptrw();
+		REQUIRE(ctx.encrypt_cfb(ct_len, cfb_iv, ct_ptr, ct_ptr) == OK);
+	}
+	file->store_buffer(ciphertext.ptr(), ciphertext.size());
+	file->close();
+	return path;
+}
+
+static void patch_bytes(const String &p_path, uint64_t p_offset, const uint8_t *p_bytes, uint64_t p_len) {
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ_WRITE);
+	REQUIRE(file.is_valid());
+	file->seek(p_offset);
+	file->store_buffer(p_bytes, p_len);
+	file->close();
+}
+
+// XORs one byte in place, so the same call undoes it (an overwrite would be a
+// no-op if the byte already had that value).
+static void xor_byte(const String &p_path, uint64_t p_offset, uint8_t p_mask) {
+	Ref<FileAccess> file = FileAccess::open(p_path, FileAccess::READ_WRITE);
+	REQUIRE(file.is_valid());
+	file->seek(p_offset);
+	const uint8_t value = file->get_8();
+	file->seek(p_offset);
+	file->store_8(uint8_t(value ^ p_mask));
+	file->close();
+}
+
+static void patch_offset(const String &p_path, uint64_t p_offset, uint64_t p_value) {
+	uint8_t bytes[8];
+	for (int i = 0; i < 8; i++) {
+		bytes[i] = uint8_t(p_value >> (8 * i));
+	}
+	patch_bytes(p_path, p_offset, bytes, 8);
+}
+
+static uint64_t v2_ciphertext_offset(uint64_t p_chunks) {
+	return V2_TAGS_OFFSET + p_chunks * 16;
+}
+
+// Reads the whole file through the keystream path. Returns false when the open or
+// the read failed (including a failed tag check).
+static bool read_all_keystream(const String &p_path, const Vector<uint8_t> &p_key, Vector<uint8_t> &r_data, bool p_eager = false, bool p_with_magic = true) {
+	keystream_key = p_key;
+	Ref<FileAccess> base = FileAccess::open(p_path, FileAccess::READ);
+	if (base.is_null()) {
+		return false;
+	}
+	Ref<FileAccessEncrypted> reader;
+	reader.instantiate();
+	if (reader->open_and_parse_keystream(base, keystream_block, p_with_magic, p_eager) != OK) {
+		return false;
+	}
+	r_data.resize(reader->get_length());
+	if (r_data.size() != 0 && reader->get_buffer(r_data.ptrw(), r_data.size()) != uint64_t(r_data.size())) {
+		return false;
+	}
+	return reader->get_error() != ERR_FILE_CORRUPT;
+}
+
 TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 	const Vector<uint8_t> key = make_key(0x10);
 	// Deliberately not a multiple of the AES block size.
 	const Vector<uint8_t> payload = make_bytes(1000, 0x20);
 	const String path = write_encrypted(payload, key);
+
+	// The writer emits the authenticated V2 header.
+	{
+		Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(file.is_valid());
+		CHECK(file->get_32() == ENCRYPTED_HEADER_MAGIC_V2);
+		uint8_t signature[16];
+		file->get_buffer(signature, 16);
+		CHECK(memcmp(signature, "GDE2GMAC", 8) == 0);
+		CHECK(file->get_64() == 1000);
+		CHECK(file->get_64() == 1);
+		CHECK(file->get_32() == ENCRYPTED_CHUNK_BLOCKS);
+	}
 
 	keystream_key = key;
 
@@ -112,7 +249,7 @@ TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 	}
 
 	// Random access: CFB only needs the previous ciphertext block, so any offset
-	// must decode without replaying from the IV.
+	// must decode without replaying from the IV. Every touched chunk is verified.
 	{
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(base.is_valid());
@@ -145,10 +282,8 @@ TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 		REQUIRE(keyed_all == payload);
 	}
 
-	// A provider that decrypts with another key must fail the integrity check. Pack
-	// files verify while they are read, so with this payload the check has already
-	// completed (one read covers the whole file) and the failing chunk is refused.
-	// The engine logs the failure, which is expected here.
+	// A provider that decrypts with another key must fail authentication. Pack
+	// files verify chunk by chunk as they are read.
 	keystream_key = make_key(0x90);
 	{
 		ERR_PRINT_OFF;
@@ -173,74 +308,62 @@ TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true, true) == ERR_FILE_CORRUPT);
 		ERR_PRINT_ON;
 	}
+	// The same file with the right provider but the wrong key on the key path.
+	{
+		ERR_PRINT_OFF;
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse(base, make_key(0x91), FileAccessEncrypted::MODE_READ, true) == ERR_FILE_CORRUPT);
+		ERR_PRINT_ON;
+	}
 	keystream_key.clear();
 }
 
-TEST_CASE("[FileAccessEncrypted] Keystream integrity check is lazy for pack files") {
-	const Vector<uint8_t> key = make_key(0x30);
-	// Larger than one decode window: the old open-time pass would have decoded the
-	// whole payload once before returning.
-	const Vector<uint8_t> payload = make_bytes(200 * 1024, 0x40);
+TEST_CASE("[FileAccessEncrypted] Empty payload round-trips") {
+	const Vector<uint8_t> key = make_key(0x12);
+	const Vector<uint8_t> payload;
 	const String path = write_encrypted(payload, key);
+
+	Vector<uint8_t> got;
+	CHECK(read_all_keystream(path, key, got));
+	CHECK(got.size() == 0);
+	CHECK(read_all_keystream(path, key, got, true));
+	keystream_key.clear();
+}
+
+TEST_CASE("[FileAccessEncrypted] Chunk tags authenticate partial reads and stay independent") {
+	// Three full 64 KiB chunks plus a short fourth one.
+	const Vector<uint8_t> key = make_key(0x30);
+	const Vector<uint8_t> payload = make_bytes(int(3 * CHUNK_BYTES + 8 * 1024), 0x40);
+	const Vector<uint8_t> pristine = payload;
+	const String path = write_encrypted(payload, key);
+	const uint64_t chunks = 4;
 	keystream_key = key;
 
-	// Chunk size deliberately neither a divisor of the payload nor a block multiple.
-	constexpr uint64_t chunk = 7919;
+	// Flip one ciphertext byte in the second chunk.
+	const uint64_t damaged = v2_ciphertext_offset(chunks) + CHUNK_BYTES + 100;
+	xor_byte(path, damaged, 0xFF);
 
-	// Sequential reads are hashed as they decode: the bytes are identical, the check
-	// passes at the end of the file, and the error is a plain EOF.
+	// A read that only covers the third chunk is verified against its own tag and
+	// succeeds: a damaged chunk does not poison the rest of the file.
 	{
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(base.is_valid());
 		Ref<FileAccessEncrypted> reader;
 		reader.instantiate();
 		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
-		REQUIRE(reader->get_length() == payload.size());
-
-		Vector<uint8_t> got;
-		got.resize(payload.size());
-		uint64_t done = 0;
-		while (done < got.size()) {
-			const uint64_t want = MIN<uint64_t>(chunk, got.size() - done);
-			const uint64_t read = reader->get_buffer(got.ptrw() + done, want);
-			REQUIRE(read == want);
-			if (read == 0) {
-				// Do not spin when the read fails; REQUIRE is the report.
-				break;
-			}
-			done += read;
-		}
-		REQUIRE(got == payload);
-
-		uint8_t extra = 0;
-		REQUIRE(reader->get_buffer(&extra, 1) == 0);
-		REQUIRE(reader->eof_reached() == true);
-		REQUIRE(reader->get_error() == ERR_FILE_EOF);
-	}
-
-	// A seek breaks the sequential pass: the data stays correct, but the check is
-	// dropped instead of decoding bytes the caller did not ask for.
-	{
-		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
-		REQUIRE(base.is_valid());
-		Ref<FileAccessEncrypted> reader;
-		reader.instantiate();
-		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
-
-		uint8_t head[64];
-		REQUIRE(reader->get_buffer(head, sizeof(head)) == sizeof(head));
-		REQUIRE(memcmp(head, payload.ptr(), sizeof(head)) == 0);
-
-		reader->seek(150000);
-		uint8_t mid[4096];
-		REQUIRE(reader->get_buffer(mid, sizeof(mid)) == sizeof(mid));
-		REQUIRE(memcmp(mid, payload.ptr() + 150000, sizeof(mid)) == 0);
+		uint8_t chunk[4096];
+		reader->seek(2 * CHUNK_BYTES);
+		REQUIRE(reader->get_buffer(chunk, sizeof(chunk)) == sizeof(chunk));
+		REQUIRE(memcmp(chunk, pristine.ptr() + 2 * CHUNK_BYTES, sizeof(chunk)) == 0);
 		REQUIRE(reader->get_error() == OK);
 	}
 
-	// A wrong provider is caught at the end of the read: the failing chunk is
-	// refused, get_error() reports corruption, and later reads stay empty.
-	keystream_key = make_key(0x91);
+	// A *partial* read inside the damaged chunk still fails: the whole chunk is
+	// decoded and authenticated before any of its bytes are handed back, so a seek
+	// pattern cannot dodge the check.
 	{
 		ERR_PRINT_OFF;
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
@@ -248,42 +371,160 @@ TEST_CASE("[FileAccessEncrypted] Keystream integrity check is lazy for pack file
 		Ref<FileAccessEncrypted> reader;
 		reader.instantiate();
 		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true) == OK);
-
-		Vector<uint8_t> got;
-		got.resize(payload.size());
-		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == 0);
-		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
-
-		uint8_t again[16];
-		REQUIRE(reader->get_buffer(again, sizeof(again)) == 0);
+		uint8_t small[16];
+		reader->seek(CHUNK_BYTES + 100);
+		REQUIRE(reader->get_buffer(small, sizeof(small)) == 0);
 		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
 		ERR_PRINT_ON;
 	}
 
-	// The pack-directory form verifies at open, so a template/pack mismatch cannot
-	// load the pack at all.
+	// The whole file fails, and the eager (pack directory) form fails at open.
 	{
 		ERR_PRINT_OFF;
-		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
-		REQUIRE(base.is_valid());
-		Ref<FileAccessEncrypted> reader;
-		reader.instantiate();
-		REQUIRE(reader->open_and_parse_keystream(base, keystream_block, true, true) == ERR_FILE_CORRUPT);
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
+		CHECK_FALSE(read_all_keystream(path, key, got, true));
+		ERR_PRINT_ON;
+	}
+
+	// Restoring the byte makes it verify again.
+	xor_byte(path, damaged, 0xFF);
+	Vector<uint8_t> got;
+	CHECK(read_all_keystream(path, key, got));
+	CHECK(got == pristine);
+	keystream_key.clear();
+}
+
+TEST_CASE("[FileAccessEncrypted] Tampered tags and geometry are refused") {
+	const Vector<uint8_t> key = make_key(0x50);
+	const Vector<uint8_t> payload = make_bytes(int(CHUNK_BYTES + 1000), 0x60);
+	const uint64_t chunks = 2;
+	const String path = write_encrypted(payload, key);
+
+	Vector<uint8_t> tags;
+	{
+		Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(file.is_valid());
+		file->seek(V2_TAGS_OFFSET);
+		tags.resize(chunks * 16);
+		file->get_buffer(tags.ptrw(), tags.size());
+	}
+
+	// A flipped tag byte.
+	{
+		Vector<uint8_t> bad = tags;
+		bad.write[0] ^= 0x01;
+		patch_bytes(path, V2_TAGS_OFFSET, bad.ptr(), 16);
+		ERR_PRINT_OFF;
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
+		ERR_PRINT_ON;
+	}
+
+	// Swapping the two tags must fail too: each tag is bound to its chunk index.
+	{
+		uint8_t swapped[32];
+		memcpy(swapped, tags.ptr() + 16, 16);
+		memcpy(swapped + 16, tags.ptr(), 16);
+		patch_bytes(path, V2_TAGS_OFFSET, swapped, 32);
+		ERR_PRINT_OFF;
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
+		ERR_PRINT_ON;
+	}
+	patch_bytes(path, V2_TAGS_OFFSET, tags.ptr(), tags.size());
+
+	// The plaintext length is part of every tag, so changing it by one byte is
+	// caught even though the chunk geometry stays the same.
+	patch_offset(path, V2_LENGTH_OFFSET, payload.size() + 1);
+	{
+		ERR_PRINT_OFF;
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
+		ERR_PRINT_ON;
+	}
+	patch_offset(path, V2_LENGTH_OFFSET, payload.size());
+
+	// A chunk count that does not match the length is refused at open.
+	patch_offset(path, V2_CHUNK_COUNT_OFFSET, chunks + 1);
+	{
+		ERR_PRINT_OFF;
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
+		ERR_PRINT_ON;
+	}
+	patch_offset(path, V2_CHUNK_COUNT_OFFSET, chunks);
+
+	// A truncated payload is refused at open.
+	{
+		Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ_WRITE);
+		REQUIRE(file.is_valid());
+		const uint64_t size = file->get_length();
+		REQUIRE(file->resize(int64_t(size - 16)) == OK);
+		file->close();
+	}
+	{
+		ERR_PRINT_OFF;
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
 		ERR_PRINT_ON;
 	}
 	keystream_key.clear();
 }
 
-TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel windows") {
+TEST_CASE("[FileAccessEncrypted] Files without the magic use the same tags") {
+	const Vector<uint8_t> key = make_key(0x52);
+	const Vector<uint8_t> payload = make_bytes(int(CHUNK_BYTES + 3), 0x62);
+	const String path = write_encrypted(payload, key, false);
+
+	Vector<uint8_t> got;
+	CHECK(read_all_keystream(path, key, got, false, false));
+	CHECK(got == payload);
+	keystream_key.clear();
+}
+
+TEST_CASE("[FileAccessEncrypted] V1 files still load and keep their MD5 check") {
+	const Vector<uint8_t> key = make_key(0x70);
+	const Vector<uint8_t> payload = make_bytes(1000, 0x80);
+	const String path = write_v1(payload, key);
+
+	// Key path: the MD5 is verified at open.
+	{
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		REQUIRE(reader->open_and_parse(base, key, FileAccessEncrypted::MODE_READ, true) == OK);
+		Vector<uint8_t> got;
+		got.resize(payload.size());
+		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == payload.size());
+		REQUIRE(got == payload);
+	}
+
+	// Keystream path: the MD5 is checked lazily and the whole-file read must fail.
+	Vector<uint8_t> got;
+	CHECK(read_all_keystream(path, key, got));
+	CHECK(got == payload);
+
+	// One flipped ciphertext byte trips the lazy MD5 at EOF.
+	xor_byte(path, 44 + 100, 0x01);
+	{
+		ERR_PRINT_OFF;
+		CHECK_FALSE(read_all_keystream(path, key, got));
+		ERR_PRINT_ON;
+	}
+	keystream_key.clear();
+}
+
+TEST_CASE("[FileAccessEncrypted] Large keystream files decode and authenticate in parallel windows") {
 	// Above the parallel threshold (1 MiB) and not a multiple of the block size, so
-	// the head, the middle windows and the trailing bytes are all exercised.
+	// the head, the middle chunk windows and the trailing bytes are all exercised.
 	const Vector<uint8_t> key = make_key(0x50);
 	const Vector<uint8_t> payload = make_bytes(3 * 1024 * 1024 + 7, 0x60);
 	const String path = write_encrypted(payload, key);
 	keystream_key = key;
 
-	// One read of the whole file: aligned head, parallel middle, 7-byte tail. The
-	// lazy digest is fed from the plaintext and compared at EOF.
+	// One read of the whole file: aligned head, parallel middle, 7-byte tail.
 	{
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(base.is_valid());
@@ -299,8 +540,8 @@ TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel window
 		REQUIRE(reader->get_error() != ERR_FILE_CORRUPT);
 	}
 
-	// A read that starts and ends inside blocks: one decoded head block, parallel
-	// windows in the middle, one decoded tail block.
+	// A read that starts and ends inside chunks: the head and tail go through the
+	// single-chunk cache, the middle through the worker pool.
 	{
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(base.is_valid());
@@ -317,8 +558,8 @@ TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel window
 		REQUIRE(memcmp(got.ptr(), payload.ptr() + offset, want) == 0);
 	}
 
-	// Sequentially in odd chunks, every read above the threshold: the data must be
-	// identical and the trailing MD5 must still pass.
+	// Sequentially in odd chunks: the data must be identical and every chunk
+	// authenticates.
 	{
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(base.is_valid());
@@ -344,7 +585,7 @@ TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel window
 		REQUIRE(reader->get_error() != ERR_FILE_CORRUPT);
 	}
 
-	// A wrong provider must still be caught after the parallel decode.
+	// A wrong provider must be caught (inside the parallel decode too).
 	keystream_key = make_key(0x93);
 	{
 		ERR_PRINT_OFF;
@@ -357,6 +598,17 @@ TEST_CASE("[FileAccessEncrypted] Large keystream files decode in parallel window
 		got.resize(payload.size());
 		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == 0);
 		REQUIRE(reader->get_error() == ERR_FILE_CORRUPT);
+		ERR_PRINT_ON;
+	}
+
+	// A damaged chunk in the middle of a parallel read fails the read.
+	const uint64_t chunks = (payload.size() + CHUNK_BYTES - 1) / CHUNK_BYTES;
+	xor_byte(path, v2_ciphertext_offset(chunks) + 10 * CHUNK_BYTES + 7, 0x01);
+	keystream_key = key;
+	{
+		ERR_PRINT_OFF;
+		Vector<uint8_t> got;
+		CHECK_FALSE(read_all_keystream(path, key, got));
 		ERR_PRINT_ON;
 	}
 	keystream_key.clear();

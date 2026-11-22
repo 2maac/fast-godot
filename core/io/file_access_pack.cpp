@@ -490,7 +490,11 @@ bool FileAccessPack::eof_reached() const {
 }
 
 uint64_t FileAccessPack::get_buffer(uint8_t *p_dst, uint64_t p_length) const {
-	ERR_FAIL_COND_V_MSG(f.is_null(), -1, "File must be opened before use.");
+	if (f.is_null()) {
+		// The entry could not be opened (a corrupt or unauthenticated pack file):
+		// read nothing rather than handing out whatever sits at the offset.
+		return 0;
+	}
 	ERR_FAIL_COND_V(!p_dst && p_length > 0, -1);
 
 	if (eof) {
@@ -503,14 +507,21 @@ uint64_t FileAccessPack::get_buffer(uint8_t *p_dst, uint64_t p_length) const {
 		to_read = (int64_t)pf.size - (int64_t)pos;
 	}
 
-	pos += to_read;
-
 	if (to_read <= 0) {
 		return 0;
 	}
-	f->get_buffer(p_dst, to_read);
 
-	return to_read;
+	// The file accessor behind a pack entry (an encrypted one in particular) refuses
+	// to hand out bytes it could not decode or authenticate, so a failed or short
+	// read has to be reported as such. Reporting the requested length instead would
+	// make a failed authentication look like a successful read and return
+	// uninitialised/zero bytes to the caller.
+	const uint64_t read = f->get_buffer(p_dst, to_read);
+	if (read != uint64_t(to_read)) {
+		eof = true;
+	}
+	pos += int64_t(read);
+	return read;
 }
 
 void FileAccessPack::set_big_endian(bool p_big_endian) {
@@ -521,6 +532,11 @@ void FileAccessPack::set_big_endian(bool p_big_endian) {
 }
 
 Error FileAccessPack::get_error() const {
+	// A corrupted (or failed-authentication) encrypted entry must not look like a
+	// plain end of file: the engine reports corruption from the layer below.
+	if (f.is_valid() && f->get_error() == ERR_FILE_CORRUPT) {
+		return ERR_FILE_CORRUPT;
+	}
 	if (eof) {
 		return ERR_FILE_EOF;
 	}
@@ -609,7 +625,12 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
 			err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
 			SecureMemory::zero(key.ptrw(), key.size());
 		}
-		ERR_FAIL_COND_MSG(err != OK, vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s" due to error "%s".)", p_path, pf.pack, error_names[err]));
+		if (err != OK) {
+			// Do not leave the raw (still encrypted) bytes readable through this
+			// entry: a failed open has to read as nothing.
+			f.unref();
+			ERR_FAIL_MSG(vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s" due to error "%s".)", p_path, pf.pack, error_names[err]));
+		}
 		f = fae;
 		off = 0;
 	}

@@ -31,9 +31,21 @@
 #pragma once
 
 #include "core/crypto/crypto_core.h"
+#include "core/crypto/ghash.h"
 #include "core/io/file_access.h"
 
+// V1 header: magic, MD5 of the plaintext, length, IV, CFB payload.
 #define ENCRYPTED_HEADER_MAGIC 0x43454447
+// V2 header: magic, format signature, length, chunk geometry, IV, then one GMAC
+// tag per 64 KiB ciphertext chunk, then the CFB payload. The tags authenticate
+// every chunk independently, so verification is parallel and needs no pass in
+// file order (see core/crypto/ghash.h).
+#define ENCRYPTED_HEADER_MAGIC_V2 0x32454447
+
+// A chunk is 64 KiB of ciphertext (4096 AES blocks): 16 bytes of tag per chunk is
+// 0.024% overhead, and it is the unit one worker decodes, authenticates and hands
+// back, so partial reads can be verified too.
+#define ENCRYPTED_CHUNK_BLOCKS 4096
 
 class FileAccessEncrypted : public FileAccess {
 	GDSOFTCLASS(FileAccessEncrypted, FileAccess);
@@ -96,6 +108,37 @@ private:
 	bool _stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len, int p_tasks) const;
 	bool _stream_decrypt_block(uint64_t p_block, uint8_t *r_dst) const;
 	bool _lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const;
+
+	// --- V2: authenticated chunks ------------------------------------------
+	// The pack key does not exist in this process, so the tag mask is derived from
+	// the same block-encryption primitive the keystream uses:
+	//   H       = E(K, 0^16)                 (the GMAC hash key)
+	//   nonce_i = iv XOR (i + 1)             (unique per file and per chunk)
+	//   tag_i   = GHASH_H(index, count, length, C_i) XOR E(K, nonce_i)
+	// Tags cover ciphertext, so a chunk is authenticated without decrypting it and
+	// every chunk is independent: the worker that decodes a 64 KiB chunk also
+	// authenticates it, no digest is finished in file order, and a read that only
+	// touches part of a chunk still verifies the whole chunk.
+	bool authenticated = false;
+	uint64_t chunk_bytes = 0;
+	uint64_t chunk_count = 0;
+	Vector<uint8_t> chunk_tags;
+	uint8_t hash_key[16] = {};
+
+	// One decoded chunk, kept so a sequential reader that asks for 4 KiB at a time
+	// decodes and authenticates each 64 KiB chunk once, not sixteen times.
+	mutable Vector<uint8_t> auth_ct;
+	mutable Vector<uint8_t> auth_plain;
+	mutable int64_t auth_plain_index = -1;
+
+	uint64_t _chunk_plain_bytes(uint64_t p_index) const;
+	bool _verify_chunk(const uint8_t *p_ct, uint64_t p_ct_len, uint64_t p_index) const;
+	bool _verify_all_chunks() const;
+	bool _verify_all_chunks_key(CryptoCore::AESContext &p_ctx) const;
+	bool _decode_chunk_cached(uint64_t p_index, const uint8_t **r_plain) const;
+	bool _read_verified(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const;
+	bool _read_verified_serial(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const;
+	bool _stream_decrypt_chunks(uint8_t *p_dst, uint64_t p_first_chunk, uint64_t p_chunk_count, int p_tasks) const;
 
 public:
 	Error open_and_parse(Ref<FileAccess> p_base, const Vector<uint8_t> &p_key, Mode p_mode, bool p_with_magic = true, const Vector<uint8_t> &p_iv = Vector<uint8_t>());

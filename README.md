@@ -78,10 +78,15 @@ templates are all produced locally. The CFFI reference is at
 - **White-box keystream**: the pack key is baked into an AES-256 table network with randomized
   lookup tables and per-binary layout, so it never exists in the game as bytes or instruction
   immediates. The game decodes the pack's CFB stream one block at a time through the tables
-  (on demand, not by buffering the file), so no key ever reaches the process. Each file is
-  integrity-checked while it is read (the pack index is checked at load, so a wrong or stale
-  pack still fails immediately), which keeps a full read to a single pass over the data, and a
-  read of a megabyte or more is decoded as independent CFB windows on the worker pool (four by
+  (on demand, not by buffering the file), so no key ever reaches the process. Every 64 KiB of
+  every encrypted file carries a 128-bit GMAC tag over its ciphertext, keyed through the same
+  tables, so a flipped byte, a reordered, dropped or spliced chunk is detected — the tag is
+  bound to the chunk index, the file's length and the chunk count. The tags are checked inside
+  the same worker windows as the decode, so verification is part of the read instead of a
+  second pass: no whole-file hash, nothing sequential, and a seek-based partial read is
+  authenticated too (the whole chunk is decoded and checked before its bytes are returned).
+  The pack index is checked at load, so a wrong or stale pack still fails immediately. A read
+  of a megabyte or more is decoded as independent CFB windows on the worker pool (four by
   default; `GRIT_DECODE_THREADS=1..8` caps it). Table entries are masked and the tables are
   shuffled with decoys; your own key only selects the layout and the build tree.
 - **Anti-debug check before the first block** (macOS `ptrace(PT_DENY_ATTACH)`/`P_TRACED`, Windows
