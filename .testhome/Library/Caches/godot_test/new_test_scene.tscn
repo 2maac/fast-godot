@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="/Users/orangetek/Library/CloudStorage/Dropbox/Programming/fast-godot/.testhome/Library/Caches/godot_test/test_scene.tscn" id="1_hhy23"]
+
+[node name="" type="Node" unique_id=916862653]
+
+[node name="@TestNode@1563" parent="." unique_id=807136730 instance=ExtResource("1_hhy23")]

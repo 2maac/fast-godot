@@ -356,7 +356,7 @@ Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_m
 	chunk_bytes = uint64_t(ENCRYPTED_CHUNK_BLOCKS) * 16;
 	chunk_tags.resize_initialized(chunk_count * 16);
 	if (chunk_count != 0) {
-		ERR_FAIL_COND_V(p_base->get_buffer(chunk_tags.ptrw(), chunk_tags.size()) != chunk_tags.size(), ERR_FILE_CORRUPT);
+		ERR_FAIL_COND_V(p_base->get_buffer(chunk_tags.ptrw(), chunk_tags.size()) != uint64_t(chunk_tags.size()), ERR_FILE_CORRUPT);
 	}
 	base = p_base->get_position();
 	ERR_FAIL_COND_V(p_base->get_length() < base + ct_length, ERR_FILE_CORRUPT);
