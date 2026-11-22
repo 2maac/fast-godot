@@ -40,11 +40,59 @@ TEST_FORCE_LINK(test_logger)
 
 namespace TestLogger {
 
+// Rotation backups are named after the wall-clock second, and the clock is free to
+// step back (WSL does it under NTP): two backups created 1.2 s apart can then sort
+// in the opposite order to their creation. The tests below therefore check which
+// lines exist, that nothing is lost and that godot.log has the newest one, rather
+// than assuming the backup names sort chronologically.
+static String dump_logs() {
+	Ref<DirAccess> dir = DirAccess::open("user://logs");
+	if (dir.is_null()) {
+		return "<no dir>";
+	}
+	String out;
+	dir->list_dir_begin();
+	for (String f = dir->get_next(); !f.is_empty(); f = dir->get_next()) {
+		if (f.ends_with(".log")) {
+			Ref<FileAccess> log = FileAccess::open("user://logs/" + f, FileAccess::READ);
+			out += f + "={" + (log.is_valid() ? log->get_as_text() : String("<unreadable>")) + "} ";
+		}
+	}
+	dir->list_dir_end();
+	return out;
+}
+
+static String read_log(const String &p_name) {
+	Ref<FileAccess> log = FileAccess::open("user://logs/" + p_name, FileAccess::READ);
+	return log.is_valid() ? log->get_as_text() : String("<unreadable>");
+}
+
+static void remove_log_files() {
+	Ref<DirAccess> dir = DirAccess::open("user://logs");
+	if (dir.is_null()) {
+		return;
+	}
+	Vector<String> names;
+	dir->list_dir_begin();
+	for (String f = dir->get_next(); !f.is_empty(); f = dir->get_next()) {
+		if (f.match("*.log")) {
+			names.push_back(f);
+		}
+	}
+	dir->list_dir_end();
+	for (const String &name : names) {
+		dir->remove(name);
+	}
+}
+
 constexpr int sleep_duration = 1200000;
 
 void initialize_logs() {
 	ProjectSettings::get_singleton()->set_setting("application/config/name", "godot_tests");
 	DirAccess::make_dir_recursive_absolute(OS::get_singleton()->get_user_data_dir().path_join("logs"));
+	// A failing case aborts before its cleanup_logs(), so each case has to start from
+	// an empty log directory or the leftovers would break the next run.
+	remove_log_files();
 }
 
 void cleanup_logs() {
@@ -112,14 +160,20 @@ TEST_CASE("[Logger][RotatedFileLogger] Rotates logs files") {
 
 	Vector<String> log_files;
 	get_log_files(log_files);
-	CHECK_MESSAGE(log_files.size() == number_of_files, "Did not rotate all files");
+	CHECK_MESSAGE(log_files.size() == number_of_files,
+			vformat("Did not rotate all files, found: %s", dump_logs()));
 
-	for (int i = 0; i < log_files.size(); i++) {
-		Error err = Error::OK;
-		Ref<FileAccess> log_file = FileAccess::open("user://logs/" + log_files[i], FileAccess::READ, &err);
-		REQUIRE_EQ(err, Error::OK);
-		CHECK_EQ(log_file->get_as_text(), all_waiting_for_godot[i]);
+	Vector<String> contents;
+	for (const String &name : log_files) {
+		contents.push_back(read_log(name));
 	}
+	Vector<String> expected = all_waiting_for_godot;
+	contents.sort();
+	expected.sort();
+	CHECK_MESSAGE(contents == expected,
+			vformat("Rotated logs do not hold every line, found: %s", dump_logs()));
+	CHECK_MESSAGE(read_log("godot.log") == all_waiting_for_godot[all_waiting_for_godot.size() - 1],
+			vformat("The current log is not the most recent one, found: %s", dump_logs()));
 
 	// Required to ensure the rotation of the log file.
 	OS::get_singleton()->delay_usec(sleep_duration);
@@ -133,14 +187,51 @@ TEST_CASE("[Logger][RotatedFileLogger] Rotates logs files") {
 
 	log_files.clear();
 	get_log_files(log_files);
-	CHECK_MESSAGE(log_files.size() == number_of_files, "Did not remove old log file");
+	CHECK_MESSAGE(log_files.size() == number_of_files,
+			vformat("Did not remove old log file, found: %s", dump_logs()));
 
-	for (int i = 0; i < log_files.size(); i++) {
-		Error err = Error::OK;
-		Ref<FileAccess> log_file = FileAccess::open("user://logs/" + log_files[i], FileAccess::READ, &err);
-		REQUIRE_EQ(err, Error::OK);
-		CHECK_EQ(log_file->get_as_text(), all_waiting_for_godot[i]);
+	Vector<String> contents_after_prune;
+	for (const String &name : log_files) {
+		contents_after_prune.push_back(read_log(name));
 	}
+	Vector<String> expected_after_prune = all_waiting_for_godot;
+	contents_after_prune.sort();
+	expected_after_prune.sort();
+	CHECK_MESSAGE(contents_after_prune == expected_after_prune,
+			vformat("Pruning did not keep the expected lines, found: %s", dump_logs()));
+	CHECK_MESSAGE(read_log("godot.log") == new_waiting_for_godot,
+			vformat("The current log is not the newest line, found: %s", dump_logs()));
+
+	cleanup_logs();
+}
+
+TEST_CASE("[Logger][RotatedFileLogger] Rotations in the same second keep every backup") {
+	initialize_logs();
+
+	// No sleeps: all rotations reuse the same timestamp, which used to make the new
+	// backup copy overwrite the previous one and lose that log line.
+	Vector<String> lines;
+	for (int i = 0; i < 3; i++) {
+		const String line = "Waiting for Godot same-second " + itos(i);
+		RotatedFileLogger logger("user://logs/godot.log", 4);
+		logger.logf("%s", line.ascii().get_data());
+		lines.push_back(line);
+	}
+
+	Vector<String> log_files;
+	get_log_files(log_files);
+	CHECK_MESSAGE(log_files.size() == lines.size(),
+			vformat("Rotations in one second lost a backup, found: %s", dump_logs()));
+
+	Vector<String> contents;
+	for (const String &name : log_files) {
+		contents.push_back(read_log(name));
+	}
+	Vector<String> expected = lines;
+	contents.sort();
+	expected.sort();
+	CHECK_MESSAGE(contents == expected,
+			vformat("A same-second rotation overwrote a log line, found: %s", dump_logs()));
 
 	cleanup_logs();
 }

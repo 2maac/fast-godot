@@ -146,10 +146,17 @@ void RotatedFileLogger::rotate_file() {
 
 	if (FileAccess::exists(base_path)) {
 		if (max_files > 1) {
-			String timestamp = Time::get_singleton()->get_datetime_string_from_system().replace_char(':', '.');
-			String backup_name = base_path.get_basename() + timestamp;
-			if (!base_path.get_extension().is_empty()) {
-				backup_name += "." + base_path.get_extension();
+			// The timestamp only has second resolution, and the system clock can step
+			// back onto a second that already produced a backup. Copying onto an
+			// existing name would silently lose that log file, so pick the first free
+			// name (godot2026-01-01T00.00.00.log, ..._1.log, ..._2.log, ...).
+			const String timestamp = Time::get_singleton()->get_datetime_string_from_system().replace_char(':', '.');
+			const String extension = base_path.get_extension();
+			const String stem = base_path.get_basename() + timestamp;
+			const String suffix = extension.is_empty() ? String() : "." + extension;
+			String backup_name = stem + suffix;
+			for (int index = 1; FileAccess::exists(backup_name); index++) {
+				backup_name = stem + "_" + itos(index) + suffix;
 			}
 
 			Ref<DirAccess> da = DirAccess::open(base_path.get_base_dir());
