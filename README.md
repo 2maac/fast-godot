@@ -86,9 +86,11 @@ templates are all produced locally. The CFFI reference is at
   second pass: no whole-file hash, nothing sequential, and a seek-based partial read is
   authenticated too (the whole chunk is decoded and checked before its bytes are returned).
   The pack index is checked at load, so a wrong or stale pack still fails immediately. A read
-  of a megabyte or more is decoded as independent CFB windows on the worker pool (four by
-  default; `GRIT_DECODE_THREADS=1..8` caps it). Table entries are masked and the tables are
-  shuffled with decoys; your own key only selects the layout and the build tree.
+  of a megabyte or more is decoded as independent CFB windows on the worker pool (eight by
+  default; `GRIT_DECODE_THREADS=1..8` caps it). The authenticated format is the only one the
+  runtime accepts: a pack exported by an older build has to be exported again. Table entries
+  are masked and the tables are shuffled with decoys; your own key only selects the layout and
+  the build tree.
 - **Anti-debug check before the first block** (macOS `ptrace(PT_DENY_ATTACH)`/`P_TRACED`, Windows
   `IsDebuggerPresent`, Linux `TracerPid`): a traced game gets only zeroed blocks, so the pack
   fails to open. Web builds have no equivalent hook, which makes HTML5 the weakest target.

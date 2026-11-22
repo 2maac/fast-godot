@@ -38,8 +38,9 @@ TEST_FORCE_LINK(test_ghash)
 namespace TestGhash {
 
 // GF(2^128) multiplication written straight from the GCM spec (right-shift
-// algorithm). The implementation under test is table driven, so this is an
-// independent reference for it rather than a second copy of the same code.
+// algorithm). The implementation under test is either the 8-bit table path or
+// the PMULL/PCLMULQDQ path, so this is an independent reference for both rather
+// than a second copy of either.
 static void reference_mul(const uint8_t p_x[16], const uint8_t p_y[16], uint8_t r_z[16]) {
 	uint8_t v[16];
 	memcpy(v, p_y, 16);
@@ -173,6 +174,57 @@ TEST_CASE("[GHASH] Reproduces the NIST GCM test vectors") {
 		s[i] ^= mask[i];
 	}
 	CHECK(to_hex(s) == "ab6e47d42cec13bdf53a67b21257bddf");
+}
+
+TEST_CASE("[GHASH] The hardware and table paths agree") {
+	// On a CPU with PMULL/PCLMULQDQ start() takes the hardware path and
+	// start_portable() the table one, so this compares the two implementations;
+	// where there is no carry-less multiply both sides are the table path.
+	uint8_t h[16];
+	from_hex("b83b533708bf535d0aa6e52980d53b78", h, 16);
+	GHASHKey key;
+	key.init(h);
+
+	if (ghash_native_available()) {
+		MESSAGE("hardware GHASH is active in this build");
+	}
+
+	for (int t = 0; t < 256; t++) {
+		uint8_t data[16 * 5 + 7];
+		for (size_t i = 0; i < sizeof(data); i++) {
+			data[i] = uint8_t((t * 71 + int(i) * 13 + 5) & 0xff);
+		}
+
+		GHASHState fast;
+		fast.start(key);
+		fast.update(data, 11);
+		fast.update(data + 11, sizeof(data) - 11);
+		uint8_t a[16];
+		fast.finish(a);
+
+		GHASHState portable;
+		portable.start_portable(key);
+		portable.update(data, 11);
+		portable.update(data + 11, sizeof(data) - 11);
+		uint8_t b[16];
+		portable.finish(b);
+
+		CHECK(memcmp(a, b, 16) == 0);
+	}
+
+	// A single block through update_block() must match too.
+	uint8_t block[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+	GHASHState fast;
+	fast.start(key);
+	fast.update_block(block);
+	uint8_t a[16];
+	fast.finish(a);
+	GHASHState portable;
+	portable.start_portable(key);
+	portable.update_block(block);
+	uint8_t b[16];
+	portable.finish(b);
+	CHECK(memcmp(a, b, 16) == 0);
 }
 
 TEST_CASE("[GHASH] Resets cleanly and keeps states independent") {

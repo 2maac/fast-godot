@@ -34,13 +34,12 @@
 #include "core/crypto/ghash.h"
 #include "core/io/file_access.h"
 
-// V1 header: magic, MD5 of the plaintext, length, IV, CFB payload.
-#define ENCRYPTED_HEADER_MAGIC 0x43454447
-// V2 header: magic, format signature, length, chunk geometry, IV, then one GMAC
-// tag per 64 KiB ciphertext chunk, then the CFB payload. The tags authenticate
-// every chunk independently, so verification is parallel and needs no pass in
-// file order (see core/crypto/ghash.h).
-#define ENCRYPTED_HEADER_MAGIC_V2 0x32454447
+// Header: magic, format signature, length, chunk geometry, IV, then one GMAC tag
+// per 64 KiB ciphertext chunk, then the CFB payload. The tags authenticate every
+// chunk independently, so verification is parallel and needs no pass in file
+// order (see core/crypto/ghash.h). This is the only accepted format: the MD5
+// (V1) form is gone, so a pack from an earlier build has to be exported again.
+#define ENCRYPTED_HEADER_MAGIC 0x32454447
 
 // A chunk is 64 KiB of ciphertext (4096 AES blocks): 16 bytes of tag per chunk is
 // 0.024% overhead, and it is the unit one worker decodes, authenticates and hands
@@ -82,32 +81,9 @@ private:
 	// from the base file, so only the requested window is ever in memory.
 	BlockEncryptFunc block_encrypt = nullptr;
 	bool streaming = false;
-	mutable Vector<uint8_t> stream_ct;
-	mutable Vector<uint8_t> stream_pt;
-
-	// Integrity check for the streaming path. Decoding the whole payload up front
-	// only to compare its MD5 doubles the cost of every file that is opened and
-	// read once (the tables run at ~21 MiB/s), so pack files verify as they are
-	// read instead: plaintext read sequentially from offset 0 is hashed on the way
-	// through and compared when the file reaches its end. A random-access pattern
-	// simply turns the check off rather than decoding bytes nobody asked for (stock
-	// packs never check file contents at all). The pack directory opts into the
-	// eager form, because a pack/template mismatch must fail the pack immediately.
-	mutable CryptoCore::MD5Context verify_ctx;
-	mutable uint64_t verify_next = 0;
-	mutable bool verify_active = false;
 	mutable bool verify_failed = false;
-	unsigned char verify_digest[16] = {};
-	bool lazy_verify = false;
 
 	Error _read_encrypted(Ref<FileAccess> p_base, bool p_with_magic, bool p_verify_at_open);
-	bool _verify_stream_md5(const unsigned char p_expected[16]);
-	bool _stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const;
-	// Large reads: independent CFB windows decoded by the thread pool (the caller
-	// thread keeps doing the file I/O). Same blocks, same providers, same tables.
-	bool _stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len, int p_tasks) const;
-	bool _stream_decrypt_block(uint64_t p_block, uint8_t *r_dst) const;
-	bool _lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const;
 
 	// --- V2: authenticated chunks ------------------------------------------
 	// The pack key does not exist in this process, so the tag mask is derived from
@@ -119,7 +95,6 @@ private:
 	// every chunk is independent: the worker that decodes a 64 KiB chunk also
 	// authenticates it, no digest is finished in file order, and a read that only
 	// touches part of a chunk still verifies the whole chunk.
-	bool authenticated = false;
 	uint64_t chunk_bytes = 0;
 	uint64_t chunk_count = 0;
 	Vector<uint8_t> chunk_tags;
@@ -145,11 +120,9 @@ public:
 	// Read mode only: decodes CFB through the keystream provider instead of a key,
 	// so the pack key itself never exists in this process.
 	//
-	// With `p_verify_at_open` the whole payload is decoded and its MD5 checked
-	// before returning (the pack directory uses this, since it is small and a
-	// mismatch there has to stop the pack from loading). Otherwise the check runs
-	// during the caller's sequential reads and is compared at EOF, so opening a
-	// large encrypted file no longer decodes it once up front.
+	// With `p_verify_at_open` every chunk tag is checked before returning (the pack
+	// directory uses this, since it is small and a mismatch there has to stop the
+	// pack from loading). Otherwise chunks authenticate as they are read.
 	Error open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic = true, bool p_verify_at_open = false);
 	Error open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode);
 

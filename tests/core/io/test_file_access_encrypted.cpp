@@ -40,6 +40,9 @@ TEST_FORCE_LINK(test_file_access_encrypted)
 
 namespace TestFileAccessEncrypted {
 
+// The old (MD5) header magic, kept only to build a file the reader must reject.
+constexpr uint32_t V1_HEADER_MAGIC = 0x43454447;
+
 // V2 header layout, with the magic:
 //   0 magic u32 | 4 signature[16] | 20 length u64 | 28 chunk_count u64
 //   36 chunk_blocks u32 | 40 reserved u32 | 44 iv[16] | 60 tags[16 * chunks]
@@ -105,8 +108,7 @@ static String write_encrypted(const Vector<uint8_t> &p_payload, const Vector<uin
 	return path;
 }
 
-// Builds a V1 (MD5, no tags) file by hand: the reader has to keep accepting packs
-// written by earlier builds.
+// Builds an old (MD5, V1) file by hand, which the reader now refuses.
 static String write_v1(const Vector<uint8_t> &p_payload, const Vector<uint8_t> &p_key) {
 	const String path = TestUtils::get_temp_path("fae_v1.bin");
 	Ref<FileAccess> file = FileAccess::open(path, FileAccess::WRITE);
@@ -115,7 +117,7 @@ static String write_v1(const Vector<uint8_t> &p_payload, const Vector<uint8_t> &
 	unsigned char hash[16];
 	REQUIRE(CryptoCore::md5(p_payload.ptr(), p_payload.size(), hash) == OK);
 
-	file->store_32(ENCRYPTED_HEADER_MAGIC);
+	file->store_32(V1_HEADER_MAGIC);
 	file->store_buffer(hash, 16);
 	file->store_64(p_payload.size());
 
@@ -214,7 +216,7 @@ TEST_CASE("[FileAccessEncrypted] Keystream decoding matches the key path") {
 	{
 		Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(file.is_valid());
-		CHECK(file->get_32() == ENCRYPTED_HEADER_MAGIC_V2);
+		CHECK(file->get_32() == ENCRYPTED_HEADER_MAGIC);
 		uint8_t signature[16];
 		file->get_buffer(signature, 16);
 		CHECK(memcmp(signature, "GDE2GMAC", 8) == 0);
@@ -483,34 +485,31 @@ TEST_CASE("[FileAccessEncrypted] Files without the magic use the same tags") {
 	keystream_key.clear();
 }
 
-TEST_CASE("[FileAccessEncrypted] V1 files still load and keep their MD5 check") {
+TEST_CASE("[FileAccessEncrypted] MD5-era files from older builds are refused") {
+	// The MD5 header form is gone. A pack from an older build has to be exported
+	// again; it must fail loudly instead of being read as if it were current.
 	const Vector<uint8_t> key = make_key(0x70);
 	const Vector<uint8_t> payload = make_bytes(1000, 0x80);
 	const String path = write_v1(payload, key);
 
-	// Key path: the MD5 is verified at open.
 	{
+		ERR_PRINT_OFF;
 		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
 		REQUIRE(base.is_valid());
 		Ref<FileAccessEncrypted> reader;
 		reader.instantiate();
-		REQUIRE(reader->open_and_parse(base, key, FileAccessEncrypted::MODE_READ, true) == OK);
-		Vector<uint8_t> got;
-		got.resize(payload.size());
-		REQUIRE(reader->get_buffer(got.ptrw(), got.size()) == payload.size());
-		REQUIRE(got == payload);
+		CHECK(reader->open_and_parse(base, key, FileAccessEncrypted::MODE_READ, true) == ERR_FILE_UNRECOGNIZED);
+		ERR_PRINT_ON;
 	}
-
-	// Keystream path: the MD5 is checked lazily and the whole-file read must fail.
-	Vector<uint8_t> got;
-	CHECK(read_all_keystream(path, key, got));
-	CHECK(got == payload);
-
-	// One flipped ciphertext byte trips the lazy MD5 at EOF.
-	xor_byte(path, 44 + 100, 0x01);
 	{
 		ERR_PRINT_OFF;
-		CHECK_FALSE(read_all_keystream(path, key, got));
+		Ref<FileAccess> base = FileAccess::open(path, FileAccess::READ);
+		REQUIRE(base.is_valid());
+		Ref<FileAccessEncrypted> reader;
+		reader.instantiate();
+		// Without the magic the header is recognised by its signature, so an old
+		// file reads as corrupt rather than as unrecognised.
+		CHECK(reader->open_and_parse(base, key, FileAccessEncrypted::MODE_READ, false) == ERR_FILE_CORRUPT);
 		ERR_PRINT_ON;
 	}
 	keystream_key.clear();

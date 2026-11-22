@@ -66,8 +66,8 @@ void protect_key(Vector<uint8_t> &p_key) {
 namespace {
 
 // V2 format identifier, written where V1 kept the plaintext MD5. A reader that
-// sees exactly these 16 bytes has an authenticated file; anything else is a V1
-// file (its first 16 bytes are the MD5, so the two cannot be confused).
+// sees exactly these 16 bytes has an authenticated file; anything else is not one
+// (an MD5 header from an older build no longer loads).
 constexpr uint8_t ENCRYPTED_SIGNATURE_V2[16] = { 'G', 'D', 'E', '2', 'G', 'M', 'A', 'C', 0, 0, 0, 0, 0, 0, 0, 1 };
 
 void store_le64(uint8_t *p_dst, uint64_t p_value) {
@@ -161,8 +161,7 @@ struct StreamDecodeChunk {
 	uint64_t block_count = 0;
 	bool ok = true;
 
-	// V2: the chunks this task decodes are authenticated in the same task.
-	bool authenticated = false;
+	// The chunks this task decodes are authenticated in the same task.
 	const uint8_t *tags = nullptr;
 	const uint8_t *hash_key = nullptr;
 	uint64_t first_chunk = 0;
@@ -192,9 +191,6 @@ void _decode_stream_chunk(void *p_userdata) {
 	}
 	SecureMemory::zero(keystream, sizeof(keystream));
 
-	if (!chunk->authenticated) {
-		return;
-	}
 	// The ciphertext of every chunk this task decoded is in the slab it read, so
 	// authentication costs no extra I/O and runs at the same time as the decoding
 	// of the other workers.
@@ -232,9 +228,9 @@ constexpr uint64_t STREAM_PARALLEL_CHUNK_BLOCKS = 16 * 1024; // 256 KiB of block
 constexpr int STREAM_PARALLEL_DEFAULT_TASKS = 8;
 constexpr int STREAM_PARALLEL_MAX_TASKS = 8;
 
-// Worker decode threads for a large read. The pool's size decides the default; the
-// running game can cap it with GRIT_DECODE_THREADS (0/1 decodes on the calling
-// thread), which is also how the default was tuned.
+// Decode workers for a large read (the V2 chunk decoder). The pool's size decides
+// the default; the running game can cap it with GRIT_DECODE_THREADS (1 decodes on
+// the calling thread), which is also how the default was tuned.
 int stream_parallel_task_limit() {
 	static int cached = -1;
 	if (cached >= 0) {
@@ -272,9 +268,6 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 	eofed = false;
 	use_magic = p_with_magic;
 	verify_failed = false;
-	lazy_verify = false;
-	verify_active = false;
-	verify_next = 0;
 
 	if (p_mode == MODE_WRITE_AES256) {
 		data.clear();
@@ -325,9 +318,6 @@ Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, Bloc
 	// No key at all in this mode: the keystream comes from the provider.
 	key.clear();
 	verify_failed = false;
-	lazy_verify = false;
-	verify_active = false;
-	verify_next = 0;
 
 	return _read_encrypted(p_base, p_with_magic, p_verify_at_open);
 }
@@ -335,183 +325,85 @@ Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, Bloc
 Error FileAccessEncrypted::_read_encrypted(Ref<FileAccess> p_base, bool p_with_magic, bool p_verify_at_open) {
 	use_magic = p_with_magic;
 
-	uint32_t magic = 0;
 	if (use_magic) {
-		magic = p_base->get_32();
-		ERR_FAIL_COND_V(magic != ENCRYPTED_HEADER_MAGIC && magic != ENCRYPTED_HEADER_MAGIC_V2, ERR_FILE_UNRECOGNIZED);
+		const uint32_t magic = p_base->get_32();
+		ERR_FAIL_COND_V_MSG(magic != ENCRYPTED_HEADER_MAGIC, ERR_FILE_UNRECOGNIZED, "The encrypted file is not in the authenticated format; a pack from an older build has to be exported again.");
 	}
 
-	unsigned char header[16];
-	p_base->get_buffer(header, 16);
+	uint8_t signature[16];
+	p_base->get_buffer(signature, sizeof(signature));
+	ERR_FAIL_COND_V_MSG(memcmp(signature, ENCRYPTED_SIGNATURE_V2, sizeof(ENCRYPTED_SIGNATURE_V2)) != 0, ERR_FILE_CORRUPT, "The encrypted file has no authentication header: it is corrupt or was written by an older build.");
 
-	if (magic == ENCRYPTED_HEADER_MAGIC_V2 || memcmp(header, ENCRYPTED_SIGNATURE_V2, sizeof(ENCRYPTED_SIGNATURE_V2)) == 0) {
-		// V2: per-chunk authenticated (see the comment in the header).
-		length = p_base->get_64();
-		chunk_count = p_base->get_64();
-		const uint32_t chunk_blocks = p_base->get_32();
-		p_base->get_32(); // Reserved.
-		iv.resize(16);
-		p_base->get_buffer(iv.ptrw(), 16);
-
-		ERR_FAIL_COND_V(chunk_blocks != ENCRYPTED_CHUNK_BLOCKS, ERR_FILE_CORRUPT);
-		// A corrupt header must not make the reader allocate or read unbounded
-		// amounts: the ciphertext is at least as long as the plaintext, and the
-		// chunk table has a fixed size for a given length.
-		ERR_FAIL_COND_V(length > (uint64_t(1) << 55), ERR_FILE_CORRUPT);
-		const uint64_t ct_length = length + ((16 - (length % 16)) % 16);
-		ERR_FAIL_COND_V(ct_length > p_base->get_length(), ERR_FILE_CORRUPT);
-		const uint64_t expected_chunks = (ct_length / 16 + ENCRYPTED_CHUNK_BLOCKS - 1) / ENCRYPTED_CHUNK_BLOCKS;
-		ERR_FAIL_COND_V(chunk_count != expected_chunks, ERR_FILE_CORRUPT);
-		// The tag table is a Vector, so keep the allocation representable.
-		ERR_FAIL_COND_V(chunk_count > uint64_t(INT32_MAX) / 16, ERR_FILE_CORRUPT);
-
-		chunk_bytes = uint64_t(ENCRYPTED_CHUNK_BLOCKS) * 16;
-		chunk_tags.resize_initialized(chunk_count * 16);
-		if (chunk_count != 0) {
-			ERR_FAIL_COND_V(p_base->get_buffer(chunk_tags.ptrw(), chunk_tags.size()) != chunk_tags.size(), ERR_FILE_CORRUPT);
-		}
-		base = p_base->get_position();
-		ERR_FAIL_COND_V(p_base->get_length() < base + ct_length, ERR_FILE_CORRUPT);
-		authenticated = true;
-		lazy_verify = false;
-		verify_active = false;
-
-		if (block_encrypt != nullptr) {
-			// Keystream build: the hash key comes from the same tables as the
-			// keystream, so no key is needed for the authentication either.
-			streaming = true;
-			file = p_base;
-			uint8_t zero[16] = {};
-			if (!block_encrypt(zero, hash_key)) {
-				file.unref();
-				streaming = false;
-				ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The pack's block-encryption tables refused to run (a debugger may be attached), so the pack cannot be authenticated.");
-			}
-			// The pack directory verifies eagerly: a template/pack mismatch has to
-			// stop the pack from loading. Other files authenticate as they are read.
-			if (p_verify_at_open && !_verify_all_chunks()) {
-				file.unref();
-				streaming = false;
-				ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "An authentication tag of the encrypted pack directory does not match: the file is corrupt or the template does not match the pack.");
-			}
-			return OK;
-		}
-
-		// Editor / key build: the key is here, so verify over the buffered
-		// ciphertext (before decrypting, like encrypt-then-MAC) and decrypt after.
-		CryptoCore::AESContext ctx;
-		ctx.set_encode_key(key.ptrw(), 256);
-		uint8_t zero[16] = {};
-		ERR_FAIL_COND_V(ctx.encrypt_ecb(zero, hash_key) != OK, ERR_BUG);
-		const uint64_t ds = ct_length;
-		data.resize(ds);
-		ERR_FAIL_COND_V(p_base->get_buffer(data.ptrw(), ds) != ds, ERR_FILE_CORRUPT);
-		if (!_verify_all_chunks_key(ctx)) {
-			SecureMemory::zero(data.ptrw(), data.size());
-			data.clear();
-			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "An authentication tag of the encrypted file does not match: the file is corrupt or the decryption key is wrong.");
-		}
-		uint8_t cfb_iv[16];
-		memcpy(cfb_iv, iv.ptr(), 16);
-		ctx.decrypt_cfb(ds, cfb_iv, data.ptrw(), data.ptrw());
-		SecureMemory::zero(cfb_iv, sizeof(cfb_iv));
-		data.resize(length);
-		SecureMemory::exclude_from_dumps(data.ptrw(), data.size());
-		file = p_base;
-		return OK;
-	}
-
-	// V1: magic, MD5 of the plaintext, length, IV, CFB payload.
-	unsigned char md5d[16];
-	memcpy(md5d, header, sizeof(md5d));
 	length = p_base->get_64();
-
+	chunk_count = p_base->get_64();
+	const uint32_t chunk_blocks = p_base->get_32();
+	p_base->get_32(); // Reserved.
 	iv.resize(16);
 	p_base->get_buffer(iv.ptrw(), 16);
 
+	ERR_FAIL_COND_V(chunk_blocks != ENCRYPTED_CHUNK_BLOCKS, ERR_FILE_CORRUPT);
+	// A corrupt header must not make the reader allocate or read unbounded amounts:
+	// the ciphertext is at least as long as the plaintext, and the chunk table has
+	// a fixed size for a given length.
+	ERR_FAIL_COND_V(length > (uint64_t(1) << 55), ERR_FILE_CORRUPT);
+	const uint64_t ct_length = length + ((16 - (length % 16)) % 16);
+	ERR_FAIL_COND_V(ct_length > p_base->get_length(), ERR_FILE_CORRUPT);
+	const uint64_t expected_chunks = (ct_length / 16 + ENCRYPTED_CHUNK_BLOCKS - 1) / ENCRYPTED_CHUNK_BLOCKS;
+	ERR_FAIL_COND_V(chunk_count != expected_chunks, ERR_FILE_CORRUPT);
+	// The tag table is a Vector, so keep the allocation representable.
+	ERR_FAIL_COND_V(chunk_count > uint64_t(INT32_MAX) / 16, ERR_FILE_CORRUPT);
+
+	chunk_bytes = uint64_t(ENCRYPTED_CHUNK_BLOCKS) * 16;
+	chunk_tags.resize_initialized(chunk_count * 16);
+	if (chunk_count != 0) {
+		ERR_FAIL_COND_V(p_base->get_buffer(chunk_tags.ptrw(), chunk_tags.size()) != chunk_tags.size(), ERR_FILE_CORRUPT);
+	}
 	base = p_base->get_position();
-	ERR_FAIL_COND_V(p_base->get_length() < base + length, ERR_FILE_CORRUPT);
+	ERR_FAIL_COND_V(p_base->get_length() < base + ct_length, ERR_FILE_CORRUPT);
 
 	if (block_encrypt != nullptr) {
-		// Keystream build: decode blocks on demand, never build the whole plaintext.
-		// The pack directory is verified at open (it is small, and a template/pack
-		// mismatch must stop the pack from loading); every other file is verified
-		// while it is read, so a file that is opened and read once is decoded once
-		// instead of twice.
+		// Keystream build: the hash key comes from the same tables as the keystream,
+		// so no key is needed for the authentication either.
 		streaming = true;
 		file = p_base;
-		if (p_verify_at_open) {
-			if (!_verify_stream_md5(md5d)) {
-				file.unref();
-				streaming = false;
-				ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value, or the decryption keystream is unavailable (a debugger may be attached). The file is corrupt or the template does not match the pack.");
-			}
-			return OK;
+		uint8_t zero[16] = {};
+		if (!block_encrypt(zero, hash_key)) {
+			file.unref();
+			streaming = false;
+			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "The pack's block-encryption tables refused to run (a debugger may be attached), so the pack cannot be authenticated.");
 		}
-		memcpy(verify_digest, md5d, sizeof(verify_digest));
-		verify_next = 0;
-		verify_active = verify_ctx.start() == OK;
-		lazy_verify = true;
+		// The pack directory verifies eagerly: a template/pack mismatch has to stop
+		// the pack from loading. Other files authenticate as they are read.
+		if (p_verify_at_open && !_verify_all_chunks()) {
+			file.unref();
+			streaming = false;
+			ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "An authentication tag of the encrypted pack directory does not match: the file is corrupt or the template does not match the pack.");
+		}
 		return OK;
 	}
 
-	uint64_t ds = length;
-	if (ds % 16) {
-		ds += 16 - (ds % 16);
-	}
+	// Editor / key build: the key is here, so verify over the buffered ciphertext
+	// (before decrypting, like encrypt-then-MAC) and decrypt after.
+	CryptoCore::AESContext ctx;
+	ctx.set_encode_key(key.ptrw(), 256);
+	uint8_t zero[16] = {};
+	ERR_FAIL_COND_V(ctx.encrypt_ecb(zero, hash_key) != OK, ERR_BUG);
+	const uint64_t ds = ct_length;
 	data.resize(ds);
-
-	uint64_t blen = p_base->get_buffer(data.ptrw(), ds);
-	ERR_FAIL_COND_V(blen != ds, ERR_FILE_CORRUPT);
-
-	{
-		CryptoCore::AESContext ctx;
-
-		ctx.set_encode_key(key.ptrw(), 256); // Due to the nature of CFB, same key schedule is used for both encryption and decryption!
-		ctx.decrypt_cfb(ds, iv.ptrw(), data.ptrw(), data.ptrw());
+	ERR_FAIL_COND_V(p_base->get_buffer(data.ptrw(), ds) != ds, ERR_FILE_CORRUPT);
+	if (!_verify_all_chunks_key(ctx)) {
+		SecureMemory::zero(data.ptrw(), data.size());
+		data.clear();
+		ERR_FAIL_V_MSG(ERR_FILE_CORRUPT, "An authentication tag of the encrypted file does not match: the file is corrupt or the decryption key is wrong.");
 	}
-
+	uint8_t cfb_iv[16];
+	memcpy(cfb_iv, iv.ptr(), 16);
+	ctx.decrypt_cfb(ds, cfb_iv, data.ptrw(), data.ptrw());
+	SecureMemory::zero(cfb_iv, sizeof(cfb_iv));
 	data.resize(length);
 	SecureMemory::exclude_from_dumps(data.ptrw(), data.size());
-
-	unsigned char hash[16];
-	ERR_FAIL_COND_V(CryptoCore::md5(data.ptr(), data.size(), hash) != OK, ERR_BUG);
-
-	ERR_FAIL_COND_V_MSG(String::md5(hash) != String::md5(md5d), ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value. It could be that the file is corrupt, or that the provided decryption key is invalid.");
-
 	file = p_base;
-
 	return OK;
-}
-
-bool FileAccessEncrypted::_verify_stream_md5(const unsigned char p_expected[16]) {
-	// One pass over the payload: decrypt each window through the keystream provider
-	// and feed it to an incremental MD5. The plaintext window is reused, so memory
-	// stays bounded regardless of the file size.
-	CryptoCore::MD5Context ctx;
-	ERR_FAIL_COND_V(ctx.start() != OK, false);
-
-	constexpr uint64_t chunk_size = 64 * 1024;
-	Vector<uint8_t> chunk;
-	chunk.resize(chunk_size);
-	uint64_t done = 0;
-	while (done < length) {
-		const uint64_t take = MIN(chunk_size, length - done);
-		if (!_stream_decrypt(chunk.ptrw(), done, take)) {
-			SecureMemory::zero(chunk.ptrw(), chunk.size());
-			return false;
-		}
-		if (ctx.update(chunk.ptr(), take) != OK) {
-			SecureMemory::zero(chunk.ptrw(), chunk.size());
-			return false;
-		}
-		done += take;
-	}
-	SecureMemory::zero(chunk.ptrw(), chunk.size());
-
-	unsigned char hash[16];
-	ERR_FAIL_COND_V(ctx.finish(hash) != OK, false);
-	return String::md5(hash) == String::md5(p_expected);
 }
 
 uint64_t FileAccessEncrypted::_chunk_plain_bytes(uint64_t p_index) const {
@@ -764,7 +656,6 @@ bool FileAccessEncrypted::_stream_decrypt_chunks(uint8_t *p_dst, uint64_t p_firs
 		task.ct_base = ct_base;
 		task.first_block = first_block;
 		task.block_count = block_count;
-		task.authenticated = true;
 		task.tags = chunk_tags.ptr();
 		task.hash_key = hash_key;
 		task.first_chunk = first_chunk;
@@ -787,264 +678,6 @@ bool FileAccessEncrypted::_stream_decrypt_chunks(uint8_t *p_dst, uint64_t p_firs
 	return ok;
 }
 
-bool FileAccessEncrypted::_stream_decrypt_block(uint64_t p_block, uint8_t *r_dst) const {
-	// Head/tail block of a request that does not line up with the block size, and
-	// the fallback when the pool is unavailable.
-	uint8_t previous[16];
-	const uint8_t *prev = iv.ptr();
-	if (p_block != 0) {
-		file->seek(base + (p_block - 1) * 16);
-		if (file->get_buffer(previous, 16) != 16) {
-			return false;
-		}
-		prev = previous;
-	}
-	uint8_t ct[16];
-	file->seek(base + p_block * 16);
-	if (file->get_buffer(ct, 16) != 16) {
-		ERR_PRINT(vformat("Grit: encrypted read failed at block %d (short ciphertext block).", int64_t(p_block)));
-		SecureMemory::zero(previous, sizeof(previous));
-		return false;
-	}
-	uint8_t keystream[16];
-	if (!block_encrypt(prev, keystream)) {
-		SecureMemory::zero(keystream, sizeof(keystream));
-		SecureMemory::zero(previous, sizeof(previous));
-		return false;
-	}
-	for (int i = 0; i < 16; i++) {
-		r_dst[i] = ct[i] ^ keystream[i];
-	}
-	SecureMemory::zero(keystream, sizeof(keystream));
-	SecureMemory::zero(previous, sizeof(previous));
-	return true;
-}
-
-bool FileAccessEncrypted::_stream_decrypt_parallel(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len, int p_tasks) const {
-	WorkerThreadPool *pool = WorkerThreadPool::get_singleton();
-	ERR_FAIL_NULL_V(pool, false);
-
-	const uint64_t end = p_pos + p_len;
-	uint64_t dst_offset = 0;
-	uint64_t block = p_pos / 16;
-
-	// A request that starts inside a block decodes that block here; the rest is
-	// block aligned and goes to the workers.
-	if (p_pos % 16 != 0) {
-		uint8_t head[16];
-		if (!_stream_decrypt_block(block, head)) {
-			ERR_PRINT(vformat("Grit: encrypted read failed on the first block %d of the request.", int64_t(block)));
-			SecureMemory::zero(head, sizeof(head));
-			return false;
-		}
-		const uint64_t take = MIN<uint64_t>(16 - (p_pos % 16), p_len);
-		memcpy(p_dst, head + (p_pos % 16), take);
-		SecureMemory::zero(head, sizeof(head));
-		dst_offset += take;
-		block += 1;
-	}
-
-	const uint64_t full_end_block = end / 16;
-	const uint64_t middle_blocks = full_end_block > block ? full_end_block - block : 0;
-	bool ok = true;
-
-	if (middle_blocks > 0) {
-		uint8_t *middle_dst = p_dst + dst_offset;
-		const uint64_t chunks_total = (middle_blocks + STREAM_PARALLEL_CHUNK_BLOCKS - 1) / STREAM_PARALLEL_CHUNK_BLOCKS;
-		const int buffers_count = int(MIN<uint64_t>(uint64_t(p_tasks), MIN<uint64_t>(chunks_total, STREAM_PARALLEL_MAX_TASKS)));
-		const uint64_t chunk_bytes = STREAM_PARALLEL_CHUNK_BLOCKS * 16;
-
-		// Ciphertext chunks (one extra block each for the CFB feedback) live in one
-		// slab and are reused round-robin; the tasks write plaintext straight into
-		// the caller's buffer.
-		Vector<uint8_t> ct_slab;
-		ct_slab.resize(buffers_count * (chunk_bytes + 16));
-		Vector<StreamDecodeChunk> chunks;
-		chunks.resize(chunks_total);
-		Vector<WorkerThreadPool::TaskID> task_ids;
-		task_ids.resize(chunks_total);
-
-		auto join_chunk = [&](uint64_t p_chunk) -> bool {
-			if (pool->wait_for_task_completion(task_ids[p_chunk]) != OK) {
-				ERR_PRINT(vformat("Grit: could not wait for the decode of block %d.", int64_t(chunks[p_chunk].first_block)));
-				return false;
-			}
-			if (!chunks[p_chunk].ok) {
-				ERR_PRINT(vformat("Grit: the keystream provider refused block %d (a debugger may be attached).", int64_t(chunks[p_chunk].first_block)));
-				return false;
-			}
-			return true;
-		};
-
-		uint64_t submitted = 0;
-		uint64_t joined = 0;
-		for (uint64_t c = 0; c < chunks_total; c++) {
-			const int buf_index = int(c % uint64_t(buffers_count));
-			// Reusing a slot waits for the task that owns it: that is both the
-			// pipeline's flow control and the bound on the ciphertext memory (one
-			// chunk per buffer, no copy of the whole file). Joined strictly in
-			// order, so a failure never waits for the same task twice.
-			if (c >= uint64_t(buffers_count)) {
-				const bool joined_ok = join_chunk(joined);
-				joined++;
-				if (!joined_ok) {
-					ok = false;
-					break;
-				}
-			}
-			const uint64_t first = block + c * STREAM_PARALLEL_CHUNK_BLOCKS;
-			const uint64_t count = MIN<uint64_t>(STREAM_PARALLEL_CHUNK_BLOCKS, full_end_block - first);
-			const uint64_t ct_base = first == 0 ? 0 : first - 1;
-			const uint64_t ct_blocks = count + (first == 0 ? 0 : 1);
-			uint8_t *ct_buffer = ct_slab.ptrw() + uint64_t(buf_index) * (chunk_bytes + 16);
-			file->seek(base + ct_base * 16);
-			if (file->get_buffer(ct_buffer, ct_blocks * 16) != ct_blocks * 16) {
-				ERR_PRINT(vformat("Grit: encrypted read failed at chunk block %d (%d blocks wanted).", int64_t(first), int64_t(ct_blocks)));
-				ok = false;
-				break;
-			}
-
-			StreamDecodeChunk &chunk = chunks.write[c];
-			chunk.block_encrypt = block_encrypt;
-			chunk.ciphertext = ct_buffer;
-			chunk.iv = iv.ptr();
-			chunk.plaintext = middle_dst + (first - block) * 16;
-			chunk.ct_base = ct_base;
-			chunk.first_block = first;
-			chunk.block_count = count;
-			chunk.ok = true;
-			task_ids.write[c] = pool->add_native_task(&_decode_stream_chunk, &chunk, true, "Decode encrypted pack");
-			submitted = c + 1;
-		}
-
-		// Every submitted task writes into p_dst, so they must all be joined before
-		// this call returns (also on the error paths above).
-		for (uint64_t c = joined; c < submitted; c++) {
-			if (!join_chunk(c)) {
-				ok = false;
-			}
-		}
-		if (ok) {
-			dst_offset += middle_blocks * 16;
-		}
-	}
-
-	if (!ok) {
-		return false;
-	}
-
-	// Trailing partial block.
-	if (dst_offset < p_len) {
-		uint8_t tail[16];
-		if (!_stream_decrypt_block(block + middle_blocks, tail)) {
-			SecureMemory::zero(tail, sizeof(tail));
-			return false;
-		}
-		memcpy(p_dst + dst_offset, tail, p_len - dst_offset);
-		SecureMemory::zero(tail, sizeof(tail));
-	}
-	return true;
-}
-
-bool FileAccessEncrypted::_lazy_verify_update(const uint8_t *p_data, uint64_t p_pos, uint64_t p_len) const {
-	if (!verify_active) {
-		return true;
-	}
-	if (p_pos != verify_next) {
-		// The caller skipped ahead or went back, so this is not a full sequential
-		// pass and the digest cannot be completed. Stock packs do not verify file
-		// contents at all, so the only thing lost here is the diagnostic.
-		verify_active = false;
-		return true;
-	}
-	if (verify_ctx.update(p_data, p_len) != OK) {
-		verify_active = false;
-		return true;
-	}
-	verify_next += p_len;
-	if (verify_next < length) {
-		return true;
-	}
-
-	unsigned char digest[16];
-	verify_active = false;
-	if (verify_ctx.finish(digest) != OK) {
-		return true;
-	}
-	if (memcmp(digest, verify_digest, sizeof(digest)) == 0) {
-		return true;
-	}
-	verify_failed = true;
-	ERR_PRINT("The MD5 sum of the decrypted file does not match the expected value, or the decryption keystream is unavailable (a debugger may be attached). The file is corrupt or the template does not match the pack.");
-	return false;
-}
-
-bool FileAccessEncrypted::_stream_decrypt(uint8_t *p_dst, uint64_t p_pos, uint64_t p_len) const {
-	// CFB: keystream block = E(key, previous ciphertext block); plaintext = ct XOR ks.
-	// Only AES encryption is needed, which is what a white-box keystream provider
-	// computes. The previous ciphertext block is readable from the base file, so a
-	// read at any offset costs one block lookup, not a replay from the IV.
-	ERR_FAIL_COND_V(p_len == 0, true);
-	ERR_FAIL_COND_V(p_pos + p_len > length, false);
-
-#ifdef THREADS_ENABLED
-	if (p_len >= STREAM_PARALLEL_MIN_BYTES) {
-		const int tasks = stream_parallel_task_limit();
-		if (tasks > 1) {
-			return _stream_decrypt_parallel(p_dst, p_pos, p_len, tasks);
-		}
-	}
-#endif
-
-	constexpr uint64_t window_blocks = 1024; // 16 KiB of ciphertext per window.
-	uint64_t done = 0;
-	uint64_t offset = p_pos;
-	const uint64_t end = p_pos + p_len;
-	while (offset < end) {
-		const uint64_t block = offset / 16;
-		const uint64_t block_offset = offset % 16;
-		const uint64_t window_end = MIN(end, (block + window_blocks) * 16);
-		const uint64_t last_block = (window_end + 15) / 16 - 1;
-		const uint64_t ct_first = block == 0 ? 0 : block - 1;
-		const uint64_t window_bytes = (last_block - ct_first + 1) * 16;
-
-		stream_ct.resize(window_bytes);
-		stream_pt.resize(window_bytes);
-		SecureMemory::exclude_from_dumps(stream_pt.ptrw(), window_bytes);
-
-		file->seek(base + ct_first * 16);
-		if (file->get_buffer(stream_ct.ptrw(), window_bytes) != window_bytes) {
-			return false;
-		}
-
-		uint8_t keystream[16];
-		for (uint64_t b = block; b <= last_block; b++) {
-			const uint8_t *prev = b == 0 ? iv.ptr() : stream_ct.ptr() + (b - 1 - ct_first) * 16;
-			const uint8_t *ct = stream_ct.ptr() + (b - ct_first) * 16;
-			uint8_t *pt = stream_pt.ptrw() + (b - ct_first) * 16;
-			if (!block_encrypt(prev, keystream)) {
-				SecureMemory::zero(keystream, sizeof(keystream));
-				return false;
-			}
-			for (int i = 0; i < 16; i++) {
-				pt[i] = ct[i] ^ keystream[i];
-			}
-		}
-		SecureMemory::zero(keystream, sizeof(keystream));
-
-		const uint64_t copy_len = window_end - offset;
-		// `stream_pt` starts at `ct_first`, which is one block before `block` for
-		// every block but the first (its plaintext is there only to provide the CFB
-		// feedback), so the requested bytes start one block further in.
-		const uint64_t pt_offset = (block - ct_first) * 16 + block_offset;
-		memcpy(p_dst + done, stream_pt.ptr() + pt_offset, copy_len);
-		done += copy_len;
-		offset += copy_len;
-	}
-
-	return true;
-}
-
 Error FileAccessEncrypted::open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode) {
 	String cs = p_key.md5_text();
 	ERR_FAIL_COND_V(cs.length() != 32, ERR_INVALID_PARAMETER);
@@ -1065,15 +698,6 @@ void FileAccessEncrypted::_close() {
 	// A failed open can still leave the key (and a decrypted window) behind, so the
 	// wipers are armed before any early return.
 	SecretWiper wipe = { key, data };
-
-	if (!stream_ct.is_empty()) {
-		SecureMemory::zero(stream_ct.ptrw(), stream_ct.size());
-		stream_ct.clear();
-	}
-	if (!stream_pt.is_empty()) {
-		SecureMemory::zero(stream_pt.ptrw(), stream_pt.size());
-		stream_pt.clear();
-	}
 
 	if (file.is_null()) {
 		streaming = false;
@@ -1131,7 +755,7 @@ void FileAccessEncrypted::_close() {
 		SecureMemory::zero(hk, sizeof(hk));
 
 		if (use_magic) {
-			file->store_32(ENCRYPTED_HEADER_MAGIC_V2);
+			file->store_32(ENCRYPTED_HEADER_MAGIC);
 		}
 		file->store_buffer(ENCRYPTED_SIGNATURE_V2, sizeof(ENCRYPTED_SIGNATURE_V2));
 		file->store_64(plain_length);
@@ -1149,7 +773,6 @@ void FileAccessEncrypted::_close() {
 		data.clear();
 	}
 
-	authenticated = false;
 	chunk_count = 0;
 	chunk_bytes = 0;
 	chunk_tags.clear();
@@ -1164,9 +787,6 @@ void FileAccessEncrypted::_close() {
 	}
 	auth_plain_index = -1;
 	streaming = false;
-	lazy_verify = false;
-	verify_active = false;
-	verify_next = 0;
 	block_encrypt = nullptr;
 	file.unref();
 }
@@ -1229,30 +849,16 @@ uint64_t FileAccessEncrypted::get_buffer(uint8_t *p_dst, uint64_t p_length) cons
 
 	if (streaming) {
 		if (verify_failed) {
-			// The integrity check already failed: keep handing out nothing rather
-			// than garbage from a later read.
+			// A tag already failed: keep handing out nothing rather than garbage
+			// from a later read.
 			eofed = true;
 			return 0;
 		}
-		if (authenticated) {
-			// V2: every chunk is authenticated before its bytes are handed back, so
-			// a seek pattern verifies too (a partial chunk is decoded and checked
-			// in full).
-			if (to_copy && !_read_verified(p_dst, pos, to_copy)) {
-				eofed = true;
-				return 0;
-			}
-		} else {
-			if (to_copy && !_stream_decrypt(p_dst, pos, to_copy)) {
-				eofed = true;
-				return 0;
-			}
-			if (to_copy && lazy_verify && !_lazy_verify_update(p_dst, pos, to_copy)) {
-				// The digest failed with this chunk: refuse to hand it back so the caller
-				// sees a short read, and get_error() reports ERR_FILE_CORRUPT.
-				eofed = true;
-				return 0;
-			}
+		// Every chunk is authenticated before its bytes are handed back, so a seek
+		// pattern verifies too (a partial chunk is decoded and checked in full).
+		if (to_copy && !_read_verified(p_dst, pos, to_copy)) {
+			eofed = true;
+			return 0;
 		}
 	} else {
 		memcpy(p_dst, data.ptr() + pos, to_copy);

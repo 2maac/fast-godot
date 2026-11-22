@@ -51,8 +51,13 @@
 // an attacker observing cache activity learns nothing it did not supply. `GHASHState` is a tiny per-reader accumulator that
 // points at that table, so worker threads do not copy or rebuild it.
 //
-// Everything here is table driven on purpose: carry-less multiplication is not
-// available on every target (notably wasm), so this is the portable path.
+// The multiply has two implementations behind one API: a portable 8-bit table
+// path, and a hardware path using the carry-less multiply instruction (PMULL on
+// ARMv8 crypto, PCLMULQDQ on x86-64). The choice is made once per process from
+// the CPU features and can be forced to the table path for known-answer tests.
+// Both compute exactly the same GHASH; the table path stays because carry-less
+// multiplication is not available everywhere (notably wasm, and ARMv8 cores
+// built without the crypto extension).
 
 struct GHASHKey {
 	// tab[byte_position][value][0] = high 64 bits, [..][1] = low 64 bits of
@@ -60,17 +65,31 @@ struct GHASHKey {
 	// x^(7 - b).
 	uint64_t tab[16][256][2] = {};
 
+	// H in the representation the hardware multiply wants (bit-reversed on
+	// ARMv8, byte-reversed on x86); the table path does not use it.
+	uint8_t h_native[16] = {};
+
 	void init(const uint8_t p_hash_key[16]);
 };
 
+// True when this CPU and build have a carry-less multiply the hardware path can
+// use. Evaluated once per process.
+bool ghash_native_available();
+
 struct GHASHState {
 	const GHASHKey *key = nullptr;
+	bool native = false;
 	uint64_t hi = 0;
 	uint64_t lo = 0;
+	// Accumulator of the hardware path, in its own representation (opaque here).
+	uint8_t x_native[16] = {};
 	uint8_t tail[16] = {};
 	uint32_t tail_len = 0;
 
 	void start(const GHASHKey &p_key);
+	// Same hash, always through the table path. Used by the known-answer test to
+	// prove the two implementations agree.
+	void start_portable(const GHASHKey &p_key);
 	void reset();
 	void update(const uint8_t *p_data, size_t p_len);
 	void finish(uint8_t r_tag[16]);
