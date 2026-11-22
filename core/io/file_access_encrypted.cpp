@@ -590,7 +590,7 @@ bool FileAccessEncrypted::_stream_decrypt_chunks(uint8_t *p_dst, uint64_t p_firs
 	const uint64_t chunks_per_task = STREAM_PARALLEL_CHUNK_BLOCKS / ENCRYPTED_CHUNK_BLOCKS;
 	const uint64_t task_bytes = chunks_per_task * chunk_bytes;
 	const uint64_t tasks_total = (p_chunk_count + chunks_per_task - 1) / chunks_per_task;
-	const int buffers_count = int(MIN<uint64_t>(uint64_t(p_tasks), MIN<uint64_t>(tasks_total, STREAM_PARALLEL_MAX_TASKS)));
+	const int buffers_count = int(MIN<uint64_t>(uint64_t(p_tasks), MIN<uint64_t>(tasks_total, uint64_t(STREAM_PARALLEL_MAX_TASKS))));
 
 	Vector<uint8_t> ct_slab;
 	ct_slab.resize(buffers_count * (task_bytes + 16));

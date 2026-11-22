@@ -1,9 +1,0 @@
-[gd_scene format=3]
-
-[ext_resource type="PackedScene" path="/Users/orangetek/Library/CloudStorage/Dropbox/Programming/fast-godot/.testhome/Library/Caches/godot_test/test_scene.tscn" id="1_7wmea"]
-
-[node name="" type="Node" unique_id=1529407896]
-
-[node name="@TestNode@1570" parent="." unique_id=1369833906 node_paths=PackedStringArray("exported_node", "exported_nodes") instance=ExtResource("1_7wmea")]
-exported_node = NodePath("Child2")
-exported_nodes = [NodePath("Child2")]
