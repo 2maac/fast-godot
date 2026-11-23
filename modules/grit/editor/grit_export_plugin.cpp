@@ -691,6 +691,10 @@ Error GritExportPlugin::_build_template(const String &p_generated_dir, bool p_de
 	// "vm" tells the helper to build without `grit_generated`, which is what makes
 	// the engine compile its fallback (empty) registry instead of this project's code.
 	args.push_back(p_grit ? "" : "vm");
+	// The web template defaults to single-threaded so an export runs from any static
+	// host. The preset can opt in (variant/thread_support), which needs COOP/COEP on
+	// the host; the helper builds the template to match the generated HTML.
+	args.push_back(plat_id == "web" && build_preset.is_valid() && bool(build_preset->get("variant/thread_support")) ? "threads" : "");
 
 	print_line("Grit: building the compiled template (compiles the generated code and links it).");
 

@@ -349,6 +349,12 @@ def export_main(argv):
     # game runs on the GDScript VM. The editor passes it when the preset's Grit
     # option is off (or GRIT_DISABLE=1 is set); older helpers ignore it.
     vm_mode = len(argv) > 14 and argv[14].strip().lower() == "vm"
+    # Optional 16th argument: "threads" builds the HTML5 Fast template with
+    # -pthread so the preset's thread_support option is honored. Threaded web
+    # builds need SharedArrayBuffer, which in turn needs cross-origin isolation
+    # (COOP/COEP) on whatever host serves the export; the default stays "no" so a
+    # Fast export keeps running from any static host. Native platforms ignore it.
+    threads_mode = len(argv) > 15 and argv[15].strip().lower() == "threads"
 
     engine = os.path.abspath(engine)
     work_dir = os.path.join(engine, "bin", "grit", target)
@@ -472,9 +478,12 @@ def export_main(argv):
         extra.append("module_cffi_enabled=no")
         # Godot's web template defaults to threads=yes, which needs
         # SharedArrayBuffer and therefore cross-origin isolation (COOP/COEP
-        # headers). A Fast export has to run from any static host, so build the
-        # template single-threaded; this also drops proxy_to_pthread.
-        extra.append("threads=no")
+        # headers). A Fast export has to run from any static host by default, so
+        # build the template single-threaded unless the preset opts in through
+        # variant/thread_support (the editor passes "threads" then).
+        extra.append("threads=yes" if threads_mode else "threads=no")
+        if threads_mode:
+            announce("Grit: building a threaded web template (the host must send COOP/COEP)")
 
     # Optimization level. The preset's mode wins; without one, fall back to the
     # historical behaviour (web -O3 only when the legacy "optimized" flag asked
