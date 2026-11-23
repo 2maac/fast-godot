@@ -61,7 +61,6 @@ const GodotConfig = {
 		canvas_resize_policy: 2, // Adaptive
 		virtual_keyboard: false,
 		persistent_drops: false,
-		godot_pool_size: 0, // 0 = the browser's reported CPU thread count.
 		on_execute: null,
 		on_exit: null,
 
@@ -71,7 +70,6 @@ const GodotConfig = {
 			GodotConfig.locale = p_opts['locale'] || GodotConfig.locale;
 			GodotConfig.virtual_keyboard = p_opts['virtualKeyboard'];
 			GodotConfig.persistent_drops = !!p_opts['persistentDrops'];
-			GodotConfig.godot_pool_size = p_opts['godotPoolSize'];
 			GodotConfig.on_execute = p_opts['onExecute'];
 			GodotConfig.on_exit = p_opts['onExit'];
 			if (p_opts['focusCanvas']) {
@@ -347,19 +345,6 @@ const GodotOS = {
 		// TODO about Godot core spawning too many threads above 24), which made
 		// 2D/worker-heavy projects size themselves for two cores on any machine.
 		return navigator.hardwareConcurrency || 1;
-	},
-
-	godot_js_os_thread_pool_size_get__proxy: 'sync',
-	godot_js_os_thread_pool_size_get__sig: 'i',
-	godot_js_os_thread_pool_size_get: function () {
-		if (typeof PThread === 'undefined') {
-			// Threads aren't supported, so default to `1`.
-			return 1;
-		}
-
-		// 0 means "as many as the machine reports"; a positive preset value pins it.
-		const configured = GodotConfig.godot_pool_size;
-		return configured > 0 ? configured : (navigator.hardwareConcurrency || 1);
 	},
 
 	godot_js_os_download_buffer__proxy: 'sync',

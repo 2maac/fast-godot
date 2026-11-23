@@ -276,7 +276,10 @@ def configure(env: "SConsEnvironment"):
         env.Append(CCFLAGS=["-sUSE_PTHREADS=1"])
         env.Append(LINKFLAGS=["-sUSE_PTHREADS=1"])
         env.Append(LINKFLAGS=["-sDEFAULT_PTHREAD_STACK_SIZE=%sKB" % env["default_pthread_stack_size"]])
-        env.Append(LINKFLAGS=["-sPTHREAD_POOL_SIZE=\"Module['emscriptenPoolSize']||8\""])
+        # No preallocated workers: Godot's WorkerThreadPool creates exactly the
+        # threads its project setting asks for (threading/worker_pool/max_threads,
+        # -1 = the reported CPU count) and Emscripten spawns them on demand.
+        env.Append(LINKFLAGS=["-sPTHREAD_POOL_SIZE=0", "-sPTHREAD_POOL_SIZE_STRICT=0"])
         env.Append(LINKFLAGS=["-sWASM_MEM_MAX=2048MB"])
         if not env["dlink_enabled"]:
             # Workaround https://github.com/emscripten-core/emscripten/issues/21844#issuecomment-2116936414.
