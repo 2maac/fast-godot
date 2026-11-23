@@ -90,6 +90,19 @@ Ref<StreamPeerTCP> accept_connection(Ref<TCPServer> &p_server) {
 	return client_from_server;
 }
 
+// `get_data()` and the `get_*()` helpers built on it block until the whole frame
+// is received (see StreamPeer::get_data), so a lost or mismatched frame would
+// hang the test run instead of failing it. Wait for the bytes first: the engine
+// builds without exceptions, so a REQUIRE inside a helper would only return from
+// the helper and leave the blocking read armed.
+bool wait_for_bytes(const Ref<StreamPeerTCP> &p_peer, int p_bytes) {
+	wait_for_condition([&]() {
+		return p_peer->get_available_bytes() >= p_bytes;
+	});
+
+	return p_peer->get_available_bytes() >= p_bytes;
+}
+
 TEST_CASE("[TCPServer] Instantiation") {
 	Ref<TCPServer> server;
 	server.instantiate();
@@ -112,11 +125,13 @@ TEST_CASE("[TCPServer] Accept a connection and receive/send data") {
 	// Sending data from client to server.
 	const String hello_world = "Hello World!";
 	client->put_string(hello_world);
+	REQUIRE(wait_for_bytes(client_from_server, hello_world.utf8().length() + 4));
 	CHECK_EQ(client_from_server->get_string(), hello_world);
 
 	// Sending data from server to client.
 	const float pi = 3.1415;
 	client_from_server->put_float(pi);
+	REQUIRE(wait_for_bytes(client, int(sizeof(float))));
 	CHECK_EQ(client->get_float(), pi);
 
 	client->disconnect_from_host();
@@ -132,9 +147,25 @@ TEST_CASE("[TCPServer] Handle multiple clients at the same time") {
 		clients.push_back(create_client(LOCALHOST, PORT));
 	}
 
-	Vector<Ref<StreamPeerTCP>> clients_from_server;
+	Vector<Ref<StreamPeerTCP>> accepted;
 	for (int i = 0; i < clients.size(); i++) {
-		clients_from_server.push_back(accept_connection(server));
+		accepted.push_back(accept_connection(server));
+	}
+
+	// Match every client with its own accepted end: accept order follows handshake
+	// completion, not connect order (on WSL it comes back scrambled), and the
+	// accepted end reports the client's ephemeral port as its connected port.
+	Vector<Ref<StreamPeerTCP>> clients_from_server;
+	clients_from_server.resize(clients.size());
+	for (int i = 0; i < clients.size(); i++) {
+		for (const Ref<StreamPeerTCP> &accepted_peer : accepted) {
+			if (accepted_peer.is_valid() && accepted_peer->get_connected_port() == clients[i]->get_local_port()) {
+				clients_from_server.write[i] = accepted_peer;
+				break;
+			}
+		}
+		REQUIRE_MESSAGE(clients_from_server[i].is_valid(), "no accepted connection matches client ", i,
+				" (local port ", clients[i]->get_local_port(), ")");
 	}
 
 	wait_for_condition([&]() {
@@ -162,6 +193,7 @@ TEST_CASE("[TCPServer] Handle multiple clients at the same time") {
 	for (int i = 0; i < clients.size(); i++) {
 		String hello_client = "Hello " + itos(i);
 		clients[i]->put_string(hello_client);
+		REQUIRE(wait_for_bytes(clients_from_server[i], hello_client.utf8().length() + 4));
 		CHECK_EQ(clients_from_server[i]->get_string(), hello_client);
 	}
 
@@ -185,6 +217,7 @@ TEST_CASE("[TCPServer] When stopped shouldn't accept new connections") {
 	// Sending data from client to server.
 	const String hello_world = "Hello World!";
 	client->put_string(hello_world);
+	REQUIRE(wait_for_bytes(client_from_server, hello_world.utf8().length() + 4));
 	CHECK_EQ(client_from_server->get_string(), hello_world);
 
 	client->disconnect_from_host();
@@ -202,13 +235,19 @@ TEST_CASE("[TCPServer] When stopped shouldn't accept new connections") {
 
 	CHECK_FALSE(server->is_connection_available());
 
+	// A refused connection can surface as STATUS_ERROR, or as STATUS_NONE when
+	// the connect was accepted locally and the reset then arrives as a FIN
+	// (StreamPeerSocket::poll() treats a readable socket with 0 bytes as EOF).
 	wait_for_condition([&]() {
-		return new_client->poll() != Error::OK || new_client->get_status() == StreamPeerTCP::STATUS_ERROR;
+		const StreamPeerTCP::Status status = new_client->get_status();
+		return new_client->poll() != Error::OK || status == StreamPeerTCP::STATUS_ERROR || status == StreamPeerTCP::STATUS_NONE;
 	});
 
 	CHECK_FALSE(server->is_connection_available());
 
-	CHECK_EQ(new_client->get_status(), StreamPeerTCP::STATUS_ERROR);
+	const StreamPeerTCP::Status stopped_status = new_client->get_status();
+	const bool stopped = stopped_status == StreamPeerTCP::STATUS_ERROR || stopped_status == StreamPeerTCP::STATUS_NONE;
+	CHECK_MESSAGE(stopped, "expected STATUS_ERROR or STATUS_NONE, got ", int(stopped_status));
 	new_client->disconnect_from_host();
 	CHECK_EQ(new_client->get_status(), StreamPeerTCP::STATUS_NONE);
 }
@@ -227,6 +266,7 @@ TEST_CASE("[TCPServer] Should disconnect client") {
 	// Sending data from client to server.
 	const String hello_world = "Hello World!";
 	client->put_string(hello_world);
+	REQUIRE(wait_for_bytes(client_from_server, hello_world.utf8().length() + 4));
 	CHECK_EQ(client_from_server->get_string(), hello_world);
 
 	client_from_server->disconnect_from_host();
