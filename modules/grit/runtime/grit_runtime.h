@@ -132,8 +132,14 @@ _FORCE_INLINE_ T *internal_pointer(Variant &r_value) {
 	return &VariantInternalAccessor<T>::get(&r_value);
 }
 
+// Makes r_value a write target of p_type. Callers write into it right after,
+// so the previous value is never needed. Packed arrays must always be reset:
+// their payload is a refcounted PackedArrayRef shared by every Variant copy, and
+// the write goes through internal_pointer() straight into that payload, so a
+// reused temporary still aliased by a local would corrupt both. Mirrors
+// VariantTypeChanger<T>::change() in core/variant/variant_internal.h.
 _FORCE_INLINE_ void prepare(Variant &r_value, Variant::Type p_type) {
-	if (r_value.get_type() != p_type) {
+	if (r_value.get_type() != p_type || Variant::is_packed_array(p_type)) {
 		VariantInternal::initialize(&r_value, p_type);
 	}
 }

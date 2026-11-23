@@ -960,13 +960,13 @@ struct VariantDefaultInitializer<T, std::enable_if_t<IsVariantTypeT<T>>> {
 template <typename T>
 struct VariantTypeChanger {
 	static _FORCE_INLINE_ void change(Variant *v) {
-		if (v->get_type() != GetTypeInfo<T>::VARIANT_TYPE || GetTypeInfo<T>::VARIANT_TYPE >= Variant::PACKED_BYTE_ARRAY) { //second condition removed by optimizer
+		if (v->get_type() != GetTypeInfo<T>::VARIANT_TYPE || Variant::is_packed_array(GetTypeInfo<T>::VARIANT_TYPE)) {
 			VariantInternal::clear(v);
 			VariantInitializer<T>::init(v);
 		}
 	}
 	static _FORCE_INLINE_ void change_and_reset(Variant *v) {
-		if (v->get_type() != GetTypeInfo<T>::VARIANT_TYPE || GetTypeInfo<T>::VARIANT_TYPE >= Variant::PACKED_BYTE_ARRAY) { //second condition removed by optimizer
+		if (v->get_type() != GetTypeInfo<T>::VARIANT_TYPE || Variant::is_packed_array(GetTypeInfo<T>::VARIANT_TYPE)) {
 			VariantInternal::clear(v);
 			VariantInitializer<T>::init(v);
 		}

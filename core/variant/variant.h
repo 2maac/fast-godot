@@ -386,6 +386,10 @@ public:
 	static bool can_convert(Type p_type_from, Type p_type_to);
 	static bool can_convert_strict(Type p_type_from, Type p_type_to);
 	static bool is_type_shared(Variant::Type p_type);
+	// Packed arrays store their payload in a refcounted PackedArrayRef shared by
+	// every Variant copy. Writing through that payload pointer therefore mutates
+	// all aliases, so a Variant of these types cannot be reused in place.
+	static _FORCE_INLINE_ bool is_packed_array(Variant::Type p_type) { return p_type >= PACKED_BYTE_ARRAY; }
 
 	bool is_ref_counted() const;
 	_FORCE_INLINE_ bool is_num() const {
