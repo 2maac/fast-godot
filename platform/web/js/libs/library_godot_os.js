@@ -61,7 +61,7 @@ const GodotConfig = {
 		canvas_resize_policy: 2, // Adaptive
 		virtual_keyboard: false,
 		persistent_drops: false,
-		godot_pool_size: 4,
+		godot_pool_size: 0, // 0 = the browser's reported CPU thread count.
 		on_execute: null,
 		on_exit: null,
 
@@ -343,9 +343,10 @@ const GodotOS = {
 	godot_js_os_hw_concurrency_get__proxy: 'sync',
 	godot_js_os_hw_concurrency_get__sig: 'i',
 	godot_js_os_hw_concurrency_get: function () {
-		// TODO Godot core needs fixing to avoid spawning too many threads (> 24).
-		const concurrency = navigator.hardwareConcurrency || 1;
-		return concurrency < 2 ? concurrency : 2;
+		// Report the real CPU thread count. This used to be clamped to 2 (with a
+		// TODO about Godot core spawning too many threads above 24), which made
+		// 2D/worker-heavy projects size themselves for two cores on any machine.
+		return navigator.hardwareConcurrency || 1;
 	},
 
 	godot_js_os_thread_pool_size_get__proxy: 'sync',
@@ -356,7 +357,9 @@ const GodotOS = {
 			return 1;
 		}
 
-		return GodotConfig.godot_pool_size;
+		// 0 means "as many as the machine reports"; a positive preset value pins it.
+		const configured = GodotConfig.godot_pool_size;
+		return configured > 0 ? configured : (navigator.hardwareConcurrency || 1);
 	},
 
 	godot_js_os_download_buffer__proxy: 'sync',

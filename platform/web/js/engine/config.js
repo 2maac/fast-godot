@@ -139,10 +139,12 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		 */
 		emscriptenPoolSize: 8,
 		/**
+		 * Size of Godot's WorkerThreadPool. ``0`` (default) uses the browser's
+		 * reported CPU thread count.
 		 * @ignore
 		 * @type {number}
 		 */
-		godotPoolSize: 4,
+		godotPoolSize: 0,
 		/**
 		 * A callback function for handling Godot's ``OS.execute`` calls.
 		 *
