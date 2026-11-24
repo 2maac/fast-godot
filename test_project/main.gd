@@ -12,9 +12,28 @@ func _ready() -> void:
 	var driver := RenderingServer.get_current_rendering_driver_name()
 	var adapter := RenderingServer.get_video_adapter_name()
 	$Camera3D.look_at_from_position(Vector3(0.0, 2.2, 5.0), Vector3(0.0, 0.8, 0.0), Vector3.UP)
+	_apply_checker_texture()
 	print("WEBGPU_TEST_READY driver=%s adapter=%s" % [driver, adapter])
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("window.__webgpu_test_ready = true; console.log('WEBGPU_TEST_JS_READY');")
+
+# Give the shaded cube a procedural checker albedo texture so the smoke test also
+# exercises material texture sampling/filtering on top of the lighting path.
+func _apply_checker_texture() -> void:
+	var size := 64
+	var cell := 8
+	var img := Image.create(size, size, false, Image.FORMAT_RGBA8)
+	for y in size:
+		for x in size:
+			var light := ((x / cell) + (y / cell)) % 2 == 0
+			img.set_pixel(x, y, Color(0.95, 0.95, 0.95) if light else Color(0.35, 0.5, 0.4))
+	var tex := ImageTexture.create_from_image(img)
+	var mat: StandardMaterial3D = box.get_surface_override_material(0)
+	if mat != null:
+		mat = mat.duplicate()
+		mat.albedo_texture = tex
+		mat.uv1_scale = Vector3(3.0, 3.0, 1.0)
+		box.set_surface_override_material(0, mat)
 
 func _process(delta: float) -> void:
 	_time += delta

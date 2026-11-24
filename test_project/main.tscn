@@ -1,4 +1,4 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://main.gd" id="1_main"]
 
@@ -6,15 +6,17 @@
 size = Vector3(1.2, 1.2, 1.2)
 
 [sub_resource type="StandardMaterial3D" id="BoxMaterial"]
-shading_mode = 0
 albedo_color = Color(0.1, 1, 0.2, 1)
+
+[sub_resource type="StandardMaterial3D" id="UnshadedMaterial"]
+shading_mode = 0
+albedo_color = Color(1, 0.35, 0.1, 1)
 
 [sub_resource type="PlaneMesh" id="PlaneMesh"]
 size = Vector2(20, 20)
 
 [sub_resource type="StandardMaterial3D" id="GroundMaterial"]
-shading_mode = 0
-albedo_color = Color(0.1, 0.2, 1, 1)
+albedo_color = Color(0.25, 0.3, 0.8, 1)
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1_main")
@@ -24,13 +26,26 @@ transform = Transform3D(1, 0, 0, 0, 0.94, -0.34, 0, 0.34, 0.94, 0, 2.2, 5)
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.7, 0.7, 0, -0.7, 0.7, 0, 4, 0)
+light_color = Color(1, 0.95, 0.85, 1)
 light_energy = 1.4
+shadow_enabled = true
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6, 1.6, 1.2)
+light_color = Color(0.4, 0.7, 1, 1)
+light_energy = 2.5
+omni_range = 6.0
 shadow_enabled = true
 
 [node name="Box" type="MeshInstance3D" parent="."]
 position = Vector3(0, 1.1, 0)
 mesh = SubResource("BoxMesh")
 surface_material_override/0 = SubResource("BoxMaterial")
+
+[node name="UnshadedBox" type="MeshInstance3D" parent="."]
+position = Vector3(-2.2, 0.6, 0.4)
+mesh = SubResource("BoxMesh")
+surface_material_override/0 = SubResource("UnshadedMaterial")
 
 [node name="Ground" type="MeshInstance3D" parent="."]
 mesh = SubResource("PlaneMesh")

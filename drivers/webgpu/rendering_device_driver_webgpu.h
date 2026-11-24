@@ -168,6 +168,10 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	// these dummy samplers are used as substitutes.
 	WGPUSampler dummy_filtering_sampler = nullptr;
 	WGPUSampler dummy_comparison_sampler = nullptr;
+	// Non-filtering (nearest) sampler bound to depth-sampler alias bindings.
+	// WebGPU forbids sampling a depth texture with a filtering sampler; the stage
+	// WGSL redirects such reads to extra bindings bound to this sampler.
+	WGPUSampler dummy_nonfiltering_sampler = nullptr;
 
 	// --- BGL Rebinding Helper ---
 	WGPUBindGroup _get_compatible_bind_group(WGUniformSet *p_us, WGShader *p_target_shader, uint32_t p_set_idx);

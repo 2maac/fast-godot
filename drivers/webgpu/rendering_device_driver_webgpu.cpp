@@ -51,6 +51,23 @@
 #include <unordered_map>
 #include <vector>
 
+// Base binding number for depth-sampler aliases created by
+// _rewrite_depth_sampling_samplers(). High enough to avoid collisions with real
+// bindings (max ~48 after the doubling in split_combined_samplers) and with the
+// push constant ring buffer (binding 120).
+static constexpr uint32_t DEPTH_SAMPLER_ALIAS_BASE = 500;
+
+// Debug aid: when window.__WGSL_DUMP_FINAL is set, every final WGSL stage text
+// (after the depth-sampler alias rewrite and format remaps) is printed as base64
+// so the exact runtime module content can be inspected offline.
+static bool _wgsl_final_dump_enabled() {
+	static int cached = -1;
+	if (cached < 0) {
+		cached = EM_ASM_INT({ return (typeof window !== "undefined" && window.__WGSL_DUMP_FINAL) ? 1 : 0; });
+	}
+	return cached == 1;
+}
+
 // Tracks whether the current swap-chain image has been cleared yet this frame.
 // The 3D compositor blits first; the 2D canvas pass then loads on top.
 static bool _swapchain_pass_cleared = false;
@@ -200,15 +217,27 @@ static void scan_wgsl_binding_usage(const char *p_wgsl, uint32_t p_stage_bit, Ha
 	}
 }
 
-// Find samplers that WGSL uses with a depth texture (other than comparison
-// sampling). WebGPU requires such samplers to be NonFiltering; Godot 4.7's
-// shadow atlas is sampled both ways.
-static void scan_wgsl_depth_samplers(const char *p_wgsl, HashSet<uint32_t> &r_depth_samplers) {
-	const std::string text(p_wgsl);
-	std::unordered_map<std::string, uint32_t> name_key;
-	std::unordered_map<std::string, std::string> name_type;
+// WebGPU forbids sampling a depth texture with a filtering sampler, but Godot
+// samples the shadow depth atlas with SAMPLER_LINEAR_CLAMP (soft-shadow blur) in
+// shaders that also use that same sampler for regular float textures. Since the
+// sampler itself must stay filtering for the float uses, rewrite the depth reads
+// to a dedicated per-shader alias binding (DEPTH_SAMPLER_ALIAS_BASE + original
+// binding). The driver creates that binding as NonFiltering and binds a nearest
+// sampler there (see uniform_set_create / _get_compatible_bind_group).
+//
+// Returns a newly allocated WGSL string (caller frees) with the rewritten calls
+// and alias declarations, plus the (set << 16 | alias_binding) keys in
+// r_alias_bindings (OR-ed with p_stage_visibility). Returns nullptr when no
+// depth-filtering reads were found.
+static char *_rewrite_depth_sampling_samplers(const char *p_wgsl, HashMap<uint32_t, uint32_t> &r_alias_bindings, uint32_t p_stage_visibility) {
+	struct DeclInfo {
+		uint32_t set = 0;
+		uint32_t binding = 0;
+		std::string type;
+	};
+	std::unordered_map<std::string, DeclInfo> decls;
 
-	// Declaration pass.
+	// --- Declaration pass: global binding name -> (set, binding, WGSL type). ---
 	const char *p = p_wgsl;
 	while ((p = strstr(p, "@group(")) != nullptr) {
 		unsigned int grp = 0, bnd = 0;
@@ -242,30 +271,61 @@ static void scan_wgsl_depth_samplers(const char *p_wgsl, HashSet<uint32_t> &r_de
 			name_end++;
 		}
 		if (name_end > name_start) {
-			std::string name(name_start, (size_t)(name_end - name_start));
-			name_key[name] = ((uint32_t)grp << 16) | (uint32_t)bnd;
+			DeclInfo info;
+			info.set = (uint32_t)grp;
+			info.binding = (uint32_t)bnd;
 			const char *colon = strchr(name_end, ':');
 			if (colon && colon < semi) {
 				const char *ts = colon + 1;
 				while (*ts == ' ') {
 					ts++;
 				}
-				name_type[name] = std::string(ts, (size_t)(semi - ts));
+				std::string t(ts, (size_t)(semi - ts));
+				while (!t.empty() && (t.back() == ' ' || t.back() == '\n' || t.back() == '\t' || t.back() == '\r')) {
+					t.pop_back();
+				}
+				info.type = t;
 			}
+			decls[std::string(name_start, (size_t)(name_end - name_start))] = info;
 		}
 		p = semi + 1;
 	}
+	if (decls.empty()) {
+		return nullptr;
+	}
 
-	// Call pass: textureSample*(depthName, samplerName, ...).
 	const char *code = strstr(p_wgsl, "\nfn ");
 	if (!code) {
-		return;
+		return nullptr;
 	}
+
+	struct Replacement {
+		size_t start;
+		size_t end;
+		std::string text;
+	};
+	std::vector<Replacement> replacements;
+	// alias variable name -> "@group(S) @binding(B) var NAME : sampler;"
+	std::unordered_map<std::string, std::string> alias_decls;
+
+	// --- Call pass: textureSample*/textureGather*(depthTex, samplerName, ...). ---
 	const char *q = code;
-	while ((q = strstr(q, "textureSample")) != nullptr) {
-		const char *open = strchr(q, '(');
-		if (!open) {
+	while (true) {
+		const char *next_sample = strstr(q, "textureSample");
+		const char *next_gather = strstr(q, "textureGather");
+		const char *call = nullptr;
+		if (next_sample && next_gather) {
+			call = (next_sample < next_gather) ? next_sample : next_gather;
+		} else {
+			call = next_sample ? next_sample : next_gather;
+		}
+		if (!call) {
 			break;
+		}
+		const char *open = strchr(call, '(');
+		if (!open) {
+			q = call + 1;
+			continue;
 		}
 		const char *a = open + 1;
 		while (*a == ' ') {
@@ -287,18 +347,64 @@ static void scan_wgsl_depth_samplers(const char *p_wgsl, HashSet<uint32_t> &r_de
 		while (*b_end && *b_end != ',' && *b_end != ')') {
 			b_end++;
 		}
-		std::string first(a, (size_t)(a_end - a));
-		std::string second(b, (size_t)(b_end - b));
-		auto ft = name_type.find(first);
-		auto st = name_type.find(second);
-		auto sk = name_key.find(second);
-		if (ft != name_type.end() && st != name_type.end() && sk != name_key.end()) {
-			if (ft->second.rfind("texture_depth", 0) == 0 && st->second.find("sampler") != std::string::npos) {
-				r_depth_samplers.insert(sk->second);
+		const std::string first(a, (size_t)(a_end - a));
+		const std::string second(b, (size_t)(b_end - b));
+		auto ft = decls.find(first);
+		auto st = decls.find(second);
+		if (ft != decls.end() && st != decls.end() &&
+				ft->second.type.rfind("texture_depth", 0) == 0 && st->second.type == "sampler") {
+			const uint32_t alias_binding = DEPTH_SAMPLER_ALIAS_BASE + st->second.binding;
+			// NOTE: must not end in "_depth_alias" — that suffix is reserved for Tint's
+			// own depth-texture aliases, which the BGL scan below turns into texture entries.
+			const std::string alias_name = second + "_nf_sampler_alias";
+			Replacement replacement;
+			replacement.start = (size_t)(b - p_wgsl);
+			replacement.end = (size_t)(b_end - p_wgsl);
+			replacement.text = alias_name;
+			replacements.push_back(replacement);
+			if (alias_decls.find(alias_name) == alias_decls.end()) {
+				char decl[512];
+				snprintf(decl, sizeof(decl), "\n@group(%uu) @binding(%uu) var %s : sampler;",
+						st->second.set, alias_binding, alias_name.c_str());
+				alias_decls[alias_name] = decl;
 			}
+			uint32_t key = (st->second.set << 16) | alias_binding;
+			r_alias_bindings[key] = r_alias_bindings.has(key) ? (r_alias_bindings[key] | p_stage_visibility) : p_stage_visibility;
 		}
 		q = open + 1;
 	}
+	if (replacements.empty()) {
+		return nullptr;
+	}
+
+	// --- Rebuild the WGSL with replacements and the alias declarations. ---
+	std::string out;
+	size_t cursor = 0;
+	for (const Replacement &rep : replacements) {
+		out.append(p_wgsl + cursor, rep.start - cursor);
+		out.append(rep.text);
+		cursor = rep.end;
+	}
+	out.append(p_wgsl + cursor);
+
+	std::string decls_text;
+	for (const auto &kv : alias_decls) {
+		decls_text += kv.second;
+	}
+	size_t fn_pos = out.find("\nfn ");
+	if (fn_pos == std::string::npos) {
+		out += decls_text;
+	} else {
+		out.insert(fn_pos, decls_text);
+	}
+
+	char *ret = (char *)malloc(out.size() + 1);
+	if (!ret) {
+		return nullptr;
+	}
+	memcpy(ret, out.data(), out.size());
+	ret[out.size()] = 0;
+	return ret;
 }
 
 // =============================================================================
@@ -586,6 +692,10 @@ RenderingDeviceDriverWebGPU::~RenderingDeviceDriverWebGPU() {
 		wgpuSamplerRelease(dummy_comparison_sampler);
 		dummy_comparison_sampler = nullptr;
 	}
+	if (dummy_nonfiltering_sampler) {
+		wgpuSamplerRelease(dummy_nonfiltering_sampler);
+		dummy_nonfiltering_sampler = nullptr;
+	}
 
 	// Release aliasing stub buffer.
 	if (aliasing_stub_buffer) {
@@ -785,6 +895,20 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 		csd.maxAnisotropy = 1;
 		csd.compare = WGPUCompareFunction_Less;
 		dummy_comparison_sampler = wgpuDeviceCreateSampler(device, &csd);
+
+		// Non-filtering (nearest) sampler for depth-sampler alias bindings.
+		// WebGPU forbids sampling a depth texture with a filtering sampler, so
+		// depth reads that Godot performs through linear samplers are redirected
+		// to these aliases by the WGSL rewrite.
+		WGPUSamplerDescriptor nsd = {};
+		nsd.addressModeU = WGPUAddressMode_ClampToEdge;
+		nsd.addressModeV = WGPUAddressMode_ClampToEdge;
+		nsd.addressModeW = WGPUAddressMode_ClampToEdge;
+		nsd.magFilter = WGPUFilterMode_Nearest;
+		nsd.minFilter = WGPUFilterMode_Nearest;
+		nsd.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+		nsd.maxAnisotropy = 1;
+		dummy_nonfiltering_sampler = wgpuDeviceCreateSampler(device, &nsd);
 	}
 
 	// Create aliasing stub buffer — substituted for duplicate writable storage buffer bindings
@@ -3451,8 +3575,6 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 	HashMap<uint32_t, uint32_t> wgsl_binding_stages;
 	// Bindings that have a WGSL declaration (used or not).
 	HashSet<uint32_t> wgsl_declared_bindings;
-	// Sampler bindings used with a depth texture (must be NonFiltering).
-	HashSet<uint32_t> wgsl_depth_samplers;
 
 	// Maps (set_index << 16 | binding) → true if the WGSL storage buffer is read-only (var<storage, read>),
 	// false if read-write (var<storage, read_write>). Used to correctly set BGL buffer type for SSBOs.
@@ -3531,12 +3653,21 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 			break;
 		}
 
+		// WebGPU forbids sampling a depth texture with a filtering sampler, but
+		// Godot's soft-shadow code samples the depth shadow atlas with
+		// SAMPLER_LINEAR_CLAMP (which is also used for regular float textures in
+		// the same shader). Redirect those reads to dedicated non-filtering alias
+		// bindings so the sampler stays filtering for the float-texture uses.
+		{
+			const uint32_t stage_visibility = _stages_to_wgpu_visibility(1u << (uint32_t)s.shader_stage);
+			char *rewritten_wgsl = _rewrite_depth_sampling_samplers(wgsl_str, shader->depth_alias_sampler_bindings, stage_visibility);
+			if (rewritten_wgsl != nullptr) {
+				free(wgsl_str);
+				wgsl_str = rewritten_wgsl;
+			}
+		}
+
 		scan_wgsl_binding_usage(wgsl_str, (1u << (uint32_t)s.shader_stage), wgsl_binding_stages, wgsl_declared_bindings);
-		scan_wgsl_depth_samplers(wgsl_str, wgsl_depth_samplers);
-
-
-		// DEPTH_ALIAS parsing removed — depth=2 images are now depth=1 in SPIR-V,
-		// and a single texture_depth_2d variable handles both sampling modes.
 
 		// Remap unsupported 8-bit storage texture format names in WGSL.
 		// r8* and rg8* are not valid base WebGPU storage texel formats — remap to
@@ -4009,6 +4140,11 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 			}
 		}
 
+		if (_wgsl_final_dump_enabled()) {
+			print_line("WGSLF|" + shader->name + "|stg" + itos((int)s.shader_stage) + "|" +
+					CryptoCore::b64_encode_str((const uint8_t *)wgsl_str, strlen(wgsl_str)));
+		}
+
 		WGPUShaderSourceWGSL wgsl_source = {};
 		wgsl_source.chain.sType = WGPUSType_ShaderSourceWGSL;
 		wgsl_source.code = WGPUStringView{ wgsl_str, WGPU_STRLEN };
@@ -4443,7 +4579,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					{ uint32_t k = ((uint32_t)set << 16) | (u.binding * 2);
 					  entry.sampler.type = (wgsl_is_comparison_sampler.has(k) && wgsl_is_comparison_sampler[k])
 						  ? WGPUSamplerBindingType_Comparison
-						  : (wgsl_depth_samplers.has(k) ? WGPUSamplerBindingType_NonFiltering : WGPUSamplerBindingType_Filtering); }
+						  : WGPUSamplerBindingType_Filtering; }
 					bge.layout_entry = entry;
 					bge.array_length = 1;
 				} break;
@@ -4480,7 +4616,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					{ uint32_t k = ((uint32_t)set << 16) | (u.binding * 2 + 0);
 					  samp_entry.sampler.type = (wgsl_is_comparison_sampler.has(k) && wgsl_is_comparison_sampler[k])
 						  ? WGPUSamplerBindingType_Comparison
-						  : (wgsl_depth_samplers.has(k) ? WGPUSamplerBindingType_NonFiltering : WGPUSamplerBindingType_Filtering); }
+						  : WGPUSamplerBindingType_Filtering; }
 
 					WGPUBindGroupLayoutEntry &tex_entry = entries[e_idx++];
 					tex_entry = {};
@@ -4721,6 +4857,29 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 			entries.push_back(shadow_entry);
 		}
 
+		// Add BGL entries for depth-sampler aliases (see
+		// _rewrite_depth_sampling_samplers): plain sampler bindings declared as
+		// NonFiltering, bound to dummy_nonfiltering_sampler at bind group creation.
+		for (const KeyValue<uint32_t, uint32_t> &kv : shader->depth_alias_sampler_bindings) {
+			uint32_t alias_grp = kv.key >> 16;
+			uint32_t alias_bnd = kv.key & 0xFFFF;
+			if (alias_grp != set) {
+				continue;
+			}
+			WGPUBindGroupLayoutEntry sampler_entry = {};
+			sampler_entry.binding = alias_bnd;
+			sampler_entry.visibility = (WGPUShaderStage)kv.value;
+			sampler_entry.sampler.type = WGPUSamplerBindingType_NonFiltering;
+			entries.push_back(sampler_entry);
+			// Record it in bind_group_infos so the merged PC layout and the
+			// adapted-bind-group path know about the extra binding.
+			WGShader::BindGroupEntry alias_bge;
+			alias_bge.layout_entry = sampler_entry;
+			alias_bge.godot_type = RDD::UNIFORM_TYPE_SAMPLER;
+			alias_bge.array_length = 1;
+			bgi.entries.push_back(alias_bge);
+		}
+
 		// Log any duplicate binding indices for debugging.
 		for (uint32_t a = 0; a < entries.size(); a++) {
 			for (uint32_t b = a + 1; b < entries.size(); b++) {
@@ -4835,6 +4994,17 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					ae.texture.viewDimension = wgsl_tex_dims.has(kv.key) ? wgsl_tex_dims[kv.key] : WGPUTextureViewDimension_2D;
 					ae.texture.multisampled = false;
 					merged_entries.push_back(ae);
+				}
+				// Add depth-sampler alias entries to the merged layout.
+				for (const KeyValue<uint32_t, uint32_t> &kv : shader->depth_alias_sampler_bindings) {
+					uint32_t alias_grp = kv.key >> 16;
+					uint32_t alias_bnd = kv.key & 0xFFFF;
+					if (alias_grp != i) { continue; }
+					WGPUBindGroupLayoutEntry se = {};
+					se.binding = alias_bnd;
+					se.visibility = (WGPUShaderStage)kv.value;
+					se.sampler.type = WGPUSamplerBindingType_NonFiltering;
+					merged_entries.push_back(se);
 				}
 				// Add rw_storage split entries to the merged layout (sampled texture, not ReadOnly storage).
 				for (const KeyValue<uint32_t, uint32_t> &kv : wgsl_rw_storage_splits) {
@@ -5404,6 +5574,21 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 		}
 	}
 
+	// Bind a non-filtering (nearest) sampler at depth-sampler alias bindings.
+	// The stage WGSL reads depth textures through these bindings (see
+	// _rewrite_depth_sampling_samplers); WebGPU forbids a filtering sampler there.
+	for (const KeyValue<uint32_t, uint32_t> &kv : shader->depth_alias_sampler_bindings) {
+		uint32_t alias_grp = kv.key >> 16;
+		uint32_t alias_bnd = kv.key & 0xFFFF;
+		if (alias_grp != p_set_index || dummy_nonfiltering_sampler == nullptr) {
+			continue;
+		}
+		WGPUBindGroupEntry alias_entry = {};
+		alias_entry.binding = alias_bnd;
+		alias_entry.sampler = dummy_nonfiltering_sampler;
+		entries.push_back(alias_entry);
+	}
+
 	// If this is the merged PC group, inject the push constant ring buffer at PUSH_CONSTANT_RING_BINDING.
 	// Dynamic offset is 0 here; _flush_push_constants will rebind with the correct offset.
 	if (is_pc_group) {
@@ -5635,6 +5820,30 @@ WGPUBindGroup RenderingDeviceDriverWebGPU::_get_compatible_bind_group(WGUniformS
 	for (const auto &e : adapted) {
 		if (target_bindings.has(e.binding)) {
 			filtered.push_back(e);
+		}
+	}
+
+	// The target shader may use depth-sampler aliases that the source shader's
+	// bind group (and its BGL) do not have (they only exist in shader variants
+	// that sample depth textures). Supply the dummy non-filtering sampler.
+	for (const KeyValue<uint32_t, uint32_t> &kv : p_target_shader->depth_alias_sampler_bindings) {
+		uint32_t alias_grp = kv.key >> 16;
+		uint32_t alias_bnd = kv.key & 0xFFFF;
+		if (alias_grp != p_set_idx || dummy_nonfiltering_sampler == nullptr) {
+			continue;
+		}
+		bool present = false;
+		for (const auto &e : filtered) {
+			if (e.binding == alias_bnd) {
+				present = true;
+				break;
+			}
+		}
+		if (!present) {
+			WGPUBindGroupEntry alias_entry = {};
+			alias_entry.binding = alias_bnd;
+			alias_entry.sampler = dummy_nonfiltering_sampler;
+			filtered.push_back(alias_entry);
 		}
 	}
 
@@ -7789,12 +7998,30 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 		ShaderStage p_stage) {
 	PackedByteArray patched = _patch_spirv_spec_constants(p_spirv, p_constants);
 
+	if (_wgsl_final_dump_enabled()) {
+		print_line("SPVPATCH|stg" + itos((int)p_stage) + "|" +
+				CryptoCore::b64_encode_str(patched.ptr(), patched.size()));
+	}
+
 	// Cached SPIR-V → WGSL via Tint (see _spv_to_wgsl_cached above).
 	char *wgsl_str = _spv_to_wgsl_cached(patched.ptr(), (int)patched.size());
 
 	if (!wgsl_str) {
 		ERR_PRINT("WebGPU: SPIR-V→WGSL conversion failed for specialized shader module.");
 		return nullptr;
+	}
+
+	// Depth-sampler alias rewrite (must match shader_create_from_container).
+	// The alias bindings are derived from the original sampler binding, so the
+	// specialized module declares exactly the bindings the shader's BGL expects.
+	{
+		HashMap<uint32_t, uint32_t> ignored_alias_bindings;
+		const uint32_t stage_visibility = _stages_to_wgpu_visibility(1u << (uint32_t)p_stage);
+		char *rewritten_wgsl = _rewrite_depth_sampling_samplers(wgsl_str, ignored_alias_bindings, stage_visibility);
+		if (rewritten_wgsl != nullptr) {
+			free(wgsl_str);
+			wgsl_str = rewritten_wgsl;
+		}
 	}
 
 	// Format remapping passes (must match shader_create_from_container).
@@ -7935,6 +8162,11 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 		CharString cs = ws.utf8();
 		wgsl_str = (char *)malloc(cs.length() + 1);
 		memcpy(wgsl_str, cs.get_data(), cs.length() + 1);
+	}
+
+	if (_wgsl_final_dump_enabled()) {
+		print_line("WGSLS|stg" + itos((int)p_stage) + "|" +
+				CryptoCore::b64_encode_str((const uint8_t *)wgsl_str, strlen(wgsl_str)));
 	}
 
 	WGPUShaderSourceWGSL wgsl_source = {};
@@ -8382,6 +8614,12 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 	String _pipeline_label_str = "pipe#" + itos(_pid) + ":" + shader->name;
 	CharString _pipeline_label_cs = _pipeline_label_str.utf8();
 	desc.label = { _pipeline_label_cs.get_data(), WGPU_STRLEN };
+
+	if (_wgsl_final_dump_enabled()) {
+		print_line("PIPE|" + _pipeline_label_str +
+				"|v=" + String(specialized_vertex ? "spec" : "base") +
+				"|f=" + String(specialized_fragment ? "spec" : "base"));
+	}
 
 	WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device, &desc);
 	if (!pipeline) {

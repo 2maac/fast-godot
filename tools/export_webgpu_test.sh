@@ -2,21 +2,39 @@
 # Export test_project for Web against the WebGPU-enabled template built here.
 # The stock 4.7.2 editor is only an export front-end: the engine inside the
 # template is this tree's fast-godot + WebGPU build.
+#
+# Usage: ./tools/export_webgpu_test.sh            # debug template (default)
+#        MODE=release ./tools/export_webgpu_test.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$ROOT/test_project"
 EDITOR="${GODOT_EDITOR:-/tmp/godot-stock/Godot.app/Contents/MacOS/Godot}"
-TEMPLATE="$ROOT/bin/godot.web.template_debug.wasm32.nothreads.dlink.zip"
+MODE="${MODE:-debug}"
+
+case "$MODE" in
+debug)
+    TEMPLATE="$ROOT/bin/godot.web.template_debug.wasm32.nothreads.dlink.zip"
+    EXPORT_FLAG="--export-debug"
+    ;;
+release)
+    TEMPLATE="$ROOT/bin/godot.web.template_release.wasm32.nothreads.dlink.zip"
+    EXPORT_FLAG="--export-release"
+    ;;
+*)
+    echo "MODE must be 'debug' or 'release' (got '$MODE')" >&2
+    exit 1
+    ;;
+esac
 
 if [ ! -f "$TEMPLATE" ]; then
-    echo "Missing template: $TEMPLATE" >&2
+    echo "Missing $MODE template: $TEMPLATE" >&2
     echo "Build it with: ./tools/build_webgpu_template.sh" >&2
     exit 1
 fi
 
 mkdir -p "$PROJECT/build"
 "$EDITOR" --headless --path "$PROJECT" --import >/tmp/webgpu_import.log 2>&1 || true
-"$EDITOR" --headless --path "$PROJECT" --export-debug "Web" "$PROJECT/build/index.html" >/tmp/webgpu_export.log 2>&1
+"$EDITOR" --headless --path "$PROJECT" "$EXPORT_FLAG" "Web" "$PROJECT/build/index.html" >/tmp/webgpu_export.log 2>&1
 
 # The stock editor predates rendering_device/driver.web, so its HTML shell does
 # not emit renderingDriver. Tell the JS loader to pre-initialize the GPU device.
@@ -35,4 +53,4 @@ if "GODOT_CONFIG['renderingDriver'] = 'webgpu';" not in text:
 print("[export] renderingDriver=webgpu injected into index.html")
 PY
 
-echo "[export] done: $PROJECT/build"
+echo "[export] done ($MODE): $PROJECT/build"

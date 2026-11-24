@@ -2133,6 +2133,83 @@ Vector<uint8_t> fix_nonfinite_literals(const Vector<uint8_t> &p_bytes) {
 	return out;
 }
 
+// Returns true when operand word p_index of an instruction with p_opcode must be
+// treated as a literal value and never remapped by ID substitution.
+//
+// The handle-array flattening pass rewrites a handful of IDs (flattened array
+// types, access-chain results and duplicate pointer types) by matching operand
+// words. SPIR-V instructions also carry literal operands (decoration parameters,
+// struct member offsets / matrix strides, switch case values, image-operand
+// masks, composite indices, ...). Remapping a literal that happens to equal one
+// of those IDs silently corrupts the module - most notably OpMemberDecorate
+// Offset, which makes Tint emit bogus @size() attributes and inflates uniform
+// buffer layouts. Skip every literal operand position.
+static bool _spv_operand_is_literal(uint16_t p_opcode, uint32_t p_word_count, uint32_t p_index) {
+	if (p_index == 0) {
+		return false;
+	}
+	switch (p_opcode) {
+		case OP_DECORATE: // target-id, decoration, decoration params (all literals)
+		case OP_MEMBER_DECORATE: // struct-id, member index, decoration, params
+			return p_index >= 2;
+		case OP_ENTRY_POINT: // execution model literal, function id, name string, interface ids
+			return p_index != 2;
+		case 16: // OpExecutionMode: entry-point id, mode literal, literals
+			return p_index >= 2;
+		case 246: // OpLoopMerge: merge block id, continue target id, literals
+			return p_index >= 3;
+		case 247: // OpSelectionMerge: merge block id, selection control literal
+			return p_index >= 2;
+		case OP_TYPE_IMAGE: // sampled type id, then dim/depth/arrayed/ms/sampled/format literals
+			return p_index >= 2;
+		case OP_SPEC_CONSTANT_OP: // result type, result, opcode literal, operands
+			return p_index == 3;
+		case 12: // OpExtInst: result type, result, set, instruction literal, operands
+			return p_index == 4;
+		case 79: // OpVectorShuffle: result type, result, two vectors, component literals
+			return p_index >= 5;
+		case 81: // OpCompositeExtract: result type, result, composite, index literals
+			return p_index >= 4;
+		case 82: // OpCompositeInsert: result type, result, object, composite, index literals
+			return p_index >= 5;
+		case 250: // OpBranchConditional: condition, true label, false label, branch weights
+			return p_index >= 4;
+		case 251: // OpSwitch: selector, default label, then (case literal, label) pairs
+			return p_index >= 3 && ((p_index - 3) % 2 == 0);
+		case OP_LOAD: // ... pointer, [memory operands mask, operands]
+			return p_word_count >= 5 && p_index == 4;
+		case OP_STORE: // pointer, object, [memory operands mask, operands]
+			return p_word_count >= 4 && p_index == 3;
+		case OP_COPY_MEMORY:
+		case OP_COPY_MEMORY_SIZED:
+			return p_index >= (p_opcode == OP_COPY_MEMORY_SIZED ? 4 : 3);
+		// Image sampling / read / write: after the id operands comes an image
+		// operands mask literal, then id operands.
+		case 87: // OpImageSampleImplicitLod
+		case 88: // OpImageSampleExplicitLod
+		case 91: // OpImageSampleProjImplicitLod
+		case 92: // OpImageSampleProjExplicitLod
+			return p_word_count >= 6 && p_index == 5;
+		case 89: // OpImageSampleDrefImplicitLod
+		case 90: // OpImageSampleDrefExplicitLod
+		case 93: // OpImageSampleProjDrefImplicitLod
+		case 94: // OpImageSampleProjDrefExplicitLod
+		case 96: // OpImageGather
+		case 97: // OpImageDrefGather
+			return p_word_count >= 7 && p_index == 6;
+		case 95: // OpImageFetch
+		case 98: // OpImageRead
+		case 99: // OpImageWrite
+			return p_word_count >= 6 && p_index == 5;
+		case 8: // OpLine: file id, line literal, column literal
+		case 6: // OpMemberName: type id, member literal, name
+		case OP_NAME: // OpName: target id, name string
+			return p_index >= 2;
+		default:
+			return false;
+	}
+}
+
 // ---- flatten_binding_arrays ----
 //
 // Tint rejects OpTypeArray/OpTypeRuntimeArray of handle types (image, sampler,
@@ -2348,30 +2425,20 @@ Vector<uint8_t> flatten_binding_arrays(const Vector<uint8_t> &p_bytes) {
 			}
 		}
 
-		// Determine which word positions hold literal values (not IDs)
-		// and should be excluded from replacement.
-		// OpConstant/OpSpecConstant: words 3+ are literal values.
-		// OpConstantComposite/OpSpecConstantComposite: words 3+ are constituent IDs (DO replace).
-		// OpSwitch: alternating case literals starting at word 3 (word 3=literal, 4=label, 5=literal...).
-		bool has_literals = false;
-		uint32_t literal_start = 0;
-		bool switch_alternating = false;
-
-		if (op == OP_CONSTANT || op == OP_SPEC_CONSTANT) {
-			has_literals = true;
-			literal_start = 3;
-		} else if (op == 251 /* OpSwitch */) {
-			switch_alternating = true;
-		}
+		// Determine which word positions hold literal values (not IDs) and must
+		// be excluded from replacement. OpConstant/OpSpecConstant literals start
+		// at word 3; every other opcode-specific literal is described by
+		// _spv_operand_is_literal() (decorations, member offsets, switch cases...).
+		const bool has_const_literals = (op == OP_CONSTANT || op == OP_SPEC_CONSTANT);
 
 		// Check if this instruction has any word that needs replacement.
 		bool needs_rewrite = false;
 		for (uint32_t i = 1; i < wc; i++) {
-			if (has_literals && i >= literal_start) {
+			if (has_const_literals && i >= 3) {
 				continue;
 			}
-			if (switch_alternating && i >= 2 && ((i - 2) % 2 == 0)) {
-				continue; // Case literal positions in OpSwitch.
+			if (_spv_operand_is_literal(op, wc, i)) {
+				continue;
 			}
 			uint32_t word = read_word(data, len, pos + i);
 			if (array_to_elem.has(word) || ac_to_var.has(word) || ptr_remap.has(word)) {
@@ -2387,11 +2454,11 @@ Vector<uint8_t> flatten_binding_arrays(const Vector<uint8_t> &p_bytes) {
 					push_word(out, word);
 					continue;
 				}
-				if (has_literals && i >= literal_start) {
+				if (has_const_literals && i >= 3) {
 					push_word(out, word);
 					continue;
 				}
-				if (switch_alternating && i >= 2 && ((i - 2) % 2 == 0)) {
+				if (_spv_operand_is_literal(op, wc, i)) {
 					push_word(out, word);
 					continue;
 				}

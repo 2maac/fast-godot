@@ -173,6 +173,14 @@ struct WGShader {
 	// Used by uniform_set_create to add extra bind group entries for split depth textures.
 	HashMap<uint32_t, uint32_t> depth_alias_bindings;
 
+	// Depth-sampler aliases: maps (set << 16 | alias_binding) → WGPUShaderStage bitmask.
+	// WebGPU forbids sampling a depth texture with a filtering sampler, but Godot samples
+	// the shadow depth atlas with linear-filtering samplers (soft-shadow blur) while the
+	// same sampler binding is also used for regular float textures. The stage WGSL rewrites
+	// those depth reads to these extra bindings, which are bound to a non-filtering
+	// (nearest) sampler in uniform_set_create.
+	HashMap<uint32_t, uint32_t> depth_alias_sampler_bindings;
+
 	// Read-write storage texture splits: maps (set << 16 | write_binding) → read_shadow_binding.
 	// When readonly-and-readwrite-storage-textures is unavailable, read_write storage
 	// textures are split into separate write (original) + read (shadow) bindings.
