@@ -1162,7 +1162,14 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
 }
 
 bool RendererSceneRenderRD::_render_buffers_can_be_storage() {
+#ifdef WEBGPU_ENABLED
+	// Prefer the raster post-process/copy path on WebGPU. The compute
+	// tonemapper/copy path depends on storage-image support that this port has
+	// not validated yet and silently produced an empty render target.
+	return false;
+#else
 	return true;
+#endif
 }
 
 void RendererSceneRenderRD::gi_set_use_half_resolution(bool p_enable) {

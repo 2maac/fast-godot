@@ -1083,6 +1083,30 @@ Files extracted from upstream source:
 - `LICENSE`
 
 
+## tint
+
+- Upstream: https://dawn.googlesource.com/dawn (src/tint/)
+- Version: git (db49a5496374b1f7284e0b9c8f2964c01d4bb20a, 2026)
+- License: BSD-3-Clause
+
+Files extracted from upstream source:
+
+- `src/tint/` folder (extracted via `extract_tint.sh`)
+- `LICENSE`
+
+Patches:
+
+- `0001-skip-block-layout-validation.patch` — `SetSkipBlockLayout(true)` for Godot UBO layout
+- `0002-allow-struct-member-size-mismatch.patch` — `kAllowStructMemberSizeMismatch` for specialization constants
+- `0003-decompose-strided-array-stride-guard.patch` — Skip padding when stride < element size
+- `0004-accept-non-constant-point-size.patch` — Accept non-constant `point_size` stores
+- `0005-size-emission-and-capability.patch` — `@size` emission guard for specialization constants
+- `0006-remove-abseil-dependency.patch` — Replace `absl::from_chars` with `std::from_chars`
+
+Used for SPIR-V to WGSL translation in the WebGPU rendering backend.
+Requires spirv-tools and spirv-headers.
+
+
 ## thorvg
 
 - Upstream: https://github.com/thorvg/thorvg
