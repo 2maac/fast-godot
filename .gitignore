@@ -421,3 +421,4 @@ test_project/build-fast/
 test_project/exports/
 test_project/.godot/grit/
 test_project/.godot/imported/
+WEBGPU_PARITY_AUDIT.md
