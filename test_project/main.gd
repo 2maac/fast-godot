@@ -16,6 +16,7 @@ func _ready() -> void:
 	_build_depth_scan_panel()
 	_build_soft_particles()
 	_build_2d_shadow_demo()
+	_setup_depth_of_field()
 	print("WEBGPU_TEST_READY driver=%s adapter=%s" % [driver, adapter])
 	if OS.has_feature("web"):
 		JavaScriptBridge.eval("window.__webgpu_test_ready = true; console.log('WEBGPU_TEST_JS_READY');")
@@ -87,6 +88,9 @@ func _build_soft_particles() -> void:
 	particles.draw_pass_1 = quad
 	particles.position = Vector3(0.35, 0.05, 1.35)
 	particles.visibility_aabb = AABB(Vector3(-1.5, -0.5, -1.5), Vector3(3.0, 3.0, 3.0))
+	# Trails re-render the same proximity-fade material from transform history.
+	particles.trail_enabled = true
+	particles.trail_lifetime = 0.35
 	add_child(particles)
 	particles.emitting = true
 
@@ -100,6 +104,17 @@ func _make_soft_dot_texture() -> ImageTexture:
 			var d := Vector2(x + 0.5, y + 0.5).distance_to(centre) / (size * 0.5)
 			img.set_pixel(x, y, Color(1, 1, 1, clampf(1.0 - d, 0.0, 1.0)))
 	return ImageTexture.create_from_image(img)
+
+# Far-field depth of field: bokeh_dof_raster samples the depth texture at the
+# post-process stage, so this exercises the resolved/copied depth a second time
+# (and the raster DOF path instead of the compute one).
+func _setup_depth_of_field() -> void:
+	var attributes := CameraAttributesPractical.new()
+	attributes.dof_blur_far_enabled = true
+	attributes.dof_blur_far_distance = 5.5
+	attributes.dof_blur_far_transition = 3.0
+	attributes.dof_blur_amount = 0.18
+	$Camera3D.attributes = attributes
 
 # 2D layer: a lit ColorRect covered by a PointLight2D with shadows and a
 # LightOccluder2D. This drives canvas.glsl's shadow-atlas sampling path

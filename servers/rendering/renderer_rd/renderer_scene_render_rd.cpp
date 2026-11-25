@@ -550,7 +550,11 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 
 			for (uint32_t i = 0; i < rb->get_view_count(); i++) {
 				buffers.base_texture = use_upscaled_texture ? rb->get_upscaled_texture(i) : rb->get_internal_texture(i);
-				buffers.depth_texture = p_use_msaa ? rb->get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_BACK_DEPTH, i, 0) : rb->get_depth_texture(i);
+				// Always sample the back depth: the raw depth attachment cannot be
+				// sampled as a float texture on WebGPU, and the back depth is filled
+				// whenever DoF is enabled (DoF sets used_depth_texture, which makes
+				// the depth copy run before post-processing).
+				buffers.depth_texture = rb->get_texture_slice(RB_SCOPE_BUFFERS, RB_TEX_BACK_DEPTH, i, 0);
 				buffers.base_fb = FramebufferCacheRD::get_singleton()->get_cache(buffers.base_texture); // TODO move this into bokeh_dof_raster, we can do this internally
 
 				// In stereo p_render_data->z_near and p_render_data->z_far can be offset for our combined frustum.
