@@ -1921,6 +1921,36 @@ static WGPUTextureFormat _get_srgb_view_format(WGPUTextureFormat p_format) {
 		case WGPUTextureFormat_BC2RGBAUnormSrgb: return WGPUTextureFormat_BC2RGBAUnorm;
 		case WGPUTextureFormat_BC3RGBAUnorm: return WGPUTextureFormat_BC3RGBAUnormSrgb;
 		case WGPUTextureFormat_BC3RGBAUnormSrgb: return WGPUTextureFormat_BC3RGBAUnorm;
+		case WGPUTextureFormat_BC7RGBAUnorm: return WGPUTextureFormat_BC7RGBAUnormSrgb;
+		case WGPUTextureFormat_BC7RGBAUnormSrgb: return WGPUTextureFormat_BC7RGBAUnorm;
+		case WGPUTextureFormat_ASTC4x4Unorm: return WGPUTextureFormat_ASTC4x4UnormSrgb;
+		case WGPUTextureFormat_ASTC4x4UnormSrgb: return WGPUTextureFormat_ASTC4x4Unorm;
+		case WGPUTextureFormat_ASTC5x4Unorm: return WGPUTextureFormat_ASTC5x4UnormSrgb;
+		case WGPUTextureFormat_ASTC5x4UnormSrgb: return WGPUTextureFormat_ASTC5x4Unorm;
+		case WGPUTextureFormat_ASTC5x5Unorm: return WGPUTextureFormat_ASTC5x5UnormSrgb;
+		case WGPUTextureFormat_ASTC5x5UnormSrgb: return WGPUTextureFormat_ASTC5x5Unorm;
+		case WGPUTextureFormat_ASTC6x5Unorm: return WGPUTextureFormat_ASTC6x5UnormSrgb;
+		case WGPUTextureFormat_ASTC6x5UnormSrgb: return WGPUTextureFormat_ASTC6x5Unorm;
+		case WGPUTextureFormat_ASTC6x6Unorm: return WGPUTextureFormat_ASTC6x6UnormSrgb;
+		case WGPUTextureFormat_ASTC6x6UnormSrgb: return WGPUTextureFormat_ASTC6x6Unorm;
+		case WGPUTextureFormat_ASTC8x5Unorm: return WGPUTextureFormat_ASTC8x5UnormSrgb;
+		case WGPUTextureFormat_ASTC8x5UnormSrgb: return WGPUTextureFormat_ASTC8x5Unorm;
+		case WGPUTextureFormat_ASTC8x6Unorm: return WGPUTextureFormat_ASTC8x6UnormSrgb;
+		case WGPUTextureFormat_ASTC8x6UnormSrgb: return WGPUTextureFormat_ASTC8x6Unorm;
+		case WGPUTextureFormat_ASTC8x8Unorm: return WGPUTextureFormat_ASTC8x8UnormSrgb;
+		case WGPUTextureFormat_ASTC8x8UnormSrgb: return WGPUTextureFormat_ASTC8x8Unorm;
+		case WGPUTextureFormat_ASTC10x5Unorm: return WGPUTextureFormat_ASTC10x5UnormSrgb;
+		case WGPUTextureFormat_ASTC10x5UnormSrgb: return WGPUTextureFormat_ASTC10x5Unorm;
+		case WGPUTextureFormat_ASTC10x6Unorm: return WGPUTextureFormat_ASTC10x6UnormSrgb;
+		case WGPUTextureFormat_ASTC10x6UnormSrgb: return WGPUTextureFormat_ASTC10x6Unorm;
+		case WGPUTextureFormat_ASTC10x8Unorm: return WGPUTextureFormat_ASTC10x8UnormSrgb;
+		case WGPUTextureFormat_ASTC10x8UnormSrgb: return WGPUTextureFormat_ASTC10x8Unorm;
+		case WGPUTextureFormat_ASTC10x10Unorm: return WGPUTextureFormat_ASTC10x10UnormSrgb;
+		case WGPUTextureFormat_ASTC10x10UnormSrgb: return WGPUTextureFormat_ASTC10x10Unorm;
+		case WGPUTextureFormat_ASTC12x10Unorm: return WGPUTextureFormat_ASTC12x10UnormSrgb;
+		case WGPUTextureFormat_ASTC12x10UnormSrgb: return WGPUTextureFormat_ASTC12x10Unorm;
+		case WGPUTextureFormat_ASTC12x12Unorm: return WGPUTextureFormat_ASTC12x12UnormSrgb;
+		case WGPUTextureFormat_ASTC12x12UnormSrgb: return WGPUTextureFormat_ASTC12x12Unorm;
 		case WGPUTextureFormat_ETC2RGB8Unorm: return WGPUTextureFormat_ETC2RGB8UnormSrgb;
 		case WGPUTextureFormat_ETC2RGB8UnormSrgb: return WGPUTextureFormat_ETC2RGB8Unorm;
 		case WGPUTextureFormat_ETC2RGB8A1Unorm: return WGPUTextureFormat_ETC2RGB8A1UnormSrgb;
@@ -2073,6 +2103,21 @@ static bool _is_srgb_format(WGPUTextureFormat p_format) {
 		case WGPUTextureFormat_ETC2RGB8UnormSrgb:
 		case WGPUTextureFormat_ETC2RGB8A1UnormSrgb:
 		case WGPUTextureFormat_ETC2RGBA8UnormSrgb:
+		case WGPUTextureFormat_BC7RGBAUnormSrgb:
+		case WGPUTextureFormat_ASTC4x4UnormSrgb:
+		case WGPUTextureFormat_ASTC5x4UnormSrgb:
+		case WGPUTextureFormat_ASTC5x5UnormSrgb:
+		case WGPUTextureFormat_ASTC6x5UnormSrgb:
+		case WGPUTextureFormat_ASTC6x6UnormSrgb:
+		case WGPUTextureFormat_ASTC8x5UnormSrgb:
+		case WGPUTextureFormat_ASTC8x6UnormSrgb:
+		case WGPUTextureFormat_ASTC8x8UnormSrgb:
+		case WGPUTextureFormat_ASTC10x5UnormSrgb:
+		case WGPUTextureFormat_ASTC10x6UnormSrgb:
+		case WGPUTextureFormat_ASTC10x8UnormSrgb:
+		case WGPUTextureFormat_ASTC10x10UnormSrgb:
+		case WGPUTextureFormat_ASTC12x10UnormSrgb:
+		case WGPUTextureFormat_ASTC12x12UnormSrgb:
 			return true;
 		default:
 			return false;
