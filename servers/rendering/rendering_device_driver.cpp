@@ -55,6 +55,19 @@ uint64_t RenderingDeviceDriver::api_trait_get(ApiTrait p_trait) {
 			return false;
 		case API_TRAIT_TEXTURE_OUTPUTS_REQUIRE_CLEARS:
 			return false;
+		// Traits added by the WebGPU port. Native drivers leave them at 0, which
+		// keeps RenderingDevice on its generic paths; without explicit cases the
+		// Metal/Vulkan drivers (which defer unknown traits to this function) would
+		// spam ERR_FAIL_V(0) for every skeleton/draw query.
+		case API_TRAIT_TEXTURE_GET_DATA_VIA_DRIVER:
+		case API_TRAIT_TEXTURE_INITIALIZE_DIRECT_WRITE:
+		case API_TRAIT_BUFFER_CREATE_MAPPED_AT_CREATION:
+		case API_TRAIT_STAGING_BUFFER_MAX_SIZE_MB:
+		case API_TRAIT_SKELETON_BUFFER_DIRECT_WRITE:
+		case API_TRAIT_FORCE_OMNI_DUAL_PARABOLOID:
+		case API_TRAIT_BATCH_INSTANCE_DRAWS:
+		case API_TRAIT_FIRST_INSTANCE_INDEX:
+			return 0;
 		default:
 			ERR_FAIL_V(0);
 	}
