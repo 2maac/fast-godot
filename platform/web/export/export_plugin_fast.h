@@ -60,14 +60,16 @@ public:
 			}
 		}
 		// The wasm template only contains the WebGPU rendering device (the builds are
-		// made with webgpu=yes opengl3=no), so the project has to select the mobile or
-		// forward_plus rendering method for web. Without it the engine tries to create
-		// the GLES3 renderer, which is not compiled into the template, and the page
-		// never boots. Catch that here instead of in the browser console.
+		// made with webgpu=yes opengl3=no), and this backend only implements the
+		// Forward Mobile renderer:
+		// - forward_plus needs gl_HelperInvocation and GLSL subgroup operations in
+		//   cluster_render.glsl, which the SPIR-V -> WGSL path cannot express;
+		// - gl_compatibility selects the GLES3 driver, which is not compiled in.
+		// Without this check the page either never boots or renders black.
 		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
-		const bool webgpu_method = rendering_method == "mobile" || rendering_method == "forward_plus";
+		const bool webgpu_method = rendering_method == "mobile";
 		if (!webgpu_method) {
-			kept.push_back(TTR("The HTML5 Fast template only contains the WebGPU renderer. Set \"rendering/renderer/rendering_method.web\" to \"mobile\" (or \"forward_plus\") in Project Settings > Rendering > Renderer, and make sure \"rendering/rendering_device/driver.web\" is \"webgpu\"."));
+			kept.push_back(TTR("The HTML5 Fast template only contains the WebGPU renderer, and WebGPU support here covers the Forward Mobile renderer. Set \"rendering/renderer/rendering_method.web\" to \"mobile\" in Project Settings > Rendering > Renderer, and make sure \"rendering/rendering_device/driver.web\" is \"webgpu\". (forward_plus needs subgroup operations the WebGPU backend cannot express; gl_compatibility needs the GLES3 driver, which is not built into this template.)"));
 		}
 		r_error = String("\n").join(kept).strip_edges();
 		r_missing_templates = false;

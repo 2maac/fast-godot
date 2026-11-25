@@ -11,6 +11,27 @@ PROJECT="$ROOT/test_project"
 EDITOR="${GODOT_EDITOR:-/tmp/godot-stock/Godot.app/Contents/MacOS/Godot}"
 MODE="${MODE:-debug}"
 
+# This template is built with webgpu=yes opengl3=no and only implements the
+# Forward Mobile renderer, so reject project configurations that would boot to a
+# black page. (forward_plus needs GLSL subgroup operations + gl_HelperInvocation,
+# which the WebGPU backend cannot express; gl_compatibility needs the GLES3
+# driver, which is not compiled into the template.)
+METHOD="$(sed -n 's/^renderer\/rendering_method\.web="\(.*\)"$/\1/p' "$PROJECT/project.godot" | head -1)"
+DRIVER="$(sed -n 's/^rendering_device\/driver\.web="\(.*\)"$/\1/p' "$PROJECT/project.godot" | head -1)"
+if [ "$METHOD" != "mobile" ]; then
+    cat >&2 <<EOF
+The WebGPU template only contains the Forward Mobile renderer, but
+rendering/renderer/rendering_method.web is '${METHOD:-unset}'.
+Set it to "mobile" in test_project/project.godot.
+EOF
+    exit 1
+fi
+if [ "$DRIVER" != "webgpu" ]; then
+    echo "rendering_device/driver.web must be \"webgpu\" (got '${DRIVER:-unset}')." >&2
+    exit 1
+fi
+
+
 case "$MODE" in
 debug)
     TEMPLATE="$ROOT/bin/godot.web.template_debug.wasm32.nothreads.dlink.zip"
