@@ -65,6 +65,12 @@ func _build_soft_particles() -> void:
 	process.gravity = Vector3(0.0, 0.12, 0.0)
 	process.scale_min = 0.4
 	process.scale_max = 0.9
+	# Rigid collisions against the sphere below: exercises the particle collision
+	# compute path (collision buffer + collider textures).
+	process.collision_mode = ParticleProcessMaterial.COLLISION_RIGID
+	process.collision_friction = 0.4
+	process.collision_bounce = 0.7
+	process.collision_use_scale = true
 
 	var quad := QuadMesh.new()
 	quad.size = Vector2(0.28, 0.28)
@@ -88,11 +94,19 @@ func _build_soft_particles() -> void:
 	particles.draw_pass_1 = quad
 	particles.position = Vector3(0.35, 0.05, 1.35)
 	particles.visibility_aabb = AABB(Vector3(-1.5, -0.5, -1.5), Vector3(3.0, 3.0, 3.0))
+	particles.collision_base_size = 0.12
 	# Trails re-render the same proximity-fade material from transform history.
 	particles.trail_enabled = true
 	particles.trail_lifetime = 0.35
 	add_child(particles)
 	particles.emitting = true
+
+	# Collider above the emitter so the rising particles bounce off it.
+	var collider := GPUParticlesCollisionSphere3D.new()
+	collider.name = "ParticleCeiling"
+	collider.radius = 0.55
+	collider.position = Vector3(0.35, 1.15, 1.35)
+	add_child(collider)
 
 # Small radial sprite used as the particle albedo so the quads read as dots.
 func _make_soft_dot_texture() -> ImageTexture:
