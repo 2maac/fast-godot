@@ -33,6 +33,8 @@ if [ ! -f "$TEMPLATE" ]; then
 fi
 
 mkdir -p "$PROJECT/build"
+# Exported files must not be scanned as project assets.
+touch "$PROJECT/build/.gdignore"
 "$EDITOR" --headless --path "$PROJECT" --import >/tmp/webgpu_import.log 2>&1 || true
 "$EDITOR" --headless --path "$PROJECT" "$EXPORT_FLAG" "Web" "$PROJECT/build/index.html" >/tmp/webgpu_export.log 2>&1
 

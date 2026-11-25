@@ -484,6 +484,18 @@ def export_main(argv):
         extra.append("threads=yes" if threads_mode else "threads=no")
         if threads_mode:
             announce("Grit: building a threaded web template (the host must send COOP/COEP)")
+        # This fork ships the WebGPU rendering backend (dwalter/godotwebgpu port), so
+        # the Fast web template is built with it instead of the default GLES3/WebGL2
+        # driver: a project's scripts are linked into a template that only contains
+        # the WebGPU rendering device. The exported HTML selects the driver from
+        # rendering/renderer/rendering_method.web, so the project has to use "mobile"
+        # or "forward_plus"; the Web export platform rejects gl_compatibility with an
+        # explanation. An explicit scons_args override (e.g. from a custom preset)
+        # still wins.
+        if not any(arg.split("=", 1)[0] in ("webgpu", "opengl3") for arg in extra):
+            extra.append("webgpu=yes")
+            extra.append("opengl3=no")
+            announce("Grit: building the web template with the WebGPU rendering driver")
 
     # Optimization level. The preset's mode wins; without one, fall back to the
     # historical behaviour (web -O3 only when the legacy "optimized" flag asked

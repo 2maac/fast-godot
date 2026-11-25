@@ -414,3 +414,9 @@ HANDOVER.md
 
 # Local doctest HOME created when running the suite from the workspace.
 /.testhome/
+
+### WebGPU test project: generated export artifacts ###
+test_project/build-fast/
+test_project/exports/
+test_project/.godot/grit/
+test_project/.godot/imported/
