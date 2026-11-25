@@ -1012,6 +1012,16 @@ Error GritExportPlugin::prepare_export(const Ref<EditorExportPreset> &p_preset, 
 
 	// HTML5 is cross-compiled by Emscripten on every host, so it is exempt.
 	const bool web_target = platform_preset.is_valid() && platform_preset->get_platform().is_valid() && platform_preset->get_platform()->get_name() == "HTML5 Fast";
+	if (web_target) {
+		// The HTML5 Fast template is built with webgpu=yes opengl3=no and this
+		// backend only implements the Forward Mobile renderer. Reject anything else
+		// before the template build, which is the expensive part of the export.
+		const String rendering_method = ProjectSettings::get_singleton()->get("rendering/renderer/rendering_method.web");
+		if (rendering_method != "mobile") {
+			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
+			return ERR_UNCONFIGURED;
+		}
+	}
 	if (!web_target && platform_preset.is_valid() && platform_preset->get_platform().is_valid() && _is_fast_platform(platform_preset->get_platform()) && !_is_host_platform(platform_preset->get_platform()->get_os_name())) {
 		ERR_PRINT(vformat("Grit: \"%s\" templates are built on a %s host; this build does not cross-compile. Export for that platform from its own editor, or add the stock \"%s\" platform instead.",
 				platform_preset->get_platform()->get_name(),

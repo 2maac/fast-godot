@@ -40,6 +40,18 @@ public:
 		return FileAccess::exists(template_path());
 	}
 
+	// `has_valid_export_configuration` is only consulted by the editor UI; a
+	// scripted export (`--export-release "HTML5 Fast" ...`) goes straight to
+	// export_project, so enforce the renderer check here as well.
+	virtual Error export_project(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags = 0, bool p_notify = true) override {
+		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
+		if (rendering_method != "mobile") {
+			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
+			return ERR_UNCONFIGURED;
+		}
+		return EditorExportPlatformWeb::export_project(p_preset, p_debug, p_path, p_flags, p_notify);
+	}
+
 
 	// The template is produced by the export itself, so "no template yet" must not
 	// disable the Export button. Any other configuration error still does.
