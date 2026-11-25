@@ -353,6 +353,14 @@ const Engine = (function () {
 				'maxSamplersPerShaderStage',
 				'maxColorAttachments',
 				'maxBindGroups',
+				// Godot 4.7's Forward Mobile scene shader needs more than the
+				// WebGPU default of 16 inter-stage variables (a lightmapped
+				// material variant reaches 17), which the engine checks against
+				// LIMIT_MAX_SHADER_VARYINGS and rejects with "Too many varyings".
+				// WebGPU returns the *requested* limits from wgpuDeviceGetLimits,
+				// so the adapter maximum must be requested explicitly.
+				'maxInterStageShaderVariables',
+				'maxInterStageShaderComponents',
 			];
 			for (var li = 0; li < limitsToMax.length; li++) {
 				var key = limitsToMax[li];

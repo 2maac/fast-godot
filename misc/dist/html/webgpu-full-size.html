@@ -175,6 +175,11 @@ async function initWebGPU() {
 		maxVertexBuffers: 8,
 		maxVertexAttributes: 16,
 		maxColorAttachments: 8,
+		// Godot 4.7's lightmapped Forward Mobile scene shader exceeds WebGPU's
+		// default of 16 inter-stage variables; the device reports the requested
+		// limits, so ask for the adapter maximum.
+		maxInterStageShaderVariables: 28,
+		maxInterStageShaderComponents: 128,
 	};
 	for (const [limit, value] of Object.entries(wantedLimits)) {
 		if (limit in adapter.limits) {

@@ -1116,6 +1116,13 @@ void RenderingDeviceDriverWebGPU::_check_capabilities() {
 	if (status != WGPUStatus_Success) {
 		WARN_PRINT("WebGPU: Failed to query device limits, using spec minimums.");
 	}
+	// These are the *requested* limits, not the adapter maximum: the JS shell has
+	// to ask for anything above WebGPU's defaults (notably
+	// maxInterStageShaderVariables, whose default of 16 is below what Godot 4.7's
+	// lightmapped Forward Mobile shader needs).
+	print_verbose(vformat("WebGPU: device limits — interStageShaderVariables=%d, samplers/stage=%d, sampledTextures/stage=%d, storageBuffers/stage=%d",
+			(int)device_limits.maxInterStageShaderVariables, (int)device_limits.maxSamplersPerShaderStage,
+			(int)device_limits.maxSampledTexturesPerShaderStage, (int)device_limits.maxStorageBuffersPerShaderStage));
 
 	// Check for timestamp query support.
 	// NOTE: Timestamp query readback is disabled for now. The async mapAsync
