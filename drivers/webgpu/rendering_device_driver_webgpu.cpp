@@ -37,6 +37,7 @@
 #include "spirv_preprocess.h"
 
 #include "core/crypto/crypto_core.h"
+#include "core/os/os.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/hashfuncs.h"
 
@@ -465,7 +466,7 @@ static const char *_lookup_precompiled_wgsl(uint64_t p_spv_hash) {
 
 // Run SPIR-V preprocessing passes and translate to WGSL via Tint.
 // Returns a malloc'd null-terminated WGSL string, or nullptr on failure.
-static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, bool p_force_depth_images) {
+static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, bool p_force_depth_images, bool p_freeze_spec_scalars, bool p_inline_all) {
 	if (p_spv_size < 20 || (p_spv_size % 4) != 0) {
 		return nullptr;
 	}
@@ -482,7 +483,10 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, 
 	memcpy(spv.ptrw(), p_spv_ptr, p_spv_size);
 
 	// SPIR-V preprocessing pipeline:
-	spv = spirv_preprocess::freeze_spec_constant_ops(spv);
+	// Keep scalar specialisation constants as WGSL @id() overrides so pipelines
+	// specialise through pipeline constants instead of a new shader module per
+	// specialisation (see freeze_spec_constant_ops).
+	spv = spirv_preprocess::freeze_spec_constant_ops(spv, p_freeze_spec_scalars);
 	spv = spirv_preprocess::rewrite_copy_logical(spv);
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);
@@ -497,7 +501,7 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, 
 	spv = spirv_preprocess::flatten_binding_arrays(spv);
 	spv = spirv_preprocess::infer_readonly_storage(spv);
 	spv = spirv_preprocess::strip_storage_nonreadable(spv);
-	spv = spirv_preprocess::inline_user_functions(spv);
+	spv = spirv_preprocess::inline_user_functions(spv, p_inline_all);
 
 	// Debug aid for the fast-godot port: set window.__WGSL_DUMP = true in the
 	// browser to print the post-preprocess SPIR-V (base64) before Tint runs.
@@ -505,6 +509,9 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, 
 		const String b64 = CryptoCore::b64_encode_str(spv.ptr(), spv.size());
 		print_line("WGSL_DUMP " + itos((int)spv.size()) + " " + b64);
 	}
+
+	// Time the whole preprocessing + Tint conversion (verbose diagnostics).
+	const uint64_t _tint_t0 = OS::get_singleton()->get_ticks_usec();
 
 	// Convert to uint32_t words for Tint.
 	int word_count = spv.size() / 4;
@@ -514,6 +521,12 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, 
 	// Call Tint SPIR-V → WGSL via the wrapper (isolates C++20 from Godot's build).
 	char *error_msg = nullptr;
 	char *out = tint_wrapper_spirv_to_wgsl(spirv_words.data(), spirv_words.size(), &error_msg);
+	{
+		const uint64_t _tint_ms = (OS::get_singleton()->get_ticks_usec() - _tint_t0) / 1000;
+		if (_tint_ms > 50) {
+			print_verbose(vformat("WEBGPU_TIMING spinv %d bytes -> wgsl: %d ms", (int)p_spv_size, (int)_tint_ms));
+		}
+	}
 	if (!out) {
 		if (error_msg) {
 			// Truncate the error message: Tint includes the full SPIR-V disassembly
@@ -536,7 +549,7 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, 
 
 // Returns a malloc'd null-terminated WGSL string (caller must free), or nullptr on
 // failure. Checks: (1) in-memory cache, (2) precompiled table, (3) Tint fallback.
-static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool p_force_depth_images) {
+static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool p_force_depth_images, bool p_freeze_spec_scalars, bool p_inline_all = false) {
 	uint32_t hash_lo = hash_murmur3_buffer(p_spv_ptr, p_spv_size);
 	uint32_t hash_hi = hash_murmur3_buffer(p_spv_ptr, p_spv_size, 0x9E3779B9);
 	uint64_t spv_hash = ((uint64_t)hash_hi << 32) | hash_lo;
@@ -577,7 +590,24 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool 
 	// 3. Fall back to Tint (for specialized shaders and shaders not in the table).
 	_spv_to_wgsl_cache_misses++;
 
-	char *wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size, p_force_depth_images);
+	char *wgsl_str = nullptr;
+	if (!p_inline_all) {
+		wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size, p_force_depth_images, p_freeze_spec_scalars, false);
+		if (wgsl_str == nullptr) {
+			// Tint occasionally needs every helper inlined (it cannot translate
+			// functions that receive opaque types through structs or chains the
+			// opaque-only inliner leaves alone). Retry before giving up.
+			print_verbose(vformat("WebGPU: shader %d bytes needed exhaustive function inlining.", p_spv_size));
+			wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size, p_force_depth_images, p_freeze_spec_scalars, true);
+		}
+	}
+	if (wgsl_str == nullptr && !p_freeze_spec_scalars) {
+		// Some modules cannot carry their specialisation constants as WGSL
+		// overrides (e.g. constants consumed in const-evaluable positions).
+		// Retry with everything literalised, which always round-trips.
+		print_verbose(vformat("WebGPU: shader %d bytes needed literalised specialization constants (override path failed).", p_spv_size));
+		wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size, p_force_depth_images, true, true);
+	}
 
 	if (wgsl_str) {
 		_spv_to_wgsl_cache[spv_hash] = String(wgsl_str);
@@ -3763,7 +3793,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		// process-lifetime cache before invoking Tint (see helper definition).
 		// Shader names include the variant suffix (e.g. "FooShaderRD:0").
 		const bool force_depth_images = shader->name.begins_with("CopyDepthToFbShaderRD");
-		char *wgsl_str = _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size(), force_depth_images);
+		char *wgsl_str = _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size(), force_depth_images, false);
 
 		if (wgsl_str == nullptr) {
 			error_text = vformat("WebGPU: SPIR-V→WGSL conversion failed for stage %d.", (int)s.shader_stage);
@@ -4568,6 +4598,19 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 						const char *name_start = p;
 						while (*p != ':' && *p != '\0' && *p != ' ' && *p != '\n') p++;
 						int name_len = (int)(p - name_start);
+						// Record the override's WGSL type so pipeline constants can be
+						// converted to the right representation (see the INT case in
+						// render_pipeline_create).
+						{
+							const char *tp = p;
+							while (*tp == ':' || *tp == ' ' || *tp == '\t') tp++;
+							uint8_t tag = 0;
+							if (tp[0] == 'u' && tp[1] == '3' && tp[2] == '2') tag = 'u';
+							else if (tp[0] == 'i' && tp[1] == '3' && tp[2] == '2') tag = 'i';
+							else if (tp[0] == 'f' && tp[1] == '3' && tp[2] == '2') tag = 'f';
+							else if (tp[0] == 'b' && tp[1] == 'o') tag = 'b';
+							if (tag) shader->stage_override_types[s.shader_stage].insert(oid, tag);
+						}
 						if (name_len > 0 && name_len < 256) {
 							// Copy the variable name to a null-terminated buffer for strstr.
 							char name_buf[256];
@@ -8202,7 +8245,9 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 	}
 
 	// Cached SPIR-V → WGSL via Tint (see _spv_to_wgsl_cached above).
-	char *wgsl_str = _spv_to_wgsl_cached(patched.ptr(), (int)patched.size(), p_force_depth_images);
+	// The SPIR-V here already has its specialisation constants patched to
+	// literals, so there is nothing left to express as overrides.
+	char *wgsl_str = _spv_to_wgsl_cached(patched.ptr(), (int)patched.size(), p_force_depth_images, true);
 
 	if (!wgsl_str) {
 		ERR_PRINT("WebGPU: SPIR-V→WGSL conversion failed for specialized shader module.");
@@ -8447,9 +8492,18 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 					case PIPELINE_SPECIALIZATION_CONSTANT_TYPE_BOOL:
 						entry.value = sc.bool_value ? 1.0 : 0.0;
 						break;
-					case PIPELINE_SPECIALIZATION_CONSTANT_TYPE_INT:
-						entry.value = (double)sc.int_value;
-						break;
+					case PIPELINE_SPECIALIZATION_CONSTANT_TYPE_INT: {
+						// Godot stores packed u32 constants in an int32 field; a u32
+						// override with the high bit set (e.g. packed_0's
+						// penumbra_shadow_samples) must be passed as an unsigned
+						// value or WebGPU rejects the constant.
+						uint8_t tag = 0;
+						const uint8_t *t = nullptr;
+						if (in_vtx) t = shader->stage_override_types[SHADER_STAGE_VERTEX].getptr(sc.constant_id);
+						if (t == nullptr && in_frg) t = shader->stage_override_types[SHADER_STAGE_FRAGMENT].getptr(sc.constant_id);
+						if (t) tag = *t;
+						entry.value = (tag == 'u') ? (double)(uint32_t)sc.int_value : (double)sc.int_value;
+					} break;
 					case PIPELINE_SPECIALIZATION_CONSTANT_TYPE_FLOAT:
 						entry.value = (double)sc.float_value;
 						break;

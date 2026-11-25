@@ -214,6 +214,11 @@ struct WGShader {
 	// Used to filter WGPUConstantEntry per stage — WebGPU requires that
 	// every constant key passed to a stage actually exists in that module.
 	HashSet<uint32_t> stage_override_ids[6];
+	// Per-stage override type tag, keyed by override ID: 'u' = u32, 'i' = i32,
+	// 'f' = f32, 'b' = bool. Godot passes packed u32 specialisation constants
+	// through an int32 field, so the driver must reinterpret the bit pattern
+	// when the WGSL override is u32 (e.g. penumbra_shadow_samples uses bit 31).
+	HashMap<uint32_t, uint8_t> stage_override_types[6];
 };
 
 // =============================================================================

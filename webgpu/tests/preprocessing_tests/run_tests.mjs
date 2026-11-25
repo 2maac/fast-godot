@@ -12,6 +12,11 @@ import { fileURLToPath } from "url";
 import { tmpdir } from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// The corpus was written against the frozen (fully literalised) pipeline, which
+// stays available through this toggle. Test 22 covers the default runtime mode
+// (scalar specialisation constants preserved as WGSL @id() overrides).
+const FROZEN_ENV = { ...process.env, TINT_FREEZE_SPEC_CONSTANTS: "1" };
 const REPO_ROOT = join(__dirname, "..", "..");
 const FIXTURES_DIR = join(REPO_ROOT, "webgpu_tests", "shader_corpus", "fixtures");
 
@@ -70,7 +75,7 @@ function convertToWgsl(spvBytes) {
   const tmp = join(tmpdir(), `preprocess_test_${Date.now()}_${Math.random().toString(36).slice(2)}.spv`);
   try {
     writeFileSync(tmp, spvBytes);
-    const wgsl = execFileSync(TINT_CLI, [tmp], { encoding: "utf-8", timeout: 30000 });
+    const wgsl = execFileSync(TINT_CLI, [tmp], { encoding: "utf-8", timeout: 30000, env: FROZEN_ENV });
     return { wgsl, error: null };
   } catch (e) {
     return { wgsl: null, error: e.stderr || e.message || "unknown error" };
@@ -83,7 +88,7 @@ function convertToWgsl(spvBytes) {
 function convertFixture(name) {
   const spvPath = join(FIXTURES_DIR, name);
   try {
-    const wgsl = execFileSync(TINT_CLI, [spvPath], { encoding: "utf-8", timeout: 30000 });
+    const wgsl = execFileSync(TINT_CLI, [spvPath], { encoding: "utf-8", timeout: 30000, env: FROZEN_ENV });
     return { wgsl, error: null };
   } catch (e) {
     return { wgsl: null, error: e.stderr || e.message || "unknown error" };
@@ -1273,6 +1278,46 @@ console.log("\n=== Test 21: Pass interaction ===");
     assert(!rv.wgsl.includes("override"), "pass interaction: vert spec constants folded");
     assert(!rf.wgsl.includes("override"), "pass interaction: frag spec constants folded");
   }
+}
+
+// Test 22: override preservation (runtime default mode)
+console.log("\n=== Test 22: override preservation (runtime default mode) ===");
+
+{
+  // The runtime driver keeps scalar specialisation constants as WGSL overrides
+  // so a pipeline specialisation reuses the base shader module instead of
+  // building (and browser-compiling) a new one. Without the freeze toggle the
+  // CLI must emit @id() overrides for these fixtures.
+  const runOverrideMode = (name) => {
+    const spvPath = join(FIXTURES_DIR, name);
+    const env = { ...process.env };
+    delete env.TINT_FREEZE_SPEC_CONSTANTS;
+    try {
+      const wgsl = execFileSync(TINT_CLI, [spvPath], { encoding: "utf-8", timeout: 30000, env });
+      return { wgsl, error: null };
+    } catch (e) {
+      return { wgsl: null, error: e.stderr || e.message || "unknown error" };
+    }
+  };
+
+  const many = runOverrideMode("many_overrides.spv");
+  assert(many.wgsl !== null, "override mode: many_overrides converts");
+  if (many.wgsl) {
+    const count = (many.wgsl.match(/@id\(\d+\) override/g) || []).length;
+    assertEq(count, 24, "override mode: 24 spec constants preserved as overrides");
+    assert(many.wgsl.includes("@compute"), "override mode: many_overrides keeps its entry point");
+  }
+
+  const chained = runOverrideMode("chained_spec_ops.spv");
+  assert(chained.wgsl !== null, "override mode: chained_spec_ops converts");
+  if (chained.wgsl) {
+    assert(chained.wgsl.includes("override"), "override mode: chained ops keep their scalar overrides");
+  }
+
+  const vert = runOverrideMode("per_stage_overrides_vert.spv");
+  const frag = runOverrideMode("per_stage_overrides_frag.spv");
+  assert(vert.wgsl !== null, "override mode: per-stage vert converts");
+  assert(frag.wgsl !== null, "override mode: per-stage frag converts");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -222,7 +222,7 @@ static uint64_t eval_spec_op(uint32_t p_opcode, const Vector<uint64_t> &p_operan
 
 // ---- freeze_spec_constant_ops ----
 
-Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes) {
+Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes, bool p_freeze_scalars) {
 	const uint8_t *data = p_bytes.ptr();
 	const int64_t len = p_bytes.size();
 	const uint32_t total_words = (uint32_t)(len / 4);
@@ -240,6 +240,9 @@ Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes) {
 	HashMap<uint32_t, uint64_t> constants;
 	// Track which IDs are bool-typed.
 	HashSet<uint32_t> bool_ids;
+	// Spec-constant composites cannot keep their inputs as overrides (WGSL has
+	// no override composites), so their presence forces full freezing.
+	bool has_spec_composite = false;
 
 	// First pass: collect types and constant values.
 	uint32_t pos = 5;
@@ -266,6 +269,10 @@ Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes) {
 					uint32_t width = read_word(data, len, pos + 2);
 					type_int_width.insert(id, width);
 				}
+			} break;
+
+			case OP_SPEC_CONSTANT_COMPOSITE: {
+				has_spec_composite = true;
 			} break;
 
 			case OP_CONSTANT:
@@ -349,7 +356,8 @@ Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes) {
 			break;
 		}
 
-		if (op == OP_DECORATE && wc >= 3 && read_word(data, len, pos + 2) == DECO_SPEC_ID) {
+		const bool freeze_scalars = p_freeze_scalars || has_spec_composite;
+		if (freeze_scalars && op == OP_DECORATE && wc >= 3 && read_word(data, len, pos + 2) == DECO_SPEC_ID) {
 			// Strip OpDecorate ... SpecId decorations -- not valid after freezing.
 			pos += wc;
 			continue;
@@ -371,18 +379,18 @@ Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes) {
 				push_word(out, result_id);
 				push_word(out, (uint32_t)val);
 			}
-		} else if (op == OP_SPEC_CONSTANT_TRUE) {
+		} else if (freeze_scalars && op == OP_SPEC_CONSTANT_TRUE) {
 			// Rewrite as OpConstantTrue (same layout, different opcode).
 			push_word(out, ((uint32_t)wc << 16) | (uint32_t)OP_CONSTANT_TRUE);
 			for (uint32_t i = 1; i < wc; i++) {
 				push_word(out, read_word(data, len, pos + i));
 			}
-		} else if (op == OP_SPEC_CONSTANT_FALSE) {
+		} else if (freeze_scalars && op == OP_SPEC_CONSTANT_FALSE) {
 			push_word(out, ((uint32_t)wc << 16) | (uint32_t)OP_CONSTANT_FALSE);
 			for (uint32_t i = 1; i < wc; i++) {
 				push_word(out, read_word(data, len, pos + i));
 			}
-		} else if (op == OP_SPEC_CONSTANT) {
+		} else if (freeze_scalars && op == OP_SPEC_CONSTANT) {
 			push_word(out, ((uint32_t)wc << 16) | (uint32_t)OP_CONSTANT);
 			for (uint32_t i = 1; i < wc; i++) {
 				push_word(out, read_word(data, len, pos + i));
@@ -2929,7 +2937,7 @@ Vector<uint8_t> infer_readonly_storage(const Vector<uint8_t> &p_bytes) {
 // image operations live in the entry point and Tint never has to propagate
 // handle parameters through call clones. This is a workaround for the Tint
 // snapshot vendored from the WebGPU fork; it costs some shader size.
-Vector<uint8_t> inline_user_functions(const Vector<uint8_t> &p_bytes) {
+Vector<uint8_t> inline_user_functions(const Vector<uint8_t> &p_bytes, bool p_exhaustive) {
 	const int64_t len = p_bytes.size();
 	if (len < 20 || (len % 4) != 0) {
 		return p_bytes;
@@ -2938,7 +2946,17 @@ Vector<uint8_t> inline_user_functions(const Vector<uint8_t> &p_bytes) {
 	spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_3);
 	optimizer.SetMessageConsumer([](spv_message_level_t, const char *, const spv_position_t &, const char *) {});
 	optimizer.RegisterPass(spvtools::CreateMergeReturnPass());
-	optimizer.RegisterPass(spvtools::CreateInlineExhaustivePass());
+	if (p_exhaustive) {
+		// Fallback: inline everything. Produces much larger SPIR-V (and therefore
+		// WGSL), which is expensive to translate and compile in the browser.
+		optimizer.RegisterPass(spvtools::CreateInlineExhaustivePass());
+	} else {
+		// Tint cannot translate functions that take or return opaque types, so
+		// only those calls need inlining. Inlining every helper (the old
+		// behaviour) ballooned the mobile scene shader to ~260 KB of WGSL and
+		// made browser shader compilation take seconds.
+		optimizer.RegisterPass(spvtools::CreateInlineOpaquePass());
+	}
 
 	std::vector<uint32_t> out;
 	const uint32_t *words = reinterpret_cast<const uint32_t *>(p_bytes.ptr());

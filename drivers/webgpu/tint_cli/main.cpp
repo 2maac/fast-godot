@@ -56,6 +56,11 @@ static std::string convert_spirv_to_wgsl(const std::vector<uint8_t> &p_spv_bytes
 	// TINT_FORCE_DEPTH=1 marks every float image as a depth image, mirroring the
 	// runtime driver's handling of CopyDepthToFbShaderRD (see fix_depth_images).
 	const bool force_depth_images = getenv("TINT_FORCE_DEPTH") && strcmp(getenv("TINT_FORCE_DEPTH"), "1") == 0;
+	// TINT_FREEZE_SPEC_CONSTANTS=1 restores the old behaviour of literalising
+	// every specialisation constant (used by the upstream corpus tests, which
+	// assert that no WGSL `override` declarations appear). The runtime driver
+	// keeps them as overrides so pipelines specialise via pipeline constants.
+	const bool freeze_spec_constants = getenv("TINT_FREEZE_SPEC_CONSTANTS") && strcmp(getenv("TINT_FREEZE_SPEC_CONSTANTS"), "1") == 0;
 
 	// Wrap in Godot-compatible Vector for the preprocessing API.
 	Vector<uint8_t> spv;
@@ -64,7 +69,7 @@ static std::string convert_spirv_to_wgsl(const std::vector<uint8_t> &p_spv_bytes
 
 	// 15 preprocessing passes (same order as rendering_device_driver_webgpu.cpp).
 	if (!raw_mode) {
-	spv = spirv_preprocess::freeze_spec_constant_ops(spv);
+	spv = spirv_preprocess::freeze_spec_constant_ops(spv, freeze_spec_constants);
 	spv = spirv_preprocess::rewrite_copy_logical(spv);
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);

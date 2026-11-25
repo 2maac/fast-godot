@@ -49,10 +49,17 @@ struct DepthImageFixResult {
 	Vector<DepthImageInfo> depth_images;
 };
 
-// Evaluate OpSpecConstantOp instructions with default values and replace
-// them with regular OpConstant instructions. Also converts OpSpecConstant*
-// to their non-specialization equivalents and strips SpecId decorations.
-Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes);
+// Evaluate OpSpecConstantOp instructions with default values and replace them
+// with regular OpConstant instructions (WGSL has no computed overrides).
+//
+// When p_freeze_scalars is false (the default) plain OpSpecConstant,
+// OpSpecConstantTrue and OpSpecConstantFalse instructions keep their SpecId
+// decorations, so Tint emits `@id(N) override` declarations and the WebGPU
+// driver can specialise pipelines with pipeline constants instead of building
+// and compiling a brand-new shader module for every specialisation. Modules
+// containing spec-constant composites are always fully frozen (a constant
+// composite cannot reference an override).
+Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes, bool p_freeze_scalars = false);
 
 // Convert push-constant variables to storage buffer (read-only) at
 // descriptor set 3, binding 120 (the ring-buffer slot used by the
@@ -126,6 +133,6 @@ Vector<uint8_t> strip_storage_nonreadable(const Vector<uint8_t> &p_bytes);
 
 // Inline user functions so handle (texture/sampler) parameters never reach
 // Tint's image lowering pass. Workaround for the vendored Tint snapshot.
-Vector<uint8_t> inline_user_functions(const Vector<uint8_t> &p_bytes);
+Vector<uint8_t> inline_user_functions(const Vector<uint8_t> &p_bytes, bool p_exhaustive = false);
 
 } // namespace spirv_preprocess
