@@ -442,7 +442,15 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
 			if (p_use_msaa) {
 				static const int texture_multisamples[RSE::VIEWPORT_MSAA_MAX] = { 1, 2, 4, 8 };
 
-				resolve_effects->resolve_depth_raster(rb->get_depth_msaa(v), depth_back_fb, texture_multisamples[rb->get_msaa_3d()]);
+				int resolve_samples = texture_multisamples[rb->get_msaa_3d()];
+				// The driver may support fewer samples than the viewport MSAA level
+				// asks for (WebGPU only has 1x/4x); clamp so the resolve shader does
+				// not read sample indices the attachment does not have.
+				const uint32_t max_msaa_samples = RD::get_singleton()->get_device_capabilities().max_msaa_samples;
+				if (max_msaa_samples > 0 && resolve_samples > (int)max_msaa_samples) {
+					resolve_samples = (int)max_msaa_samples;
+				}
+				resolve_effects->resolve_depth_raster(rb->get_depth_msaa(v), depth_back_fb, resolve_samples);
 			} else {
 				copy_effects->copy_to_fb_rect(depth_texture, depth_back_fb, Rect2i(0, 0, size.x, size.y));
 			}

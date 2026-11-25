@@ -1033,6 +1033,9 @@ public:
 		DeviceFamily device_family = DEVICE_UNKNOWN;
 		uint32_t version_major = 1;
 		uint32_t version_minor = 0;
+		// Highest multisample count render targets may use. 0 means the driver
+		// does not report a limit (use whatever the renderer asks for).
+		uint32_t max_msaa_samples = 0;
 	};
 
 	virtual void set_object_name(ObjectType p_type, ID p_driver_id, const String &p_name) = 0;

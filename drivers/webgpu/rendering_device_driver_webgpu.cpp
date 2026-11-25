@@ -68,6 +68,19 @@ static bool _wgsl_final_dump_enabled() {
 	return cached == 1;
 }
 
+// WebGPU only supports 1x and 4x multisampling. Godot's viewport MSAA setting
+// offers 2x/4x/8x (16x on some platforms); map any other count to 4x so such a
+// project still renders instead of failing texture creation, and say so once.
+static uint32_t _webgpu_clamped_sample_count(uint32_t p_samples) {
+	if (p_samples <= 1) {
+		return 1;
+	}
+	if (p_samples != 4) {
+		WARN_PRINT_ONCE(vformat("WebGPU: %dx MSAA is not supported (only 1x and 4x); using 4x MSAA.", (int)p_samples));
+	}
+	return 4;
+}
+
 // Tracks whether the current swap-chain image has been cleared yet this frame.
 // The 3D compositor blits first; the 2D canvas pass then loads on top.
 static bool _swapchain_pass_cleared = false;
@@ -1069,6 +1082,8 @@ void RenderingDeviceDriverWebGPU::_check_capabilities() {
 	capabilities.device_family = DEVICE_UNKNOWN;
 	capabilities.version_major = 1;
 	capabilities.version_minor = 0;
+	// WebGPU's only multisample counts are 1x and 4x (see _webgpu_clamped_sample_count).
+	capabilities.max_msaa_samples = 4;
 
 	// Query actual device limits.
 	device_limits = WGPU_LIMITS_INIT;
@@ -1903,7 +1918,7 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &
 	tex->depth = p_format.depth;
 	tex->mipmaps = p_format.mipmaps;
 	tex->layers = p_format.array_layers;
-	tex->sample_count = 1 << p_format.samples;
+	tex->sample_count = _webgpu_clamped_sample_count(1u << (uint32_t)p_format.samples);
 	tex->usage = _texture_usage_to_wgpu(p_format.usage_bits);
 
 	// WebGPU does not support R8/RG8/R16/RG16 as storage texel formats.
@@ -8389,8 +8404,9 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 
 	// --- Multisample state ---
 	WGPUMultisampleState multisample = {};
-	// TextureSamples enum: 0=1x, 1=2x, 2=4x, 3=8x ... → 1 << sample_count
-	multisample.count = (uint32_t)(1u << (uint32_t)p_multisample_state.sample_count);
+	// TextureSamples enum: 0=1x, 1=2x, 2=4x, 3=8x ... → 1 << sample_count, then
+	// clamped because WebGPU only allows 1x/4x sample counts.
+	multisample.count = _webgpu_clamped_sample_count(1u << (uint32_t)p_multisample_state.sample_count);
 	multisample.mask = 0xFFFFFFFFu;
 	multisample.alphaToCoverageEnabled = p_multisample_state.enable_alpha_to_coverage;
 

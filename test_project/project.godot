@@ -23,3 +23,4 @@ renderer/rendering_method="mobile"
 renderer/rendering_method.web="mobile"
 rendering_device/driver.web="webgpu"
 textures/default_filters/anisotropic_filtering_level=2
+anti_aliasing/quality/msaa_3d=2
