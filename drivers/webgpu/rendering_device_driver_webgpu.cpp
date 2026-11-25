@@ -487,6 +487,7 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size) 
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);
 	spv = spirv_preprocess::split_combined_samplers(spv);
+	spv = spirv_preprocess::fix_multisampled_depth_images(spv);
 	auto depth_result = spirv_preprocess::fix_depth2_images(spv);
 	spv = depth_result.bytes;
 	spv = spirv_preprocess::negate_position_y(spv);
@@ -602,6 +603,26 @@ static bool _is_depth_format(WGPUTextureFormat p_format) {
 			return true;
 		default:
 			return false;
+	}
+}
+
+// Returns true for depth/stencil formats that need an explicit DepthOnly aspect
+// when bound as a depth texture (WebGPU rejects aspect=All for texture bindings).
+static bool _is_depth_stencil_format(WGPUTextureFormat p_format) {
+	return p_format == WGPUTextureFormat_Depth24PlusStencil8 ||
+			p_format == WGPUTextureFormat_Depth32FloatStencil8;
+}
+
+// Format that a depth-only view of a depth/stencil texture must declare (WebGPU
+// rejects the combined format when aspect=DepthOnly is selected).
+static WGPUTextureFormat _depth_only_format(WGPUTextureFormat p_format) {
+	switch (p_format) {
+		case WGPUTextureFormat_Depth24PlusStencil8:
+			return WGPUTextureFormat_Depth24Plus;
+		case WGPUTextureFormat_Depth32FloatStencil8:
+			return WGPUTextureFormat_Depth32Float;
+		default:
+			return p_format;
 	}
 }
 
@@ -2022,6 +2043,12 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &
 		delete tex;
 		ERR_FAIL_V_MSG(TextureID(), "WebGPU: wgpuTextureCreateView failed for default view.");
 	}
+	if (_is_depth_stencil_format(tex->format)) {
+		WGPUTextureViewDescriptor depth_desc = view_desc;
+		depth_desc.aspect = WGPUTextureAspect_DepthOnly;
+		depth_desc.format = _depth_only_format(view_desc.format);
+		tex->depth_view = wgpuTextureCreateView(tex->handle, &depth_desc);
+	}
 
 	return TextureID(tex);
 }
@@ -2054,6 +2081,7 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create_shared(TextureID p_or
 
 	WGTexture *tex = new WGTexture();
 	*tex = *orig; // Copy base properties.
+	tex->depth_view = nullptr; // Owned per view; created below if needed.
 
 	// Create a new view with potentially different format.
 	WGPUTextureViewDescriptor view_desc = {};
@@ -2088,6 +2116,12 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create_shared(TextureID p_or
 		delete tex;
 		ERR_FAIL_V_MSG(TextureID(), "WebGPU: wgpuTextureCreateView failed for shared texture view.");
 	}
+	if (_is_depth_stencil_format(tex->format)) {
+		WGPUTextureViewDescriptor depth_desc = view_desc;
+		depth_desc.aspect = WGPUTextureAspect_DepthOnly;
+		depth_desc.format = _depth_only_format(view_desc.format);
+		tex->depth_view = wgpuTextureCreateView(tex->view_source, &depth_desc);
+	}
 	tex->handle = nullptr; // Shared texture does not own the WGPUTexture.
 
 	return TextureID(tex);
@@ -2099,6 +2133,7 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create_shared_from_slice(Tex
 
 	WGTexture *tex = new WGTexture();
 	*tex = *orig;
+	tex->depth_view = nullptr; // Owned per view; created below if needed.
 
 	WGPUTextureViewDescriptor view_desc = {};
 	view_desc.format = (p_view.format != DATA_FORMAT_MAX) ? _data_format_to_wgpu(p_view.format) : orig->format;
@@ -2146,6 +2181,12 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create_shared_from_slice(Tex
 	if (tex->default_view == nullptr) {
 		delete tex;
 		ERR_FAIL_V_MSG(TextureID(), "WebGPU: wgpuTextureCreateView failed for sliced texture view.");
+	}
+	if (_is_depth_stencil_format(tex->format)) {
+		WGPUTextureViewDescriptor depth_desc = view_desc;
+		depth_desc.aspect = WGPUTextureAspect_DepthOnly;
+		depth_desc.format = _depth_only_format(view_desc.format);
+		tex->depth_view = wgpuTextureCreateView(tex->view_source, &depth_desc);
 	}
 	tex->handle = nullptr;
 	tex->layers = p_layers;
@@ -2227,6 +2268,9 @@ void RenderingDeviceDriverWebGPU::texture_free(TextureID p_texture) {
 
 	if (tex->default_view) {
 		wgpuTextureViewRelease(tex->default_view);
+	}
+	if (tex->depth_view) {
+		wgpuTextureViewRelease(tex->depth_view);
 	}
 	if (tex->handle && !tex->is_from_swap_chain) {
 		wgpuTextureRelease(tex->handle);
@@ -4542,10 +4586,13 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		const Vector<RenderingDeviceCommons::ShaderUniform> &set_uniforms = shader_refl.uniform_sets[set];
 
 		// Count entries — combined sampler+texture expands to 2 entries each.
+		// Multisampled combined samplers stay unsplit (see the SWT case below).
 		uint32_t entry_count = 0;
 		for (int i = 0; i < set_uniforms.size(); i++) {
 			if (set_uniforms[i].type == RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE) {
-				entry_count += 2; // Sampler + texture.
+				uint32_t ms_key = ((uint32_t)set << 16) | (set_uniforms[i].binding * 2);
+				bool ms_unsplit = wgsl_is_multisampled_texture.has(ms_key) && wgsl_is_multisampled_texture[ms_key];
+				entry_count += ms_unsplit ? 1 : 2; // Texture only, or sampler + texture.
 			} else {
 				entry_count += 1;
 			}
@@ -4622,6 +4669,26 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 				} break;
 
 				case RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE: {
+					// Multisampled combined samplers are never split by the
+					// preprocessing pass (texelFetch needs no sampler): the image
+					// keeps binding*2 and Tint emits only the texture binding.
+					uint32_t ms_key = ((uint32_t)set << 16) | (u.binding * 2);
+					bool ms_unsplit = wgsl_is_multisampled_texture.has(ms_key) && wgsl_is_multisampled_texture[ms_key];
+					if (ms_unsplit) {
+						WGPUBindGroupLayoutEntry &entry = entries[e_idx++];
+						entry = {};
+						entry.binding = u.binding * 2;
+						entry.visibility = vis;
+						bool is_depth = wgsl_is_depth_texture.has(ms_key) && wgsl_is_depth_texture[ms_key];
+						entry.texture.sampleType = is_depth
+								? WGPUTextureSampleType_Depth
+								: WGPUTextureSampleType_UnfilterableFloat;
+						entry.texture.viewDimension = wgsl_tex_dims.has(ms_key) ? wgsl_tex_dims[ms_key] : WGPUTextureViewDimension_2D;
+						entry.texture.multisampled = true;
+						bge.layout_entry = entry;
+						bge.array_length = 1;
+						break;
+					}
 					// Combined sampler+texture split by our SPIR-V preprocessor:
 					// Sampler at binding*2+0, texture at binding*2+1 in the modified SPIR-V → matches Tint WGSL output.
 					WGPUBindGroupLayoutEntry &samp_entry = entries[e_idx++];
@@ -4958,6 +5025,21 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					const RenderingDeviceCommons::ShaderUniform &pu = pc_uniforms[u_idx2];
 					WGPUShaderStage pvis = _stages_to_wgpu_visibility((uint32_t)pu.stages);
 					if (pu.type == RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE) {
+						uint32_t ms_key = ((uint32_t)i << 16) | (pu.binding * 2);
+						bool ms_unsplit = wgsl_is_multisampled_texture.has(ms_key) && wgsl_is_multisampled_texture[ms_key];
+						if (ms_unsplit) {
+							// Multisampled combined samplers stay unsplit: one texture entry.
+							WGPUBindGroupLayoutEntry te = {};
+							te.binding = pu.binding * 2; te.visibility = pvis;
+							bool is_depth = wgsl_is_depth_texture.has(ms_key) && wgsl_is_depth_texture[ms_key];
+							te.texture.sampleType = is_depth
+									? WGPUTextureSampleType_Depth
+									: WGPUTextureSampleType_UnfilterableFloat;
+							te.texture.viewDimension = wgsl_tex_dims.has(ms_key) ? wgsl_tex_dims[ms_key] : WGPUTextureViewDimension_2D;
+							te.texture.multisampled = true;
+							merged_entries.push_back(te);
+							continue;
+						}
 						WGPUBindGroupLayoutEntry se = {}, te = {};
 						se.binding = pu.binding * 2 + 0; se.visibility = pvis;
 						{ uint32_t k = ((uint32_t)i << 16) | (pu.binding * 2 + 0);
@@ -5296,17 +5378,53 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 				// WebGPU needs separate sampler and texture entries.
 				// Sampler at binding*2+j*2+0, texture at binding*2+j*2+1 (matches layout and SPIR-V preprocessor).
 				// Look up expected texture dimension and sample type from the shader layout.
+				// Multisampled combined samplers stay unsplit (layout at binding*2).
 				WGPUTextureViewDimension swt_expected_dim = WGPUTextureViewDimension_Undefined;
 				bool swt_expected_ms = false;
+				bool swt_expected_depth = false;
+				bool swt_unsplit_ms = false;
 				if (p_set_index < (uint32_t)shader->bind_group_infos.size()) {
-					uint32_t tex_binding = uniform.binding * 2 + 1;
 					for (const auto &bge : shader->bind_group_infos[p_set_index].entries) {
-						if (bge.layout_entry.binding == tex_binding) {
+						if (bge.godot_type != RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE) {
+							continue;
+						}
+						uint32_t b = bge.layout_entry.binding;
+						if (b == uniform.binding * 2 + 1 || b == uniform.binding * 2) {
 							swt_expected_dim = bge.layout_entry.texture.viewDimension;
 							swt_expected_ms = (bool)bge.layout_entry.texture.multisampled;
+							swt_expected_depth = bge.layout_entry.texture.sampleType == WGPUTextureSampleType_Depth;
+							swt_unsplit_ms = swt_expected_ms && b == uniform.binding * 2;
 							break;
 						}
 					}
+				}
+				if (swt_unsplit_ms) {
+					// Tint emitted only the multisampled texture; there is no
+					// sampler entry for this binding.
+					for (uint32_t j = 0; j < uniform.ids.size() / 2; j++) {
+						WGTexture *tex = (WGTexture *)(uniform.ids[j * 2 + 1].id);
+						if (tex == nullptr || tex->default_view == nullptr) {
+							continue;
+						}
+						WGPUBindGroupEntry te = {};
+						te.binding = uniform.binding * 2 + j * 2;
+						if (swt_expected_depth && _is_depth_format(tex->format)) {
+							// Depth attachment bound to texture_depth_multisampled_2d.
+							// Depth/stencil formats need the DepthOnly aspect view.
+							te.textureView = tex->depth_view ? tex->depth_view : tex->default_view;
+						} else if (!swt_expected_depth && _is_depth_format(tex->format) && fallback_ms_texture_view != nullptr) {
+							// Float MS slot fed a depth attachment: WebGPU cannot
+							// reinterpret depth as float, so use the dummy.
+							te.textureView = fallback_ms_texture_view;
+						} else if (tex->sample_count <= 1 && fallback_ms_texture_view != nullptr) {
+							te.textureView = fallback_ms_texture_view;
+						} else {
+							te.textureView = tex->default_view;
+						}
+						us->bound_textures[te.binding] = tex;
+						entries.push_back(te);
+					}
+					break;
 				}
 				for (uint32_t j = 0; j < uniform.ids.size() / 2; j++) {
 					WGPUSampler sampler = (WGPUSampler)(uniform.ids[j * 2 + 0].id);
@@ -5805,8 +5923,11 @@ WGPUBindGroup RenderingDeviceDriverWebGPU::_get_compatible_bind_group(WGUniformS
 		for (const auto &bge : p_target_shader->bind_group_infos[p_set_idx].entries) {
 			target_bindings.insert(bge.layout_entry.binding);
 			// For SWT, the layout_entry stores the texture binding; the sampler is at binding-1.
+			// Multisampled combined samplers are unsplit and have no sampler entry.
 			if (bge.godot_type == RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE) {
-				target_bindings.insert(bge.layout_entry.binding - 1); // Sampler binding.
+				if (!bge.layout_entry.texture.multisampled) {
+					target_bindings.insert(bge.layout_entry.binding - 1); // Sampler binding.
+				}
 			}
 		}
 	}

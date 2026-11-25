@@ -1,7 +1,8 @@
-78098b89c88a74ebe8c20117b8754620
-::res://::1795557221
-export_presets.cfg::TextFile::-1::1795557423::0::1::::<><><>0<>0<><>::
-main.gd::GDScript::4379827178616487604::1795557221::0::1::::<>Node3D<><>0<>0<><>::
-main.tscn::PackedScene::-1::1795557035::0::1::::<><><>0<>0<><>::res://main.gd
-::res://build/::1795557228
-index.png::CompressedTexture2D::5665983452752149150::1795557228::1795552992::1::::<><><>0<>0<>62014f325363b958d8afa0081cae0872<>res://.godot/imported/index.png-659c11691fe5279cf81f33eb936290a4.ctex::
+9cad1ddce9e5a63143ba340c9520626b
+::res://::1795589751
+export_presets.cfg::TextFile::-1::1795585825::0::1::::<><><>0<>0<><>::
+main.gd::GDScript::4379827178616487604::1795589726::0::1::::<>Node3D<><>0<>0<><>::
+main.tscn::PackedScene::-1::1795586563::0::1::::<><><>0<>0<><>::res://main.gd
+::res://shaders/::1795588826
+canvas_shadow.gdshader::Shader::3185640277818671418::1795588808::0::1::::<><><>0<>0<><>::
+depth_scan.gdshader::Shader::8816738736478517900::1795589946::0::1::::<><><>0<>0<><>::

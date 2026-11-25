@@ -79,6 +79,11 @@ struct WGTexture {
 	WGPUTexture handle = nullptr; // null for shared/sliced views (they don't own the GPU texture)
 	WGPUTexture view_source = nullptr; // always the owning WGPUTexture; inherited by shared/sliced textures
 	WGPUTextureView default_view = nullptr;
+	// Depth-only aspect view for depth/stencil formats. WebGPU rejects a
+	// "Multiple aspects (Depth|Stencil)" texture view when a depth texture is
+	// bound to a depth sample type, so bind groups use this view instead of
+	// default_view (which keeps aspect=All for framebuffer attachments).
+	WGPUTextureView depth_view = nullptr;
 
 	// Returns the underlying WGPUTexture for any GPU op that needs the actual
 	// resource (copies, debug labels). Shared / sliced views have handle==nullptr
