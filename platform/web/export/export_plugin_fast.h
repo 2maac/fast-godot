@@ -40,6 +40,46 @@ public:
 		return FileAccess::exists(template_path());
 	}
 
+	// The template is produced by the export itself, so "no template yet" must not
+	// disable the Export button. Any other configuration error still does.
+	// (The WebGPU-specific renderer check below is the only addition to the
+	// pre-WebGPU Fast platform.)
+	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const override {
+		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
+		const bool webgpu_method = rendering_method == "mobile";
+		String message;
+		bool missing = false;
+		const bool base_valid = EditorExportPlatformWeb::has_valid_export_configuration(p_preset, message, missing, p_debug);
+		if (base_valid) {
+			if (!webgpu_method) {
+				r_error = vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method);
+				r_missing_templates = false;
+				return false;
+			}
+			r_error = message;
+			r_missing_templates = missing;
+			return true;
+		}
+		if (!missing) {
+			r_error = message;
+			r_missing_templates = missing;
+			return false;
+		}
+		// Drop the template lines, keep whatever else is wrong.
+		Vector<String> kept;
+		for (const String &line : message.split("\n")) {
+			if (!line.begins_with("No export template found")) {
+				kept.push_back(line);
+			}
+		}
+		if (!webgpu_method) {
+			kept.push_back(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
+		}
+		r_error = String("\n").join(kept).strip_edges();
+		r_missing_templates = false;
+		return r_error.is_empty();
+	}
+
 	// `has_valid_export_configuration` is only consulted by the editor UI; a
 	// scripted export (`--export-release "HTML5 Fast" ...`) goes straight to
 	// export_project, so enforce the renderer check here as well.
@@ -50,41 +90,5 @@ public:
 			return ERR_UNCONFIGURED;
 		}
 		return EditorExportPlatformWeb::export_project(p_preset, p_debug, p_path, p_flags, p_notify);
-	}
-
-
-	// The template is produced by the export itself, so "no template yet" must not
-	// disable the Export button. Any other configuration error still does.
-	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const override {
-		String message;
-		bool missing = false;
-		const bool base_valid = EditorExportPlatformWeb::has_valid_export_configuration(p_preset, message, missing, p_debug);
-		if (!base_valid && !missing) {
-			r_error = message;
-			r_missing_templates = false;
-			return false;
-		}
-		// Drop the template lines, keep whatever else is wrong.
-		Vector<String> kept;
-		for (const String &line : message.split("\n")) {
-			if (!line.begins_with("No export template found")) {
-				kept.push_back(line);
-			}
-		}
-		// The wasm template only contains the WebGPU rendering device (the builds are
-		// made with webgpu=yes opengl3=no), and this backend only implements the
-		// Forward Mobile renderer:
-		// - forward_plus needs gl_HelperInvocation and GLSL subgroup operations in
-		//   cluster_render.glsl, which the SPIR-V -> WGSL path cannot express;
-		// - gl_compatibility selects the GLES3 driver, which is not compiled in.
-		// Without this check the page either never boots or renders black.
-		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
-		const bool webgpu_method = rendering_method == "mobile";
-		if (!webgpu_method) {
-			kept.push_back(TTR("The HTML5 Fast template only contains the WebGPU renderer, and WebGPU support here covers the Forward Mobile renderer. Set \"rendering/renderer/rendering_method.web\" to \"mobile\" in Project Settings > Rendering > Renderer, and make sure \"rendering/rendering_device/driver.web\" is \"webgpu\". (forward_plus needs subgroup operations the WebGPU backend cannot express; gl_compatibility needs the GLES3 driver, which is not built into this template.)"));
-		}
-		r_error = String("\n").join(kept).strip_edges();
-		r_missing_templates = false;
-		return base_valid && webgpu_method;
 	}
 };

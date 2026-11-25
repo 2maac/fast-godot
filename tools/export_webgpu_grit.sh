@@ -1,10 +1,8 @@
 #!/bin/bash
-# Export test_project through the Grit "HTML5 Fast" path.
-#
-# Unlike tools/export_webgpu_test.sh (which only needs a template built by
-# tools/build_webgpu_template.sh and the stock Godot editor), this path builds a
-# per-project wasm template from the engine source and links the project's
-# Grit-compiled code into it. It needs:
+# Export test_project through the Grit "HTML5 Fast" path. This is the only
+# HTML5 export style: like native Fast exports, the per-project wasm template is
+# rebuilt from the toolchain's engine source and the project's Grit-compiled code
+# is linked into it. It needs:
 #   - an editor built from this tree (bin/godot.macos.editor.arm64), so the web
 #     export knows about the WebGPU rendering driver, and
 #   - the toolchain's engine source pointed at this checkout, because Grit builds

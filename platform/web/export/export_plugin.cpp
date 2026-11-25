@@ -472,12 +472,6 @@ bool EditorExportPlatformWeb::has_valid_project_configuration(const Ref<EditorEx
 		}
 	}
 
-	// Warn if WebGPU rendering is selected.
-	String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
-	if (rendering_method == "forward_plus" || rendering_method == "mobile") {
-		err += TTR("WebGPU rendering is experimental. Ensure your target browsers support WebGPU.") + "\n";
-	}
-
 	if (!err.is_empty()) {
 		r_error = err;
 	}

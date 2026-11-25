@@ -2,14 +2,14 @@
 // Headless smoke test for the WebGPU web export.
 //
 // Serves nothing itself: start a static server in the export directory first,
-// e.g. `cd test_project/build && python3 -m http.server 8123 --bind 127.0.0.1`.
+// e.g. `cd test_project/build-fast && python3 -m http.server 8125 --bind 127.0.0.1`.
 //
 // Usage:
 //   NODE_PATH=/tmp/node-test/node_modules node tools/smoke_webgpu.js
 //   PORT=8125 WAIT_MS=25000 SHOT=/tmp/grit.png node tools/smoke_webgpu.js
 //
 // Environment:
-//   PORT       server port                 (default 8123)
+//   PORT       server port                 (default 8125)
 //   CHROME     Chrome for Testing binary   (default /tmp/chrome-test/chrome-mac-arm64/...)
 //   WAIT_MS    settle time after ready     (default 20000; the debug template
 //              needs ~20 s of shader warm-up before it holds 60 FPS)
@@ -22,7 +22,7 @@
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 
-const PORT = process.env.PORT || "8123";
+const PORT = process.env.PORT || "8125";
 const CHROME =
   process.env.CHROME ||
   "/tmp/chrome-test/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing";
