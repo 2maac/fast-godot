@@ -9,7 +9,7 @@
 #     export knows about the WebGPU rendering driver, and
 #   - the toolchain's engine source pointed at this checkout, because Grit builds
 #     templates from $TOOLCHAIN/engine/source rather than from the editor's own
-#     tree (see WEBGPU_HANDOFF.md, "Grit HTML5 Fast export").
+#     tree (see the local, gitignored handoff notes).
 #
 # Usage: ./tools/export_webgpu_grit.sh [debug|release]   (default: release)
 set -euo pipefail

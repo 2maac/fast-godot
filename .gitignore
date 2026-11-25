@@ -410,6 +410,7 @@ out/
 
 # Internal handoff notes are never committed.
 HANDOFF.md
+WEBGPU_HANDOFF.md
 HANDOVER.md
 
 # Local doctest HOME created when running the suite from the workspace.
