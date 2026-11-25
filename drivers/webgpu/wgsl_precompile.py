@@ -619,6 +619,11 @@ def compile_glsl_to_spirv(glsl_source, stage, glslang_path="glslangValidator"):
             [
                 glslang_path,
                 "-V",
+                # Match the engine's embedded glslang (modules/glslang): it targets
+                # Vulkan 1.1 / SPIR-V 1.3, while glslangValidator defaults to
+                # SPIR-V 1.0. The SPIR-V version word is part of the runtime hash,
+                # so this flag is required for precompiled entries to be found.
+                "--target-env", "vulkan1.1",
                 "-S", stage,
                 "-o", spv_path,
                 glsl_path,
@@ -853,8 +858,26 @@ def build_wgsl_precompiled(target, source, env):
     wgsl_precompiled.gen.h.
     """
     output = str(target[0])
-    print("[WGSL Precompile] Emitting empty precompiled table (runtime Tint fallback is active).")
-    generate_precompiled_header([], output)
+    repo_root = str(env.Dir("#"))
+
+    # Build tint_convert_cli (native host tool) via build.sh.
+    build_script = os.path.join(repo_root, "drivers", "webgpu", "tint_cli", "build.sh")
+    if not os.path.isfile(build_script):
+        print("[WGSL Precompile] ERROR: tint_cli/build.sh not found", file=sys.stderr)
+        sys.exit(1)
+
+    print("[WGSL Precompile] Building tint_convert_cli...")
+    result = subprocess.run(
+        ["bash", build_script],
+        cwd=repo_root,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        print("[WGSL Precompile] ERROR: tint_convert_cli build failed", file=sys.stderr)
+        sys.exit(1)
+
+    glslang = env.get("GLSLANG", "glslangValidator")
+    precompile_wgsl(repo_root, output, glslang)
 
 
 # ---------------------------------------------------------------------------

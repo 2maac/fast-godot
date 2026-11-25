@@ -2293,8 +2293,10 @@ static bool _spv_operand_is_literal(uint16_t p_opcode, uint32_t p_word_count, ui
 			return p_word_count >= 7 && p_index == 6;
 		case 95: // OpImageFetch
 		case 98: // OpImageRead
-		case 99: // OpImageWrite
 			return p_word_count >= 6 && p_index == 5;
+		case 99: // OpImageWrite: no result type/result, so the mask is one word earlier
+			// image, coordinate, texel, [image operands mask, ...]
+			return p_word_count >= 5 && p_index == 4;
 		case 8: // OpLine: file id, line literal, column literal
 		case 6: // OpMemberName: type id, member literal, name
 		case OP_NAME: // OpName: target id, name string

@@ -1041,13 +1041,43 @@ to generate Metal source from Vulkan SPIR-V.
 ## spirv-headers
 
 - Upstream: https://github.com/KhronosGroup/SPIRV-Headers
-- Version: vulkan-sdk-1.4.335.0 (b824a462d4256d720bebb40e78b9eb8f78bbb305, 2025)
+- Version: union of vulkan-sdk-1.4.335.0 (b824a462d4256d720bebb40e78b9eb8f78bbb305, 2025)
+  and the snapshot vendored by the godotwebgpu branch (ad9184e76a66b1001c29db9b0a3e87f646c64de0, 2026)
 - License: MIT
 
 Files extracted from upstream source:
 
-- `include/spirv/unified1/spirv.{h,hpp,hpp11}` with the same folder structure
+- `include/spirv/unified1/spirv.{h,hpp,hpp11}` with the same folder structure, extended
+  with the enum members that only exist in the godotwebgpu snapshot
+  (`OpSpecConstantDataKHR`, `OpConstantSizeOfEXT`, ...)
+- Extra headers the WebGPU backend needs: `GLSL.std.450.h`, `DebugInfo.h`,
+  `NonSemanticClspvReflection.h`, `NonSemanticShaderDebugInfo.h`, `OpenCL.std.h`,
+  `OpenCLDebugInfo100.h`, and `spirv/1.2/GLSL.std.450.h`
 - `LICENSE` (edited to keep only relevant license)
+
+The three generated headers are the union of both snapshots on purpose: 4.7.2's
+native renderers (`spirv-cross`) need the newer Vulkan SDK enum members, while
+the vendored Tint/spirv-tools used by the WebGPU backend need the newer opcodes
+from the godotwebgpu branch.
+
+
+## spirv-tools
+
+- Upstream: https://github.com/KhronosGroup/SPIRV-Tools
+- Version: v2026.2 (3605cce5b11f6a085107fd400f1721cd2a59c49e, 2026)
+- License: Apache 2.0
+
+Files extracted from upstream source:
+
+- `source/` folder
+- `include/` folder
+- `generated/` folder (pre-generated from the upstream build)
+- `LICENSE`
+
+Used by the WebGPU backend's SPIR-V preprocessing passes (the inliner in
+`spirv_preprocess.cpp`) and by `bin/tint_convert_cli`. The version is pinned by
+Dawn's DEPS to match the vendored Tint.
+
 
 
 ## spirv-reflect

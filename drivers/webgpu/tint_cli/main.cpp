@@ -1,6 +1,6 @@
 // tint_convert_cli — Standalone SPIR-V → WGSL converter for build-time precompilation.
 //
-// Runs the same 11 preprocessing passes as the Godot WebGPU runtime driver,
+// Runs the same 15 preprocessing passes as the Godot WebGPU runtime driver,
 // then converts to WGSL via Tint. Produces output identical to what the engine
 // generates at runtime, enabling precompilation of ubershader and specialized
 // shader variants at build time.
@@ -8,6 +8,10 @@
 // Usage:
 //   tint_convert_cli <file.spv>                       # single file → WGSL to stdout
 //   tint_convert_cli --batch <file1.spv> <file2.spv>  # batch → JSON to stdout
+//
+// Environment:
+//   TINT_RAW=1          skip all preprocessing (dump raw glslang SPIR-V → WGSL)
+//   TINT_FORCE_DEPTH=1  treat float images as depth images (CopyDepthToFbShaderRD)
 
 #include "../spirv_preprocess.h"
 #include "../tint_wrapper.h"
@@ -49,19 +53,23 @@ static std::string convert_spirv_to_wgsl(const std::vector<uint8_t> &p_spv_bytes
 
 	// TINT_RAW=1 skips preprocessing (for debugging the raw glslang output).
 	const bool raw_mode = getenv("TINT_RAW") && strcmp(getenv("TINT_RAW"), "1") == 0;
+	// TINT_FORCE_DEPTH=1 marks every float image as a depth image, mirroring the
+	// runtime driver's handling of CopyDepthToFbShaderRD (see fix_depth_images).
+	const bool force_depth_images = getenv("TINT_FORCE_DEPTH") && strcmp(getenv("TINT_FORCE_DEPTH"), "1") == 0;
 
 	// Wrap in Godot-compatible Vector for the preprocessing API.
 	Vector<uint8_t> spv;
 	spv.resize((int64_t)p_spv_bytes.size());
 	memcpy(spv.ptrw(), p_spv_bytes.data(), p_spv_bytes.size());
 
-	// 11 preprocessing passes (same order as rendering_device_driver_webgpu.cpp).
+	// 15 preprocessing passes (same order as rendering_device_driver_webgpu.cpp).
 	if (!raw_mode) {
 	spv = spirv_preprocess::freeze_spec_constant_ops(spv);
 	spv = spirv_preprocess::rewrite_copy_logical(spv);
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);
 	spv = spirv_preprocess::split_combined_samplers(spv);
+	spv = spirv_preprocess::fix_depth_images(spv, force_depth_images);
 	auto depth_result = spirv_preprocess::fix_depth2_images(spv);
 	spv = depth_result.bytes;
 	spv = spirv_preprocess::negate_position_y(spv);
