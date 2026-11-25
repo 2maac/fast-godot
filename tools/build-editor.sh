@@ -39,5 +39,22 @@ if [ -z "$engine" ]; then
 fi
 
 python="$here/python/bin/python3"
+if [ ! -x "$python" ]; then
+	# Running from the source tree rather than the toolchain: fall back to a
+	# known toolchain location so the bundled Python/SCons are still used.
+	for t in "${GRIT_TOOLCHAIN:-}" "${FAST_GODOT_TOOLCHAIN:-}" "$HOME/fast_godot_toolchain"; do
+		if [ -n "$t" ] && [ -x "$t/python/bin/python3" ]; then
+			here=$t
+			python="$here/python/bin/python3"
+			break
+		fi
+	done
+fi
 [ -x "$python" ] || python=python3
-exec "$python" "$engine/tools/grit_build.py" editor --engine "$engine" --toolchain "$here" "$@"
+"$python" "$engine/tools/grit_build.py" editor --engine "$engine" --toolchain "$here" "$@"
+
+# Every editor build is staged into out/editor-staging so it is always the
+# freshest binary that gets installed/tested. Skip with STAGE_EDITOR=0.
+if [ "$(uname -s)" = "Darwin" ] && [ "${STAGE_EDITOR:-1}" != "0" ] && [ -x "$engine/tools/stage_editor.sh" ]; then
+	"$engine/tools/stage_editor.sh"
+fi
