@@ -143,6 +143,13 @@ CopyEffects::CopyEffects(BitField<RasterEffects> p_raster_effects) {
 	}
 
 	{
+		// Initialize the depth-to-R32F copier (no push constants, full-screen triangle).
+		copy_depth_to_fb.shader.initialize({ "" });
+		copy_depth_to_fb.shader_version = copy_depth_to_fb.shader.version_create();
+		copy_depth_to_fb.pipeline.setup(copy_depth_to_fb.shader.version_get_shader(copy_depth_to_fb.shader_version, 0), RD::RENDER_PRIMITIVE_TRIANGLES, RD::PipelineRasterizationState(), RD::PipelineMultisampleState(), RD::PipelineDepthStencilState(), RD::PipelineColorBlendState::create_disabled(), 0);
+	}
+
+	{
 		// Initialize copier
 		Vector<String> copy_modes;
 		copy_modes.push_back("\n");
@@ -352,6 +359,9 @@ CopyEffects::~CopyEffects() {
 	for (int i = 0; i < COPY_MODE_MAX; i++) {
 		copy.pipelines[i].free();
 	}
+
+	copy_depth_to_fb.pipeline.clear();
+	copy_depth_to_fb.shader.version_free(copy_depth_to_fb.shader_version);
 
 	if (raster_effects.has_flag(RASTER_EFFECT_GAUSSIAN_BLUR)) {
 		blur_raster.shader.version_free(blur_raster.shader_version);
@@ -605,6 +615,25 @@ void CopyEffects::copy_to_atlas_fb(RID p_source_rd_texture, RID p_dest_framebuff
 	RD::get_singleton()->draw_list_bind_index_array(draw_list, material_storage->get_quad_index_array());
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &copy_to_fb.push_constant, sizeof(CopyToFbPushConstant));
 	RD::get_singleton()->draw_list_draw(draw_list, true);
+}
+
+void CopyEffects::copy_depth_to_fb_rect(RID p_source_rd_texture, RID p_dest_framebuffer, const Rect2i &p_rect) {
+	UniformSetCacheRD *uniform_set_cache = UniformSetCacheRD::get_singleton();
+	ERR_FAIL_NULL(uniform_set_cache);
+	MaterialStorage *material_storage = MaterialStorage::get_singleton();
+	ERR_FAIL_NULL(material_storage);
+
+	RID default_sampler = material_storage->sampler_rd_get_default(RSE::CANVAS_ITEM_TEXTURE_FILTER_NEAREST, RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED);
+	RD::Uniform u_source_rd_texture(RD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, 0, Vector<RID>({ default_sampler, p_source_rd_texture }));
+
+	RID shader = copy_depth_to_fb.shader.version_get_shader(copy_depth_to_fb.shader_version, 0);
+	ERR_FAIL_COND(shader.is_null());
+
+	RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(p_dest_framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 1.0f, 0, p_rect);
+	RD::get_singleton()->draw_list_bind_render_pipeline(draw_list, copy_depth_to_fb.pipeline.get_render_pipeline(RD::INVALID_ID, RD::get_singleton()->framebuffer_get_format(p_dest_framebuffer)));
+	RD::get_singleton()->draw_list_bind_uniform_set(draw_list, uniform_set_cache->get_cache(shader, 0, u_source_rd_texture), 0);
+	RD::get_singleton()->draw_list_draw(draw_list, false, 1u, 3u);
+	RD::get_singleton()->draw_list_end();
 }
 
 void CopyEffects::copy_to_fb_rect(RID p_source_rd_texture, RID p_dest_framebuffer, const Rect2i &p_rect, bool p_flip_y, bool p_force_luminance, bool p_alpha_to_zero, bool p_srgb, RID p_secondary, bool p_multiview, bool p_alpha_to_one, bool p_linear, bool p_normal, const Rect2 &p_src_rect, float p_linear_luminance_multiplier, bool p_bilinear_filtering) {

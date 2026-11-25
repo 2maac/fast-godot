@@ -452,7 +452,10 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
 				}
 				resolve_effects->resolve_depth_raster(rb->get_depth_msaa(v), depth_back_fb, resolve_samples);
 			} else {
-				copy_effects->copy_to_fb_rect(depth_texture, depth_back_fb, Rect2i(0, 0, size.x, size.y));
+				// Dedicated depth copy: the WebGPU backend cannot bind a depth
+				// attachment to the float copy_to_fb shader, so the depth read
+				// goes through a shader the driver types as a depth texture.
+				copy_effects->copy_depth_to_fb_rect(depth_texture, depth_back_fb, Rect2i(0, 0, size.x, size.y));
 			}
 		}
 	}

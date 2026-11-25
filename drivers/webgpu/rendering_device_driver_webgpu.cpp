@@ -465,7 +465,7 @@ static const char *_lookup_precompiled_wgsl(uint64_t p_spv_hash) {
 
 // Run SPIR-V preprocessing passes and translate to WGSL via Tint.
 // Returns a malloc'd null-terminated WGSL string, or nullptr on failure.
-static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size) {
+static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size, bool p_force_depth_images) {
 	if (p_spv_size < 20 || (p_spv_size % 4) != 0) {
 		return nullptr;
 	}
@@ -487,7 +487,7 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size) 
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);
 	spv = spirv_preprocess::split_combined_samplers(spv);
-	spv = spirv_preprocess::fix_multisampled_depth_images(spv);
+	spv = spirv_preprocess::fix_depth_images(spv, p_force_depth_images);
 	auto depth_result = spirv_preprocess::fix_depth2_images(spv);
 	spv = depth_result.bytes;
 	spv = spirv_preprocess::negate_position_y(spv);
@@ -536,10 +536,14 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size) 
 
 // Returns a malloc'd null-terminated WGSL string (caller must free), or nullptr on
 // failure. Checks: (1) in-memory cache, (2) precompiled table, (3) Tint fallback.
-static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size) {
+static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size, bool p_force_depth_images) {
 	uint32_t hash_lo = hash_murmur3_buffer(p_spv_ptr, p_spv_size);
 	uint32_t hash_hi = hash_murmur3_buffer(p_spv_ptr, p_spv_size, 0x9E3779B9);
 	uint64_t spv_hash = ((uint64_t)hash_hi << 32) | hash_lo;
+	if (p_force_depth_images) {
+		// Same SPIR-V can translate differently with forced depth typing.
+		spv_hash ^= 0x9E3779B97F4A7C15ULL;
+	}
 
 	// 1. Check in-memory cache (hits on repeated calls within same session).
 	const String *cached = _spv_to_wgsl_cache.getptr(spv_hash);
@@ -573,7 +577,7 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size) {
 	// 3. Fall back to Tint (for specialized shaders and shaders not in the table).
 	_spv_to_wgsl_cache_misses++;
 
-	char *wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size);
+	char *wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size, p_force_depth_images);
 
 	if (wgsl_str) {
 		_spv_to_wgsl_cache[spv_hash] = String(wgsl_str);
@@ -3705,7 +3709,9 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		// We convert SPIR-V → WGSL at runtime using Tint (C++, linked directly).
 		// Many shader stages share SPIR-V bytes; _spv_to_wgsl_cached looks up a
 		// process-lifetime cache before invoking Tint (see helper definition).
-		char *wgsl_str = _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size());
+		// Shader names include the variant suffix (e.g. "FooShaderRD:0").
+		const bool force_depth_images = shader->name.begins_with("CopyDepthToFbShaderRD");
+		char *wgsl_str = _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size(), force_depth_images);
 
 		if (wgsl_str == nullptr) {
 			error_text = vformat("WebGPU: SPIR-V→WGSL conversion failed for stage %d.", (int)s.shader_stage);
@@ -5445,7 +5451,10 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 						// which binds an MSAA depth texture into a float MSAA slot (WebGPU
 						// forbids sampling depth as float, so the MSAA fallback is used).
 						bool tex_is_ms = (tex->sample_count > 1);
-						if (swt_expected_ms && (!tex_is_ms || _is_depth_format(tex->format)) &&
+						if (swt_expected_depth && _is_depth_format(tex->format)) {
+							// Depth attachment bound to a texture_depth_2d slot.
+							te.textureView = tex->depth_view ? tex->depth_view : tex->default_view;
+						} else if (swt_expected_ms && (!tex_is_ms || _is_depth_format(tex->format)) &&
 								fallback_ms_texture_view != nullptr) {
 							te.textureView = fallback_ms_texture_view;
 						} else if (_is_depth_format(tex->format) && fallback_float_texture_view != nullptr) {
@@ -8131,7 +8140,8 @@ static PackedByteArray _patch_spirv_spec_constants(const PackedByteArray &p_spir
 WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants(
 		const PackedByteArray &p_spirv,
 		VectorView<PipelineSpecializationConstant> p_constants,
-		ShaderStage p_stage) {
+		ShaderStage p_stage,
+		bool p_force_depth_images) {
 	PackedByteArray patched = _patch_spirv_spec_constants(p_spirv, p_constants);
 
 	if (_wgsl_final_dump_enabled()) {
@@ -8140,7 +8150,7 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 	}
 
 	// Cached SPIR-V → WGSL via Tint (see _spv_to_wgsl_cached above).
-	char *wgsl_str = _spv_to_wgsl_cached(patched.ptr(), (int)patched.size());
+	char *wgsl_str = _spv_to_wgsl_cached(patched.ptr(), (int)patched.size(), p_force_depth_images);
 
 	if (!wgsl_str) {
 		ERR_PRINT("WebGPU: SPIR-V→WGSL conversion failed for specialized shader module.");
@@ -8403,14 +8413,16 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 			// Legacy path: patch SPIR-V and create specialized modules via Tint.
 			if (!shader->stage_spirv[SHADER_STAGE_VERTEX].is_empty()) {
 				specialized_vertex = _create_module_with_spec_constants(
-						shader->stage_spirv[SHADER_STAGE_VERTEX], p_specialization_constants, SHADER_STAGE_VERTEX);
+						shader->stage_spirv[SHADER_STAGE_VERTEX], p_specialization_constants, SHADER_STAGE_VERTEX,
+						shader->name.begins_with("CopyDepthToFbShaderRD"));
 				if (specialized_vertex) {
 					vertex_module = specialized_vertex;
 				}
 			}
 			if (!shader->stage_spirv[SHADER_STAGE_FRAGMENT].is_empty()) {
 				specialized_fragment = _create_module_with_spec_constants(
-						shader->stage_spirv[SHADER_STAGE_FRAGMENT], p_specialization_constants, SHADER_STAGE_FRAGMENT);
+						shader->stage_spirv[SHADER_STAGE_FRAGMENT], p_specialization_constants, SHADER_STAGE_FRAGMENT,
+						shader->name.begins_with("CopyDepthToFbShaderRD"));
 				if (specialized_fragment) {
 					fragment_module = specialized_fragment;
 				}
@@ -8949,7 +8961,8 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::compute_pipeline_create(ShaderID p_
 			}
 		} else if (!shader->stage_spirv[SHADER_STAGE_COMPUTE].is_empty()) {
 			specialized_compute = _create_module_with_spec_constants(
-					shader->stage_spirv[SHADER_STAGE_COMPUTE], p_specialization_constants, SHADER_STAGE_COMPUTE);
+					shader->stage_spirv[SHADER_STAGE_COMPUTE], p_specialization_constants, SHADER_STAGE_COMPUTE,
+					shader->name.begins_with("CopyDepthToFbShaderRD"));
 			if (specialized_compute) {
 				compute_module = specialized_compute;
 			}

@@ -87,13 +87,13 @@ DepthImageFixResult fix_depth2_images(const Vector<uint8_t> &p_bytes);
 // is done as a SPIR-V preprocessing pass instead.
 Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
 
-// Mark multisampled images in fragment-stage modules as depth images
-// (OpTypeImage Depth=1) so Tint emits `texture_depth_multisampled_2d` and the
-// MSAA depth attachment can be bound. WebGPU forbids binding a depth-format
-// texture to the float sample type glslang's plain `sampler2DMS` implies.
-// The mobile renderer's depth resolve (resolve_raster.glsl) is the only
-// fragment shader in the engine that reads a multisampled texture.
-Vector<uint8_t> fix_multisampled_depth_images(const Vector<uint8_t> &p_bytes);
+// Mark images as depth images (OpTypeImage Depth=1) so Tint emits
+// texture_depth_* instead of float types and the real depth attachment can be
+// bound. WebGPU forbids binding a depth-format texture to a float sample type.
+// In fragment-stage modules all multisampled float images are marked (the
+// mobile renderer's MSAA depth resolve); p_force_depth_images marks every float
+// image in the module, for the dedicated depth-copy shader.
+Vector<uint8_t> fix_depth_images(const Vector<uint8_t> &p_bytes, bool p_force_depth_images);
 
 // Strip OpDecorate/OpMemberDecorate for decorations unsupported by Tint:
 // Restrict (19) — memory hint from glslang, no WGSL equivalent.

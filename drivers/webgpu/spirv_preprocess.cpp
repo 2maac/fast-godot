@@ -1497,9 +1497,9 @@ DepthImageFixResult fix_depth2_images(const Vector<uint8_t> &p_bytes) {
 	return result;
 }
 
-// ---- fix_multisampled_depth_images ----
+// ---- fix_depth_images ----
 
-Vector<uint8_t> fix_multisampled_depth_images(const Vector<uint8_t> &p_bytes) {
+Vector<uint8_t> fix_depth_images(const Vector<uint8_t> &p_bytes, bool p_force_depth_images) {
 	const int64_t len = p_bytes.size();
 	const uint32_t total_words = (uint32_t)(len / 4);
 	if (total_words < 5) {
@@ -1508,14 +1508,19 @@ Vector<uint8_t> fix_multisampled_depth_images(const Vector<uint8_t> &p_bytes) {
 
 	const uint8_t *data = p_bytes.ptr();
 
-	// Only fragment-stage modules are affected: the mobile renderer resolves
-	// MSAA depth with a fragment shader (resolve_raster.glsl) that reads the
-	// depth attachment through `sampler2DMS`. glslang declares that image with
-	// Depth=0, so Tint emits `texture_multisampled_2d<f32>` and WebGPU then
-	// refuses to bind a depth-format texture to it. Marking the image as depth
-	// makes Tint emit `texture_depth_multisampled_2d`, which binds the real
-	// depth texture. The compute resolve (resolve.glsl) also reads multisampled
-	// colour attachments, so it must keep the float sample type.
+	// Two callers need depth-typed images:
+	// - The mobile renderer resolves MSAA depth with a fragment shader
+	//   (resolve_raster.glsl) that reads the depth attachment through
+	//   `sampler2DMS`. glslang declares that image with Depth=0, so Tint emits
+	//   `texture_multisampled_2d<f32>` and WebGPU refuses to bind a depth-format
+	//   texture to it. Marking the image as depth makes Tint emit
+	//   `texture_depth_multisampled_2d`. The compute resolve (resolve.glsl) also
+	//   reads multisampled colour attachments, so only fragment modules are
+	//   patched.
+	// - The dedicated depth copy shader (copy_depth_to_fb.glsl) reads a
+	//   non-multisampled depth attachment; the driver passes
+	//   p_force_depth_images for it, since its image is not distinguishable from
+	//   a colour texture by type alone.
 	bool is_fragment = false;
 	{
 		uint32_t pos = 5;
@@ -1536,12 +1541,11 @@ Vector<uint8_t> fix_multisampled_depth_images(const Vector<uint8_t> &p_bytes) {
 			pos += wc;
 		}
 	}
-	if (!is_fragment) {
+	if (!is_fragment && !p_force_depth_images) {
 		return p_bytes;
 	}
 
-	// Collect float type ids so integer multisampled images (usampler2DMS) are
-	// left alone.
+	// Collect float type ids so integer images (usampler2DMS) are left alone.
 	HashSet<uint32_t> float_type_ids;
 	{
 		uint32_t pos = 5;
@@ -1574,7 +1578,8 @@ Vector<uint8_t> fix_multisampled_depth_images(const Vector<uint8_t> &p_bytes) {
 			uint32_t sampled_type = read_word(out_data, len, pos + 2);
 			uint32_t depth = read_word(out_data, len, pos + 4);
 			uint32_t ms = read_word(out_data, len, pos + 6);
-			if (ms == 1 && depth == 0 && float_type_ids.has(sampled_type)) {
+			bool mark = (ms == 1 && is_fragment) || p_force_depth_images;
+			if (mark && depth == 0 && float_type_ids.has(sampled_type)) {
 				uint32_t one = 1;
 				memcpy(out_data + (pos + 4) * 4, &one, 4);
 				changed = true;
