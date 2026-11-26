@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..10b586beb0
+index 0000000000..eb474b7bf2
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10075 @@
+@@ -0,0 +1,10135 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -2273,6 +2273,7 @@ index 0000000000..10b586beb0
 +static uint32_t _dbg_resolve_att = 0;
 +static uint32_t _dbg_resolve_cmd = 0;
 +static uint32_t _dbg_ringof = 0;
++static uint32_t _dbg_pass_flush = 0;
 +static uint32_t _dbg_clears = 0;
 +static uint32_t _spv_to_wgsl_cache_hits = 0;
 +static uint32_t _spv_to_wgsl_cache_misses = 0;
@@ -9467,6 +9468,57 @@ index 0000000000..10b586beb0
 +	cmd->push_constants_dirty = true;
 +}
 +
++void RenderingDeviceDriverWebGPU::_ring_pass_boundary(WGCommandBuffer *p_cmd_buf) {
++	// Measure the pass that just ended: the ring offset only grows between pass
++	// boundaries, so the delta is that pass's push-constant usage.
++	if (push_constant_ring_offset >= push_constant_pass_start_offset) {
++		const uint32_t last_pass_usage = push_constant_ring_offset - push_constant_pass_start_offset;
++		if (last_pass_usage > push_constant_pass_high_water) {
++			push_constant_pass_high_water = last_pass_usage;
++		}
++	}
++
++	// Keep room for twice the largest pass seen so far (floor 1 MB). As long as a
++	// pass fits that reserve, the ring never has to be flushed from inside a pass,
++	// which is what used to end the active pass mid-way and corrupt in-pass MSAA
++	// resolves.
++	uint32_t reserve = push_constant_pass_high_water * 2;
++	if (reserve < PUSH_CONSTANT_PASS_MIN_RESERVE) {
++		reserve = PUSH_CONSTANT_PASS_MIN_RESERVE;
++	}
++	if (reserve > PUSH_CONSTANT_RING_SIZE) {
++		reserve = PUSH_CONSTANT_RING_SIZE;
++	}
++
++	if (p_cmd_buf && push_constant_ring_offset + reserve > PUSH_CONSTANT_RING_SIZE) {
++		// No pass is active at this point (the caller ended the previous one), so
++		// finishing the encoder and submitting is safe. Freeze the staged shadow
++		// data in the ring first: queue writes are ordered before the submit.
++		if (push_constant_shadow_dirty_start < push_constant_shadow_dirty_end) {
++			wgpuQueueWriteBuffer(queue, push_constant_ring_buffer, push_constant_shadow_dirty_start,
++					push_constant_shadow + push_constant_shadow_dirty_start,
++					push_constant_shadow_dirty_end - push_constant_shadow_dirty_start);
++			push_constant_shadow_dirty_start = UINT32_MAX;
++			push_constant_shadow_dirty_end = 0;
++		}
++		if (p_cmd_buf->encoder) {
++			WGPUCommandBuffer finished = wgpuCommandEncoderFinish(p_cmd_buf->encoder, nullptr);
++			if (finished) {
++				wgpuQueueSubmit(queue, 1, &finished);
++				wgpuCommandBufferRelease(finished);
++			}
++			wgpuCommandEncoderRelease(p_cmd_buf->encoder);
++			p_cmd_buf->encoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
++			p_cmd_buf->invalidate_bind_groups();
++		}
++		// Submitted data is frozen by queue ordering; the ring can be reused.
++		push_constant_ring_offset = 0;
++		perf.ring_pass_flushes++;
++		_dbg_pass_flush++;
++	}
++	push_constant_pass_start_offset = push_constant_ring_offset;
++}
++
 +void RenderingDeviceDriverWebGPU::_flush_push_constants(WGCommandBuffer *p_cmd_buf, WGShader *p_shader) {
 +	if (!p_cmd_buf->push_constants_dirty || p_cmd_buf->push_constant_data_len == 0 || !p_shader) {
 +		perf.push_constant_skipped++;
@@ -9489,11 +9541,11 @@ index 0000000000..10b586beb0
 +		// constant values (wgpuQueueWriteBuffer is ordered-before submit).
 +		perf.ring_overflows++;
 +		_dbg_ringof++;
-+		// A mid-frame flush ends and restarts the active pass, which disturbs
-+		// in-pass MSAA resolves: the frame can present without its 3D content.
-+		// The 8 MB ring covers ~32k slots (a Core-facing TPS frame uses ~2.2k),
-+		// so this warning points at an extreme frame rather than routine load.
-+		WARN_PRINT_ONCE("WebGPU: push-constant ring overflowed mid-frame; frames with this many draws may lose their 3D content while MSAA is enabled.");
++		// LAST-RESORT fallback. Ring flushes normally happen between passes (see
++		// _ring_pass_boundary), so reaching this means a single pass needs more
++		// slots than the whole ring holds; ending the pass here can disturb its
++		// in-pass MSAA resolve.
++		WARN_PRINT_ONCE("WebGPU: push-constant ring overflowed inside a single pass; this pass may lose its 3D content while MSAA is enabled. Increase PUSH_CONSTANT_RING_SIZE.");
 +
 +		// Remember which encoder type was active so we can restart the correct one.
 +		const bool was_render = (p_cmd_buf->render_encoder != nullptr);
@@ -9899,6 +9951,11 @@ index 0000000000..10b586beb0
 +			cmd->invalidate_bind_groups();
 +		}
 +	}
++
++	// Flush the push-constant ring at this pass boundary if the next pass would not
++	// fit in the remaining ring space. Never from inside a pass: ending a pass from
++	// _flush_push_constants breaks its in-pass MSAA resolve.
++	_ring_pass_boundary(cmd);
 +
 +	// --- Helper lambdas for op mapping ---
 +	auto map_load_op = [](AttachmentLoadOp op) -> WGPULoadOp {
@@ -11406,6 +11463,7 @@ index 0000000000..10b586beb0
 +		cmd->end_active_encoder();
 +	}
 +	if (cmd->active_encoder != WGCommandBuffer::COMPUTE) {
++		_ring_pass_boundary(cmd);
 +		_refresh_depth_float_copies(cmd);
 +		WGPUComputePassDescriptor pass_desc = {};
 +		cmd->compute_encoder = wgpuCommandEncoderBeginComputePass(cmd->encoder, &pass_desc);
@@ -11831,14 +11889,15 @@ index 0000000000..10b586beb0
 +	if (bool(GLOBAL_GET("rendering/webgpu/debug_frames"))) {
 +		EM_ASM({
 +			console.log('[DBGFRAME] f=' + $0 + ' drawn=' + $1 + ' passes=' + $2 + ' draws=' + $3 +
-+				' resAtt=' + $4 + ' resCmd=' + $5 + ' ringOF=' + $6);
++				' resAtt=' + $4 + ' resCmd=' + $5 + ' ringOF=' + $6 + ' passFlush=' + $7);
 +		}, (int)p_frame_index, (int)p_frames_drawn, (int)_dbg_passes, (int)_dbg_draws,
-+				(int)_dbg_resolve_att, (int)_dbg_resolve_cmd, (int)_dbg_ringof);
++				(int)_dbg_resolve_att, (int)_dbg_resolve_cmd, (int)_dbg_ringof, (int)_dbg_pass_flush);
 +		_dbg_passes = 0;
 +		_dbg_draws = 0;
 +		_dbg_resolve_att = 0;
 +		_dbg_resolve_cmd = 0;
 +		_dbg_ringof = 0;
++		_dbg_pass_flush = 0;
 +	}
 +	frame_index = p_frame_index;
 +	swapchain_pass_cleared = false;
@@ -11882,6 +11941,7 @@ index 0000000000..10b586beb0
 +	push_constant_ring_offset = 0;
 +	push_constant_shadow_dirty_start = UINT32_MAX;
 +	push_constant_shadow_dirty_end = 0;
++	push_constant_pass_start_offset = 0;
 +}
 +
 +void RenderingDeviceDriverWebGPU::end_segment() {
@@ -12129,10 +12189,10 @@ index 0000000000..10b586beb0
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.h b/drivers/webgpu/rendering_device_driver_webgpu.h
 new file mode 100644
-index 0000000000..294f494f04
+index 0000000000..b1a5be62ec
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.h
-@@ -0,0 +1,733 @@
+@@ -0,0 +1,745 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.h                                      */
 +/**************************************************************************/
@@ -12200,6 +12260,7 @@ index 0000000000..294f494f04
 +		uint32_t gap_bind_group_calls = 0;
 +		uint32_t first_instance_draws = 0;
 +		uint32_t ring_overflows = 0;
++		uint32_t ring_pass_flushes = 0;
 +		uint32_t depth_copies = 0;
 +		double last_log_time = 0;
 +		uint32_t frames_since_log = 0;
@@ -12215,6 +12276,7 @@ index 0000000000..294f494f04
 +			gap_bind_group_calls = 0;
 +			first_instance_draws = 0;
 +			ring_overflows = 0;
++			ring_pass_flushes = 0;
 +			depth_copies = 0;
 +		}
 +	} perf;
@@ -12283,6 +12345,13 @@ index 0000000000..294f494f04
 +	// (original binding N → sampler@N*2, image@N*2+1; max original ~20 → max split ~41).
 +	static constexpr uint32_t PUSH_CONSTANT_RING_BINDING = 120;
 +	uint32_t push_constant_ring_offset = 0;
++	// Pass-boundary ring flushing (see _ring_pass_boundary): a pass always starts
++	// with at least a reserve of the ring free, so mid-pass overflow is no longer
++	// the normal path (it remains only as a last-resort fallback in
++	// _flush_push_constants).
++	static constexpr uint32_t PUSH_CONSTANT_PASS_MIN_RESERVE = 1024 * 1024; // 1 MB floor.
++	uint32_t push_constant_pass_high_water = 0; // Largest per-pass ring usage seen, in bytes.
++	uint32_t push_constant_pass_start_offset = 0; // Ring offset at the current pass start.
 +
 +	// CPU-side shadow of the ring buffer for batched writes.
 +	// Accumulated during command recording, flushed once before queue submit.
@@ -12354,6 +12423,9 @@ index 0000000000..294f494f04
 +
 +	// --- BGL Rebinding Helper ---
 +	WGPUBindGroup _get_compatible_bind_group(WGUniformSet *p_us, WGShader *p_target_shader, uint32_t p_set_idx);
++	// Flush the push-constant ring between passes (safe point), never from inside a
++	// pass. Sizes the reserve from the largest pass seen so far.
++	void _ring_pass_boundary(WGCommandBuffer *p_cmd_buf);
 +	void _copy_texture_to_rw_shadow(WGCommandBuffer *p_cmd_buf, const WGTexture *p_source, WGPUTexture p_shadow);
 +	void _sync_rw_storage_texture_shadows_after_compute_dispatch(WGCommandBuffer *p_cmd_buf);
 +
