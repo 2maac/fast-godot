@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `patches/4.8-beta5` (remote branch; local branch is `4.8-beta5`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
+| `4.8-beta5` (branch and tag; patch files live in `patches/4.8-beta5/`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.

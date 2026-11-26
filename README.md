@@ -38,7 +38,7 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 
 | branch | Godot base |
 |---|---|
-| `patches/4.8-beta5` (remote branch; local branch `4.8-beta5`) | godot master `67421f36e5` (4.8.0-beta) |
+| `4.8-beta5` branch and tag (patch files live in `patches/4.8-beta5/`) | godot master `67421f36e5` (4.8.0-beta) |
 
 The `4.7.2` full-source branch is kept on the remote for history only (not
 maintained): `origin/4.7.2` = `d8cb1fd77c`. A leftover local branch `fresh`

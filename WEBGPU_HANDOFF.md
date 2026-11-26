@@ -1,12 +1,14 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~20:25. Ring hardening landed: the
-push-constant ring is flushed only between passes now, so a mid-frame submit can
-no longer interrupt an in-pass MSAA resolve (browser check of this build
-pending). The toolchain bootstrap builds the engine source from Godot's
-repository + the `4.8-beta5` patch tag; the obsolete source release and its tag
-were deleted 2026-11-26. Worktree HEAD `9267990dcd`; earlier on 2026-11-26 the
-pack-key port `834c3d4fc2` and the 8 MB ring mitigation `a495fc3e93` landed.
+Resume doc. Last updated 2026-11-26 ~20:40. Ring hardening landed and was
+browser-checked (owner, 2026-11-26: the TPS export works fine): the push-constant
+ring is flushed only between passes, so a mid-frame submit can no longer
+interrupt an in-pass MSAA resolve. The `4.8-beta5` patch tag was moved to the
+hardening tip (`4209e2f7`) so fresh toolchains build the hardened driver, and the
+remote branch is now simply `4.8-beta5` (no `patches/` prefix; patch files still
+live in `patches/4.8-beta5/`). The toolchain bootstrap builds the engine source
+from Godot's repository + that tag; the obsolete source release and its tag were
+deleted. Worktree HEAD `9267990dcd`.
 
 ## Where to start (docs map)
 
@@ -26,8 +28,8 @@ The repo is a **patch stack**, not a Godot fork checkout:
   the 4.8 stack. The full-source `4.7.2` branch remains on the remote for
   history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree); a leftover
   local branch `fresh` still points at that same commit and can be deleted.
-- `patches/4.8-beta5` — the 4.8 stack, same layers ported onto godot `master`
-  @ `67421f36e5` (4.8.0-beta).
+- `patches/4.8-beta5/` — the 4.8 stack (branch and tag `4.8-beta5`), same layers
+  ported onto godot `master` @ `67421f36e5` (4.8.0-beta).
 - `tools/apply.sh <godot-checkout> <stack>` applies a stack; `tools/make-patches.sh`
   regenerates it from a modified checkout with `git diff --binary`
   (icons/splash/logo/SPIR-V fixtures are binary patches: 8 hunks in `0005`, 15
@@ -38,8 +40,8 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| `origin/patches/4.8-beta5` (local branch `4.8-beta5`) | see `git log --oneline -1` | the stack; only the remote ref carries the `patches/` prefix |
-| tag `4.8-beta5` | `305312690f` | last release point; docs/tools commits sit on the branch above it |
+| branch `4.8-beta5` = `origin/4.8-beta5` | see `git log --oneline -1` | the stack; branch and tag share the simple name now (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| tag `4.8-beta5` | `4209e2f749` | release point, **moved 2026-11-26** to the ring-hardening tip so fresh toolchain installs fetch it; docs commits after the move sit on the branch above it |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
 
@@ -57,7 +59,7 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5`, pushed to `origin/patches/4.8-beta5`; tag `4.8-beta5` = `305312690f` is the last release point, docs/tools commits sit on top |
+| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` (simple name, same as the tag); tag `4.8-beta5` = `4209e2f749` — moved 2026-11-26 to the ring-hardening tip, which is what the bootstrap downloads |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `9267990dcd` (ring hardening; `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors), clean, not pushed (volatile) |
@@ -134,9 +136,11 @@ Consequences:
   otherwise); first-use downloads total ~84 MB;
 - the source-release asset/tag were **removed 2026-11-26**; editors built before
   that date lose fresh-toolchain provisioning (existing toolchains keep working);
-- **the `4.8-beta5` tag must move with the stack**: fresh installs fetch that tag,
-  so an engine-side patch (e.g. ring hardening) only reaches new toolchains after
-  the tag is re-cut; editor-only changes don't matter for template builds;
+- **the `4.8-beta5` tag is what fresh installs fetch**: it was moved on
+  2026-11-26 to the ring-hardening tip (`4209e2f749`), so new toolchains build the
+  hardened driver. Move the tag again when engine-side fixes land; docs commits
+  after a move sit on the branch above it, and editor-only changes don't matter
+  for template builds;
 - `GRIT_ENGINE_PROBE=1` exercises just the source step headlessly
   (`GRIT_DOWNLOAD_NOW=1` still runs the whole toolchain bootstrap).
 
@@ -259,11 +263,13 @@ than the whole ring (>32768 slots — vs ~2.2k draws for a whole TPS frame) stil
 hits the old fallback, which now warns "overflowed inside a single pass" and
 counts as `RingOF`.
 
-Verification so far: the wasm template rebuilt clean and contains the new
-warning plus the `passFlush=` DBGFRAME field; TPS was exported for the browser
-check. Browser verification of this build is still pending (owner) — enable
-`rendering/webgpu/debug_frames`: `passFlush` may be >0 on a heavy frame,
-`ringOF` must stay 0.
+Verification: the wasm template rebuilt clean and contains the new warning plus
+the `passFlush=` DBGFRAME field; TPS was exported at 20:16 and the owner's
+browser check passed (2026-11-26: the TPS export works fine). For counters
+enable `rendering/webgpu/debug_frames`: `passFlush` may be >0 on a heavy frame,
+`ringOF` must stay 0. Verified separately that the moved `4.8-beta5` tag archive
+contains the hardened driver patch (`_ring_pass_boundary` in `0004`), so fresh
+toolchain installs get the same driver.
 
 Diagnostics kept in the driver: `rendering/webgpu/debug_frames` prints per-frame
 pass/draw/resolve/ring counters (including `passFlush`) to the browser console;
@@ -296,7 +302,8 @@ the working option.
 1. ~~**MSAA flicker**~~ — **RESOLVED** (see the section above). Root cause was
    the WebGPU push-constant ring overflowing mid-frame; the flush broke the
    in-pass MSAA resolve. Fixed by an 8 MB ring (plus a one-shot warning).
-2. **Push-constant ring flush — HARDENED 2026-11-26** (browser check pending).
+2. **Push-constant ring flush — HARDENED 2026-11-26**, browser-checked by the
+   owner ("the TPS export works fine").
    Flushes now happen only between passes (`_ring_pass_boundary()`), never from
    inside one, so a mid-frame submit can no longer interrupt an in-pass MSAA
    resolve. The whole-frame case that caused the flicker is fixed; residual is a
@@ -352,9 +359,14 @@ the working option.
   the removal can no longer provision a fresh toolchain, so keep their existing
   toolchains or reinstall from a current build.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
-  installs download it. Moving it changes what new installs build; engine-side
-  fixes only reach new toolchains after the move. First-use provisioning also
-  needs system `git` on the machine.
+  installs download it. It was moved to the ring-hardening tip on 2026-11-26
+  (`4209e2f749`); move it again for later engine-side fixes. First-use
+  provisioning also needs system `git` on the machine.
+- Ref naming (2026-11-26): the remote branch was renamed from `patches/4.8-beta5`
+  to plain `4.8-beta5` (same name as the tag and the local branch; the patch
+  files stay in `patches/4.8-beta5/`). Use full refs when the ambiguity matters.
+  GitHub shows its "recent pushes → compare & pull request" banner for pushes to
+  this non-default branch; the repo default is still `4.7.2`.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
   the pass-boundary ring flush and the white-box pack-key port; re-apply
