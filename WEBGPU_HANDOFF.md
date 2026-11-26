@@ -6,8 +6,9 @@ Resume doc. Last updated 2026-11-26 ~14:20.
 
 The repo is a **patch stack**, not a Godot fork checkout:
 
-- `patches/4.7.2` — the 4.7.2-stack (komm64/4.7 WebGPU driver + engine patches,
-  grit, cffi, HTML5 Fast) applied on `4.7.2-stable` (`ed1daf0bf0`).
+- ~~`patches/4.7.2`~~ — the old 4.7.2 stack, **dropped 2026-11-26**: the project is
+  consolidated on the 4.8 stack, and the 4.7.2 branch is no longer built,
+  tested or maintained (kept only for history).
 - `patches/4.8-beta5` — the 4.8 stack, same layers ported onto godot `master`
   @ `67421f36e5` (4.8.0-beta).
 - `tools/apply.sh <godot-checkout> <stack>` applies a stack; `tools/make-patches.sh`
@@ -17,7 +18,7 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| `refs/heads/patches/4.7.2` | `f067ebc1d2` | base 4.7.2-stable |
+| `refs/heads/patches/4.7.2` | `f067ebc1d2` | frozen/deprecated (4.7.2 dropped) |
 | `refs/heads/patches/4.8-beta5` | latest | base godot master 67421f36e5 |
 | `refs/tags/4.8-beta5` | same as branch | |
 | release `4.8-beta5-source` | `fast-godot-4.8-beta5-src.zip` | patched 4.8 source tree used by the Grit toolchain bootstrap |
@@ -40,13 +41,27 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 ## Build / toolchain
 
-Toolchain (re-provisioned by our own script; ~4.5 GB):
-`~/fast_godot_toolchain` — Python 3.12.16 (+zstandard 0.25.0), SCons 4.11.1,
-MoltenVK 1.4.2, **Emscripten 6.0.12** (4.8 requires >= 6.0.1; 4.7.2 branch
-stays on 4.0.11). `tools/toolchain/download_toolchain.sh` is the provisioner;
-the editor runs it automatically, and its engine-source URL must point at the
-4.8 source release asset (already fixed; non-4.8 trees are rejected by
-`version.py` minor check).
+## Single toolchain
+
+There is exactly **one toolchain** for the whole project (4.7.2 was dropped):
+
+- Path: `~/fast_godot_toolchain` (~4.3 GB), provisioned by
+  `tools/toolchain/download_toolchain.sh` (the same script is in the 4.8 patch
+  stack; the editor runs it automatically on first use).
+- Contents: Python 3.12.16 + **zstandard 0.25.0**, SCons 4.11.1, MoltenVK 1.4.2,
+  **Emscripten 6.0.12** (SHA-256 pinned emsdk tarball), and the 4.8 engine source
+  tree at `engine/source`.
+- No other SDK version is pinned or supported in this project: 6.0.12 is used
+  for both editor-side building and Grit HTML5 Fast template builds. (Godot 4.8
+  requires >= 6.0.1; the older 4.0.11 pin died with the 4.7.2 stack.)
+- Grit builds use the engine source **inside** the toolchain
+  (`engine/source`). It is re-synced from the 4.8 worktree after driver/tooling
+  changes (see the `/tmp/godot48` note below); the 4.8 provisioner rejects any
+  non-4.8 tree via the `version.py` minor check.
+- The provisioning script sets `EMSDK_PYTHON` internally (via grit_build.py) to
+  the toolchain's own Python 3.12; manual `scons platform=web` runs need
+  `PATH=$HOME/fast_godot_toolchain/python/bin:$PATH` because macOS's python3 is
+  3.9 and emcc refuses it.
 
 Editor (macOS, from a checkout + applied stack):
 ```
@@ -158,8 +173,8 @@ the working option.
 4. **White-box pack key**: not ported (shim in `core/grit_script_key.cpp`);
    encrypted web templates are unavailable. `FileAccessEncrypted` v2 chunk
    format was reverted to the 4.8 base.
-5. The **4.7.2 branch lacks the Grit caching/cancel fixes**; mirror them if
-   4.7.2 exports are still in use.
+5. The **4.7.2 stack is dropped** (2026-11-26): one toolchain, one engine line.
+   No fixes will be mirrored there; `patches/4.7.2` is frozen for history only.
 6. Bake-time noise: `Index p_pass out of bounds (draw_passes.size() = 1)` for
    particle shaders and a few leaked particle shader RIDs at editor exit; the
    exported build is unaffected so far.
@@ -176,6 +191,7 @@ the working option.
 - Tag pushes on `patches/*` were force-pushed historically (branch renamed
   from `4.7.2`/`4.8-beta5`); `.gitignore` on those branches must exclude `out/`
   or a 100 MB app binary gets committed and GitHub rejects the push.
+- One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring fix; re-apply
   `patches/4.8-beta5` to a fresh checkout to reproduce it.
 - `GODOT_VERSION_HASH_OVERRIDE` is set by `tools/grit_build.py` from the editor
