@@ -9,8 +9,8 @@ remote branch is now simply `4.8-beta5` (no `patches/` prefix; patch files still
 live in `patches/`; `4.8-beta5` is the repository default branch).
 The toolchain bootstrap builds the engine source
 from Godot's repository + that tag; the obsolete source release and its tag were
-deleted. Worktree HEAD `2066582f14` (root-level patch stack; editor
-`4.8.beta.custom_build.2066582f1`), and this file now lives in `docs/` together
+deleted. Worktree HEAD `cdc0907bf6` (patch stack in `patches/`; editor
+`4.8.beta.custom_build.cdc0907bf`), and this file now lives in `docs/` together
 with `PATCH_STACK.md` and the migration history.
 
 ## Where to start (docs map)
@@ -67,11 +67,11 @@ already have a toolchain are unaffected).
 | patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch since 2026-11-26** (simple name, same as the tag); tag `4.8-beta5` = `4209e2f749` — moved 2026-11-26 to the ring-hardening tip, which is what the bootstrap downloads |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
-| build worktree | `/tmp/godot48` — branch `port48`, HEAD `2066582f14` (root-patch bootstrap; `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors), clean, not pushed (volatile) |
+| build worktree | `/tmp/godot48` — branch `port48`, HEAD `cdc0907bf6` (patches/ bootstrap; `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors), clean, not pushed (volatile) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.2066582f1`, staged 2026-11-26 ~20:40 (root-level patch stack for the bootstrap); `~/Applications/Fast_Godot_4.8.app` is the same build. The ring hardening is driver/template-only, so it is in the template, not the editor binary |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.cdc0907bf`, staged 2026-11-26 ~20:55 (bootstrap reads `patches/` in the stack archive); `~/Applications/Fast_Godot_4.8.app` is the same build. The ring hardening is driver/template-only, so it is in the template, not the editor binary |
 | web template | rebuilt 2026-11-26 20:13 from the hardened driver (new warning + `passFlush` present, the old mid-frame warning gone) and exported into the test site |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
 | source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before the removal can no longer provision a fresh toolchain |
@@ -163,18 +163,20 @@ scons platform=macos arch=arm64 target=editor \
 ```
 The current 4.8 build tree is a **volatile linked git worktree of this repo at
 `/tmp/godot48`** (`git worktree list` shows it; branch `port48`, HEAD
-`130ed7f48d`, clean, not pushed). The ring fix `a495fc3e93`, the pack-key port
-`834c3d4fc2` and the bootstrap commit `130ed7f48d` are its tip and ancestors
-(`f578f89fa9` was the tip before the ring/pack-key work). If /tmp is wiped,
-rebuild by applying the repo's `patches/*.patch` files to a fresh Godot checkout.
+`cdc0907bf6`, clean, not pushed). Ancestors: patches/ bootstrap `cdc0907bf6`,
+root-patch bootstrap `2066582f14`, ring hardening `9267990dcd`, source bootstrap
+`130ed7f48d`, MSAA mitigation `a495fc3e93`, pack-key port `834c3d4fc2`. If /tmp
+is wiped, rebuild by applying the repo's `patches/*.patch` files to a fresh
+Godot checkout.
 
 Staged build (gitignored): `out/editor-staging/`
-- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.130ed7f48`, Fast Godot icon,
-  ad-hoc signed, staged 2026-11-26 19:59) and `Fast_Godot_4.8-macos.zip`
-- `godot.web.template_release.wasm32.nothreads.zip` (built 18:22; the bootstrap
-  change is editor-only, so templates were not rebuilt)
+- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.cdc0907bf`, Fast Godot icon,
+  ad-hoc signed, staged 2026-11-26 ~20:55) and `Fast_Godot_4.8-macos.zip`
+- `godot.web.template_release.wasm32.nothreads.zip` (rebuilt 20:13 with the
+  pass-boundary ring flush; the later bootstrap/layout changes are editor-only,
+  so the template did not change again)
 - `Fast_Godot_4.8_BUILD.txt` (version/time/flags; refreshed with this build)
-Launchable install: `~/Applications/Fast_Godot_4.8.app` (same `130ed7f48` build).
+Launchable install: `~/Applications/Fast_Godot_4.8.app` (same `cdc0907bf` build).
 Note: the app folder's mtime can read like the template's old timestamp — use
 `Contents/MacOS/Godot` mtime/version.
 
@@ -373,8 +375,9 @@ the working option.
   and this handoff + the migration history moved into `docs/` (the handoff is
   `docs/WEBGPU_HANDOFF.md` now). The bootstrap and the editor are coupled:
   editor builds before the layout change look for `patches/4.8-beta5/` inside
-  the stack archive and cannot bootstrap from the current tag; rebuild the
-  editor whenever the patch layout changes.
+  the stack archive and cannot bootstrap from the current tag; the matching
+  build is `4.8.beta.custom_build.cdc0907bf`. Rebuild the editor whenever the
+  patch layout changes.
 - Ref naming (2026-11-26): the remote branch was renamed from `patches/4.8-beta5`
   to plain `4.8-beta5` (same name as the tag and the local branch; the patch
   files live at the repo root). Use full refs when the ambiguity matters.
