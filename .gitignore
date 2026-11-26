@@ -1,4 +1,3 @@
-# Build outputs and local scratch that never belong to the patch stack.
 out/
 bin/
 .testhome/

@@ -385,7 +385,7 @@ index 0000000000..25075e25fc
 +
 diff --git a/modules/grit/compiler/grit_cpp_emitter.cpp b/modules/grit/compiler/grit_cpp_emitter.cpp
 new file mode 100644
-index 0000000000..88e1dc6fe7
+index 0000000000..0237e3e8e5
 --- /dev/null
 +++ b/modules/grit/compiler/grit_cpp_emitter.cpp
 @@ -0,0 +1,2734 @@
@@ -1260,7 +1260,7 @@ index 0000000000..88e1dc6fe7
 +			if (!grit_is_pointer_type(return_type)) {
 +				return false;
 +			}
-+			const String method_symbol = add_static("MethodBind *const", "method", "ClassDB::get_method(" + string_name(p_statement.class_name) + ", " + string_name(name) + ")");
++			const String method_symbol = add_static("const MethodBind *const", "method", "ClassDB::get_method(" + string_name(p_statement.class_name) + ", " + string_name(name) + ")");
 +			r_scope.prelude.push_back("if (unlikely(!" + method_symbol + ")) { GritRuntime::report_error(frame, " + line + ", " + string_literal(vformat("Grit: method \"%s.%s\" is not available.", p_statement.class_name, name)) + "); " + error_return() + " }");
 +			const String base = is_static ? String() : variant_value(p_statement.operands[0], r_scope);
 +			const String arguments = pointer_arguments(p_statement, first, types, r_scope);
@@ -2303,7 +2303,7 @@ index 0000000000..88e1dc6fe7
 +		} break;
 +		case GritOpcode::CALL_NATIVE_STATIC:
 +		case GritOpcode::CALL_METHOD_BIND: {
-+			const String method = add_static("MethodBind *const", "method", "ClassDB::get_method(" + string_name(p_statement.class_name) + ", " + string_name(p_statement.name) + ")");
++			const String method = add_static("const MethodBind *const", "method", "ClassDB::get_method(" + string_name(p_statement.class_name) + ", " + string_name(p_statement.name) + ")");
 +			scope.prelude.push_back("if (unlikely(!" + method + ")) { GritRuntime::report_error(frame, " + line + ", " + string_literal(vformat("Grit: method \"%s.%s\" is not available.", p_statement.class_name, p_statement.name)) + "); " + error_return() + " }");
 +			if (p_statement.opcode == GritOpcode::CALL_NATIVE_STATIC) {
 +				const String arguments = arguments_array(p_statement, 0, scope);
@@ -5135,7 +5135,7 @@ index 0000000000..058b73ee73
 +};
 diff --git a/modules/grit/compiler/grit_recording_code_generator.cpp b/modules/grit/compiler/grit_recording_code_generator.cpp
 new file mode 100644
-index 0000000000..8e88dc3bad
+index 0000000000..82b50f6585
 --- /dev/null
 +++ b/modules/grit/compiler/grit_recording_code_generator.cpp
 @@ -0,0 +1,686 @@
@@ -5608,7 +5608,7 @@ index 0000000000..8e88dc3bad
 +	}
 +}
 +
-+void GritRecordingCodeGenerator::write_call_native_static_validated(const Address &p_target, const const MethodBind *p_method, const Vector<Address> &p_arguments) {
++void GritRecordingCodeGenerator::write_call_native_static_validated(const Address &p_target, const MethodBind *p_method, const Vector<Address> &p_arguments) {
 +	bytecode.write_call_native_static_validated(p_target, p_method, p_arguments);
 +	if (is_recording) {
 +		builder.write_call_native_static(p_target, p_method->get_instance_class(), p_method->get_name(), p_arguments, true);
@@ -5827,7 +5827,7 @@ index 0000000000..8e88dc3bad
 +}
 diff --git a/modules/grit/compiler/grit_recording_code_generator.h b/modules/grit/compiler/grit_recording_code_generator.h
 new file mode 100644
-index 0000000000..da4175d616
+index 0000000000..9d8cc4ecfd
 --- /dev/null
 +++ b/modules/grit/compiler/grit_recording_code_generator.h
 @@ -0,0 +1,138 @@
@@ -5936,7 +5936,7 @@ index 0000000000..da4175d616
 +	virtual void write_call_builtin_type(const Address &p_target, const Address &p_base, Variant::Type p_type, const StringName &p_method, const Vector<Address> &p_arguments) override;
 +	virtual void write_call_builtin_type_static(const Address &p_target, Variant::Type p_type, const StringName &p_method, const Vector<Address> &p_arguments) override;
 +	virtual void write_call_native_static(const Address &p_target, const StringName &p_class, const StringName &p_method, const Vector<Address> &p_arguments) override;
-+	virtual void write_call_native_static_validated(const Address &p_target, const const MethodBind *p_method, const Vector<Address> &p_arguments) override;
++	virtual void write_call_native_static_validated(const Address &p_target, const MethodBind *p_method, const Vector<Address> &p_arguments) override;
 +	virtual void write_call_method_bind(const Address &p_target, const Address &p_base, const MethodBind *p_method, const Vector<Address> &p_arguments) override;
 +	virtual void write_call_method_bind_validated(const Address &p_target, const Address &p_base, const MethodBind *p_method, const Vector<Address> &p_arguments) override;
 +	virtual void write_call_self(const Address &p_target, const StringName &p_function_name, const Vector<Address> &p_arguments) override;
@@ -9283,7 +9283,7 @@ index 0000000000..16c87a8f45
 +void grit_register_generated_functions(GritRegistry &r_registry);
 diff --git a/modules/grit/runtime/grit_runtime.cpp b/modules/grit/runtime/grit_runtime.cpp
 new file mode 100644
-index 0000000000..9d47a4e516
+index 0000000000..a45b0dc538
 --- /dev/null
 +++ b/modules/grit/runtime/grit_runtime.cpp
 @@ -0,0 +1,1750 @@
@@ -10736,7 +10736,7 @@ index 0000000000..9d47a4e516
 +	p_state->completed.emit(arguments, 1);
 +}
 +
-+bool call_method_bind(MethodBind *p_method, const Variant &p_base, const Variant **p_args, int p_argcount, Variant *r_return, const GritFrame &p_frame, int p_line) {
++bool call_method_bind(const MethodBind *p_method, const Variant &p_base, const Variant **p_args, int p_argcount, Variant *r_return, const GritFrame &p_frame, int p_line) {
 +	Object *object = nullptr;
 +	if (!resolve_method_base(p_method, p_base, object, p_frame, p_line)) {
 +		return false;
@@ -10765,7 +10765,7 @@ index 0000000000..9d47a4e516
 +	return true;
 +}
 +
-+bool call_method_bind_validated(MethodBind *p_method, const Variant &p_base, const Variant **p_args, Variant &r_return, const GritFrame &p_frame, int p_line) {
++bool call_method_bind_validated(const MethodBind *p_method, const Variant &p_base, const Variant **p_args, Variant &r_return, const GritFrame &p_frame, int p_line) {
 +	Object *object = nullptr;
 +	if (!resolve_method_base(p_method, p_base, object, p_frame, p_line)) {
 +		return false;
@@ -10780,7 +10780,7 @@ index 0000000000..9d47a4e516
 +	return true;
 +}
 +
-+bool call_method_bind_pointer(MethodBind *p_method, const Variant &p_base, const void **p_args, void *r_return, const GritFrame &p_frame, int p_line) {
++bool call_method_bind_pointer(const MethodBind *p_method, const Variant &p_base, const void **p_args, void *r_return, const GritFrame &p_frame, int p_line) {
 +	Object *object = nullptr;
 +	if (!resolve_method_base(p_method, p_base, object, p_frame, p_line)) {
 +		return false;
@@ -10842,7 +10842,7 @@ index 0000000000..9d47a4e516
 +	return true;
 +}
 +
-+bool call_native_static(MethodBind *p_method, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line) {
++bool call_native_static(const MethodBind *p_method, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line) {
 +	Callable::CallError call_error;
 +	r_return = p_method->call(nullptr, p_args, p_argcount, call_error);
 +	if (call_error.error != Callable::CallError::CALL_OK) {
@@ -10852,7 +10852,7 @@ index 0000000000..9d47a4e516
 +	return true;
 +}
 +
-+void call_native_static_validated(MethodBind *p_method, const Variant **p_args, Variant &r_return) {
++void call_native_static_validated(const MethodBind *p_method, const Variant **p_args, Variant &r_return) {
 +	if (p_method->has_return()) {
 +		prepare(r_return, p_method->get_return_info().type);
 +		p_method->validated_call(nullptr, p_args, &r_return);
@@ -11039,7 +11039,7 @@ index 0000000000..9d47a4e516
 +}
 diff --git a/modules/grit/runtime/grit_runtime.h b/modules/grit/runtime/grit_runtime.h
 new file mode 100644
-index 0000000000..e4ccca65cc
+index 0000000000..c0870a6351
 --- /dev/null
 +++ b/modules/grit/runtime/grit_runtime.h
 @@ -0,0 +1,768 @@
@@ -11790,14 +11790,14 @@ index 0000000000..e4ccca65cc
 +	ResumedSlots(const ResumedSlots &) = delete;
 +	ResumedSlots &operator=(const ResumedSlots &) = delete;
 +};
-+bool call_method_bind(MethodBind *p_method, const Variant &p_base, const Variant **p_args, int p_argcount, Variant *r_return, const GritFrame &p_frame, int p_line);
-+bool call_method_bind_validated(MethodBind *p_method, const Variant &p_base, const Variant **p_args, Variant &r_return, const GritFrame &p_frame, int p_line);
-+bool call_method_bind_pointer(MethodBind *p_method, const Variant &p_base, const void **p_args, void *r_return, const GritFrame &p_frame, int p_line);
++bool call_method_bind(const MethodBind *p_method, const Variant &p_base, const Variant **p_args, int p_argcount, Variant *r_return, const GritFrame &p_frame, int p_line);
++bool call_method_bind_validated(const MethodBind *p_method, const Variant &p_base, const Variant **p_args, Variant &r_return, const GritFrame &p_frame, int p_line);
++bool call_method_bind_pointer(const MethodBind *p_method, const Variant &p_base, const void **p_args, void *r_return, const GritFrame &p_frame, int p_line);
 +bool call_utility(const StringName &p_function, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line);
 +bool call_gdscript_utility(GDScriptUtilityFunctions::FunctionPtr p_function, const StringName &p_name, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line);
 +bool call_builtin_static(Variant::Type p_type, const StringName &p_method, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line);
-+bool call_native_static(MethodBind *p_method, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line);
-+void call_native_static_validated(MethodBind *p_method, const Variant **p_args, Variant &r_return);
++bool call_native_static(const MethodBind *p_method, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line);
++void call_native_static_validated(const MethodBind *p_method, const Variant **p_args, Variant &r_return);
 +bool call_super(const StringName &p_method, const Variant **p_args, int p_argcount, Variant &r_return, const GritFrame &p_frame, int p_line);
 +
 +bool check_assert(bool p_condition, const Variant &p_message, bool p_has_message, const GritFrame &p_frame, int p_line);
@@ -11813,10 +11813,10 @@ index 0000000000..e4ccca65cc
 +}
 diff --git a/modules/grit/runtime/grit_runtime_access.h b/modules/grit/runtime/grit_runtime_access.h
 new file mode 100644
-index 0000000000..ee2fbf7e0f
+index 0000000000..475cf66205
 --- /dev/null
 +++ b/modules/grit/runtime/grit_runtime_access.h
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,107 @@
 +#pragma once
 +
 +#include "modules/gdscript/gdscript.h"
@@ -11862,11 +11862,22 @@ index 0000000000..ee2fbf7e0f
 +		return Variant();
 +	}
 +	static _FORCE_INLINE_ Variant get_default_return(GDScriptFunction *p_function) { return default_for_type(p_function->return_type); }
++	// The original GDScript helpers are compiled only with DEBUG_ENABLED; release
++	// web templates (no debug features) still need an error string for the
++	// generated runtime, so fall back to a compact message there.
 +	static _FORCE_INLINE_ String get_call_error(const GDScriptFunction *p_function, const String &p_where, const Variant **p_arguments, int p_argument_count, const Variant &p_return, const Callable::CallError &p_error) {
++#ifdef DEBUG_ENABLED
 +		return p_function->_get_call_error(p_where, p_arguments, p_argument_count, p_return, p_error);
++#else
++		return "Invalid call " + p_where + " (error " + itos((int)p_error.error) + ").";
++#endif
 +	}
 +	static _FORCE_INLINE_ String get_callable_call_error(const GDScriptFunction *p_function, const String &p_where, const Callable &p_callable, const Variant **p_arguments, int p_argument_count, const Variant &p_return, const Callable::CallError &p_error) {
++#ifdef DEBUG_ENABLED
 +		return p_function->_get_callable_call_error(p_where, p_callable, p_arguments, p_argument_count, p_return, p_error);
++#else
++		return "Invalid call " + p_where + " (error " + itos((int)p_error.error) + ").";
++#endif
 +	}
 +
 +	static _FORCE_INLINE_ GDScriptFunction *get_lambda(const GDScriptFunction *p_function, int p_index) {

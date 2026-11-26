@@ -23966,10 +23966,10 @@ index 0000000000..04a5a4d239
 +exit /b 0
 diff --git a/tools/toolchain/download_toolchain.sh b/tools/toolchain/download_toolchain.sh
 new file mode 100755
-index 0000000000..991c8059b7
+index 0000000000..6d365bac58
 --- /dev/null
 +++ b/tools/toolchain/download_toolchain.sh
-@@ -0,0 +1,198 @@
+@@ -0,0 +1,204 @@
 +#!/bin/sh
 +# Downloads a complete Fast_Godot toolchain from the original sources into
 +# <dest> (default: ~/fast_godot_toolchain). No Python is used to download or unpack
@@ -24044,6 +24044,12 @@ index 0000000000..991c8059b7
 +mkdir -p "$dest/scons/4.11.1"
 +fetch "$SCONS_URL" "$SCONS_SHA" "$tmp/scons.tar.gz"
 +tar -xzf "$tmp/scons.tar.gz" -C "$dest/scons/4.11.1"
++
++# Godot 4.8's SCons build imports zstandard (gdextension interface dump); the
++# standalone Python does not ship it, so the toolchain installs it once here.
++progress 25 "Python zstandard (SCons dependency)"
++"$dest/python/bin/python3" -m pip install --no-cache-dir --disable-pip-version-check --quiet "zstandard==0.25.0" \
++	>/dev/null || fail "could not install the zstandard module into the bundled Python (needs network)"
 +
 +if [ "$os" = "Linux" ]; then
 +	progress 20 "libffi"
