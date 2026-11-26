@@ -54,6 +54,10 @@ Windows `.ico`, docs images and the SPIR-V shader-corpus fixtures.
 - Python 3.12 (+ `zstandard` for SCons 4.x), SCons 4.11.1 — all provisioned by
   the same toolchain script.
 - macOS editor: `vulkan_sdk_path` pointing at the toolchain's MoltenVK.
+- First-use toolchain bootstrap: downloads Godot's source at `upstream.lock`'s
+  commit plus the `4.8-beta5` stack archive and applies it with the system
+  `git apply`; needs git on the machine (`GRIT_ENGINE_PROBE=1` tests just that
+  step).
 
 Verified: editor builds/boots; web template builds
 (`platform=web target=template_release threads=no webgpu=yes opengl3=no`);
