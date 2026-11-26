@@ -379,3 +379,8 @@ the working option.
   reproduce it.
 - `GODOT_VERSION_HASH_OVERRIDE` is set by `tools/grit_build.py` from the editor
   version hash so baked shader cache keys match the runtime template.
+- After committing in `/tmp/godot48`, explicitly force `core/version_hash.gen.cpp`
+  to regenerate (delete it and its object, rebuild, check `--version` shows the
+  new HEAD). On 2026-11-26 a rebuild after committing kept the previous hash
+  (`834c3d4fc`) until forced; a stale hash changes ShaderRD cache keys, so
+  editor-baked shader caches would miss at runtime.
