@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..6006e3eee9
+index 0000000000..10b586beb0
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10020 @@
+@@ -0,0 +1,10075 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -2266,6 +2266,14 @@ index 0000000000..6006e3eee9
 +// Uses a 64-bit key (two MurmurHash3 passes with different seeds) to avoid
 +// birthday-paradox collisions that a 32-bit hash would risk at ~1k entries.
 +static HashMap<uint64_t, String> _spv_to_wgsl_cache;
++
++// Per-frame debug counters for MSAA black-frame investigation.
++static uint32_t _dbg_passes = 0;
++static uint32_t _dbg_draws = 0;
++static uint32_t _dbg_resolve_att = 0;
++static uint32_t _dbg_resolve_cmd = 0;
++static uint32_t _dbg_ringof = 0;
++static uint32_t _dbg_clears = 0;
 +static uint32_t _spv_to_wgsl_cache_hits = 0;
 +static uint32_t _spv_to_wgsl_cache_misses = 0;
 +
@@ -2508,6 +2516,10 @@ index 0000000000..6006e3eee9
 +
 +RenderingDeviceDriverWebGPU::RenderingDeviceDriverWebGPU(RenderingContextDriverWebGPU *p_context_driver) {
 +	context_driver = p_context_driver;
++	// Diagnostic switch: run the scene renderer without the WebGPU batching /
++	// first-instance draw paths (they are a 4.7-era engine merge on 4.8).
++	GLOBAL_DEF("rendering/webgpu/disable_batching", false);
++	GLOBAL_DEF("rendering/webgpu/debug_frames", false);
 +}
 +
 +RenderingDeviceDriverWebGPU::~RenderingDeviceDriverWebGPU() {
@@ -8683,6 +8695,7 @@ index 0000000000..6006e3eee9
 +}
 +
 +void RenderingDeviceDriverWebGPU::command_resolve_texture(CommandBufferID p_cmd_buffer, TextureID p_src_texture, TextureLayout p_src_texture_layout, uint32_t p_src_layer, uint32_t p_src_mipmap, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, uint32_t p_dst_layer, uint32_t p_dst_mipmap) {
++	_dbg_resolve_cmd++;
 +	// WebGPU has no resolve command: resolving happens when a render pass ends
 +	// with a resolveTarget. An empty pass that loads the multisampled texture
 +	// and resolves it does the same as vkCmdResolveImage.
@@ -9475,6 +9488,12 @@ index 0000000000..6006e3eee9
 +		// This guarantees earlier work in the submitted command buffer sees correct push
 +		// constant values (wgpuQueueWriteBuffer is ordered-before submit).
 +		perf.ring_overflows++;
++		_dbg_ringof++;
++		// A mid-frame flush ends and restarts the active pass, which disturbs
++		// in-pass MSAA resolves: the frame can present without its 3D content.
++		// The 8 MB ring covers ~32k slots (a Core-facing TPS frame uses ~2.2k),
++		// so this warning points at an extreme frame rather than routine load.
++		WARN_PRINT_ONCE("WebGPU: push-constant ring overflowed mid-frame; frames with this many draws may lose their 3D content while MSAA is enabled.");
 +
 +		// Remember which encoder type was active so we can restart the correct one.
 +		const bool was_render = (p_cmd_buf->render_encoder != nullptr);
@@ -9789,6 +9808,16 @@ index 0000000000..6006e3eee9
 +	_refresh_depth_float_copies(cmd);
 +
 +	perf.render_passes++;
++	_dbg_passes++;
++	// Count color attachments that resolve in this pass (MSAA path health check).
++	if (rp->subpasses.size() > 0) {
++		const WGRenderPass::SubpassInfo &dbg_sp = rp->subpasses[0];
++		for (uint32_t dbg_i = 0; dbg_i < dbg_sp.resolve_references.size(); dbg_i++) {
++			if (dbg_sp.resolve_references[dbg_i].attachment != RDD::AttachmentReference::UNUSED) {
++				_dbg_resolve_att++;
++			}
++		}
++	}
 +
 +	// End any active encoder.
 +	cmd->end_active_encoder();
@@ -10452,6 +10481,7 @@ index 0000000000..6006e3eee9
 +	}
 +
 +	perf.draw_calls++;
++	_dbg_draws++;
 +	if (p_first_instance > 0) {
 +		perf.first_instance_draws++;
 +	}
@@ -10476,6 +10506,7 @@ index 0000000000..6006e3eee9
 +	}
 +
 +	perf.draw_calls++;
++	_dbg_draws++;
 +	if (p_first_instance > 0) {
 +		perf.first_instance_draws++;
 +	}
@@ -11797,6 +11828,18 @@ index 0000000000..6006e3eee9
 +// =============================================================================
 +
 +void RenderingDeviceDriverWebGPU::begin_segment(uint32_t p_frame_index, uint32_t p_frames_drawn) {
++	if (bool(GLOBAL_GET("rendering/webgpu/debug_frames"))) {
++		EM_ASM({
++			console.log('[DBGFRAME] f=' + $0 + ' drawn=' + $1 + ' passes=' + $2 + ' draws=' + $3 +
++				' resAtt=' + $4 + ' resCmd=' + $5 + ' ringOF=' + $6);
++		}, (int)p_frame_index, (int)p_frames_drawn, (int)_dbg_passes, (int)_dbg_draws,
++				(int)_dbg_resolve_att, (int)_dbg_resolve_cmd, (int)_dbg_ringof);
++		_dbg_passes = 0;
++		_dbg_draws = 0;
++		_dbg_resolve_att = 0;
++		_dbg_resolve_cmd = 0;
++		_dbg_ringof = 0;
++	}
 +	frame_index = p_frame_index;
 +	swapchain_pass_cleared = false;
 +	frames_drawn = p_frames_drawn;
@@ -11961,6 +12004,18 @@ index 0000000000..6006e3eee9
 +	}
 +}
 +
++static bool _webgpu_batching_disabled() {
++	static int8_t disabled = -1;
++	if (disabled < 0) {
++		disabled = 0;
++		ProjectSettings *settings = ProjectSettings::get_singleton();
++		if (settings && settings->has_setting("rendering/webgpu/disable_batching") && bool(settings->get("rendering/webgpu/disable_batching"))) {
++			disabled = 1;
++		}
++	}
++	return disabled == 1;
++}
++
 +uint64_t RenderingDeviceDriverWebGPU::api_trait_get(ApiTrait p_trait) {
 +	switch (p_trait) {
 +		case API_TRAIT_HONORS_PIPELINE_BARRIERS: return 0; // No barriers in WebGPU.
@@ -12000,10 +12055,10 @@ index 0000000000..6006e3eee9
 +		case API_TRAIT_FORCE_OMNI_DUAL_PARABOLOID: return 1;
 +		// Batch consecutive same-mesh shadow draws into instanced draws.
 +		// Reduces per-draw IPC from 2 crossings/draw to 2 crossings/batch.
-+		case API_TRAIT_BATCH_INSTANCE_DRAWS: return 1;
++		case API_TRAIT_BATCH_INSTANCE_DRAWS: return _webgpu_batching_disabled() ? 0 : 1;
 +		// Pass instance index via firstInstance instead of push constants.
 +		// Eliminates per-draw SetBindGroup for push constant ring buffer.
-+		case API_TRAIT_FIRST_INSTANCE_INDEX: return 1;
++		case API_TRAIT_FIRST_INSTANCE_INDEX: return _webgpu_batching_disabled() ? 0 : 1;
 +		// buffer_map() returns a CPU shadow copy; RenderingDevice::_end_frame() must
 +		// unmap every upload staging block every frame to flush it via wgpuQueueWriteBuffer.
 +		case API_TRAIT_BUFFER_MAP_RETURNS_SHADOW_COPY: return 1;
@@ -12074,7 +12129,7 @@ index 0000000000..6006e3eee9
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.h b/drivers/webgpu/rendering_device_driver_webgpu.h
 new file mode 100644
-index 0000000000..4255d11326
+index 0000000000..294f494f04
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.h
 @@ -0,0 +1,733 @@
@@ -12220,7 +12275,7 @@ index 0000000000..4255d11326
 +	// --- Push Constant Emulation ---
 +	// Ring buffer for push constant data. Each slot is 256-byte aligned.
 +	WGPUBuffer push_constant_ring_buffer = nullptr;
-+	static constexpr uint32_t PUSH_CONSTANT_RING_SIZE = 512 * 1024; // 512KB = 2048 draw calls at 256B/slot
++	static constexpr uint32_t PUSH_CONSTANT_RING_SIZE = 8 * 1024 * 1024; // 32k slots; a Core-facing frame uses ~2.2k
 +	static constexpr uint32_t PUSH_CONSTANT_SLOT_ALIGNMENT = 256;
 +	// Binding slot used for the PC ring buffer inside group 3.
 +	// Must match the binding used in spirv_preprocess::convert_push_constants_to_uniforms().

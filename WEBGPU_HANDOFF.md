@@ -89,13 +89,67 @@ Grit build performance/cancel fixes in the 4.8 stack:
 - SCons objects shared across profile trees via `cache_path`;
 - cancel (Esc) kills the whole process group, so compilers stop too.
 
+## MSAA flicker — root cause and fix (2026-11-26)
+
+Symptom: TPS demo flickered with MSAA 2x/4x in gameplay only (geometry
+disappearing/reappearing, later confirmed as whole frames presenting black
+except the 2D HUD); menu and MSAA-off were stable.
+
+How it was found: a debug autoload orbiting a camera around the level Core in a
+scratch copy produced a deterministic reproduction (2-10 black frames per 48 at
+MSAA 4x, none with MSAA off), and per-frame driver counters showed the frames
+were fully recorded - passes, draws and resolve attachments all present, **zero
+GPU validation errors**.
+
+Root cause: `PUSH_CONSTANT_RING_SIZE` was 512 KB = 2048 slots. A Core-facing TPS
+frame issues ~2.2k draws, so the ring overflowed mid-frame. The overflow flush
+ends the active render pass (which resolves its MSAA colour), submits, and
+restarts the pass with `LoadOp_Load`; with MSAA that corrupts the resolved
+target, so the frame presents without its 3D content. Without MSAA there is no
+resolve target, which is why the bug never appeared there. Facing the Core is
+the worst case because it has the most draws.
+
+Fix: ring grows to 8 MB (32768 slots, ~15x headroom), plus a one-shot warning
+if an extreme frame ever overflows. Verified with the orbit capture: before,
+2-10 black frames per 48; after, none and `RingOF=0`. User-verified in a real
+browser on the TPS demo with MSAA 4x.
+
+Residual risk: the ring flush path itself is still the weak point (a frame with
+>32k push-constant slots would overflow). A proper fix would make the flush not
+interrupt in-pass resolves (e.g. defer flush to pass boundaries, or use a
+per-frame growing ring), and is the next hardening step.
+
+Diagnostics kept in the driver: `rendering/webgpu/debug_frames` prints per-frame
+pass/draw/resolve/ring counters to the browser console;
+`rendering/webgpu/disable_batching` disables the batch/firstInstance traits and
+was used to rule the batching path out.
+
+## Forward+ status (studio-foundation comparison, 2026-11-26)
+
+The studio-foundation 4.7.1 stack (patches 0001-0033) was built locally and used
+to export TPS in Forward+ for comparison. It does **not** run TPS:
+
+- Tint crashes with `TINT_UNIMPLEMENTED unhandled SPIR-V instruction:
+  OpImageTexelPointer` (image atomics) and the wasm traps.
+- Forward+ scene pipelines exceed WebGPU limits: "number of storage buffers
+  (12) in the Vertex stage exceeds the maximum per-stage limit (10)",
+  so `SceneForwardClusteredShaderRD` layout/pipelines are invalid.
+- MSAA resolve bindings mismatch: `sampler2DMS` texture-vs-sampler in
+  `ResolveShaderRD`/`SsEffectsDownsample`, and a sample-count-4 texture bound to
+  a `multisampled: 0` layout entry.
+- Their mobile export boots (60 fps) but renders only the orange environment,
+  because their shader bake does not cover TPS's scene-embedded materials.
+
+Conclusion: Forward+ on their stack needs engine work (reduce vertex storage
+bindings below 10, image-atomic lowering/fallbacks, resolve layout fixes) and a
+different bake path before it can host TPS; our 4.8 mobile+Grit stack remains
+the working option.
+
 ## Open issues / next steps
 
-1. **MSAA flicker (4.7.2 only so far)**: 4.7.2 builds flicker at MSAA 2x/4x in
-   gameplay (whole-scene lit/flat toggling, no GPU errors); menu and MSAA-off
-   are stable. Not yet verified on the 4.8 build — test TPS with MSAA 4x.
-   Related findings: 4.8 has no `first_instance`/`batch_instance_draws` draw
-   path (removed upstream), subpass post-process is already disabled on web.
+1. ~~**MSAA flicker**~~ — **RESOLVED** (see the section below). Root cause was
+   the WebGPU push-constant ring overflowing mid-frame; the flush broke the
+   in-pass MSAA resolve. Fixed by an 8 MB ring (plus a one-shot warning).
 2. **LightmapGI/GI probes**: komm64's 4.7.2 build had them working; the 4.8
    port has not been checked.
 3. **Perf comparison**: 4.8 TPS stats - shaders=168/607/247ms, tint=370/13.7s,
@@ -122,5 +176,7 @@ Grit build performance/cancel fixes in the 4.8 stack:
 - Tag pushes on `patches/*` were force-pushed historically (branch renamed
   from `4.7.2`/`4.8-beta5`); `.gitignore` on those branches must exclude `out/`
   or a 100 MB app binary gets committed and GitHub rejects the push.
+- The macOS editor build tree `/tmp/godot48` also carries the ring fix; re-apply
+  `patches/4.8-beta5` to a fresh checkout to reproduce it.
 - `GODOT_VERSION_HASH_OVERRIDE` is set by `tools/grit_build.py` from the editor
   version hash so baked shader cache keys match the runtime template.
