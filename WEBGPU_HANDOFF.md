@@ -1,9 +1,10 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~20:00 (facts re-verified on the live
-machine: the build worktree and staged editor moved to `834c3d4fc2`, the ref
-table and environment snapshot are corrected, a stale "pack key not ported" item
-is gone, and `tools/make-patches.sh` was fixed and round-trip verified). The
+Resume doc. Last updated 2026-11-26 ~21:00 (facts re-verified on the live
+machine: worktree/staged editor at `834c3d4fc2`, ref table and environment
+snapshot corrected, stale "pack key not ported" item gone, `tools/make-patches.sh`
+fixed and round-trip verified, and the `4.8-beta5-source` tag re-cut to a
+parentless 4.8 snapshot after byte-verifying the release asset). The
 push-constant ring flush path is still only mitigated, not structurally hardened
 — it stays open (open issue 2).
 
@@ -37,28 +38,31 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| `origin/patches/4.8-beta5` | `305312690f` | the stack; only the remote ref carries the `patches/` prefix |
-| tag `4.8-beta5` | `305312690f` | last release point (= remote branch tip at release) |
-| local branch `4.8-beta5` | `git log --oneline -1` | tracks the above; may carry un-pushed docs/tools commits on top |
-| `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** tree, history only, not maintained |
-| tag `4.8-beta5-source` | `d8cb1fd77c` | **suspect**: resolves to the 4.7.2 full-source tip (`version.py` says 4.7.2), not a 4.8 tree — re-cut or retire it before trusting the `fast-godot-4.8-beta5-src.zip` artifact |
+| `origin/patches/4.8-beta5` (local branch `4.8-beta5`) | see `git log --oneline -1` | the stack; only the remote ref carries the `patches/` prefix |
+| tag `4.8-beta5` | `305312690f` | last release point; docs/tools commits sit on the branch above it |
+| `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
+| tag `4.8-beta5-source` | `35e42f7df2` | single parentless commit holding the 4.8-beta5 source tree; **re-cut 2026-11-26** from `d8cb1fd77c` (the 4.7.2 tree). The release asset `fast-godot-4.8-beta5-src.zip` (96,229,476 B, sha256 `25bb6f17…`) is byte-verified to this tree |
 
 Note: the toolchain provisioner copies the engine source from the local checkout
 (`engine_root/../..` in `download_toolchain.sh`), so a fresh
-`~/fast_godot_toolchain` does not download the `4.8-beta5-source` release; that
-tag only matters if a source-release artifact is produced from it.
+`~/fast_godot_toolchain` does not download the `4.8-beta5-source` release; the
+tag only matters when cutting the source-release artifact. Verified 2026-11-26:
+extracting `fast-godot-4.8-beta5-src.zip` yields exactly the 16,064 tracked
+files of the `834c3d4fc2` worktree (no differing file; only generated build
+artifacts are absent), and the zip's comment is that commit hash.
 
 ## Environment snapshot (verified on this machine, 2026-11-26 ~19:15)
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5`; tag `4.8-beta5` = `305312690f` (last release point; local branch may be ahead with un-pushed docs/tools commits) |
+| patch stack repo | branch `4.8-beta5`, pushed to `origin/patches/4.8-beta5`; tag `4.8-beta5` = `305312690f` is the last release point, docs/tools commits sit on top |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `834c3d4fc2`, clean, Godot 4.8.0-beta, not pushed (volatile) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
 | staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.834c3d4fc`, staged 2026-11-26 18:21; `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
+| source release | tag `4.8-beta5-source` = `35e42f7df2` (parentless snapshot, 16,064 files, tree = `834c3d4fc2`; re-cut and force-pushed 2026-11-26, old ref `d8cb1fd77c`). Asset `fast-godot-4.8-beta5-src.zip`, sha256 `25bb6f17…`, byte-verified |
 
 ## 4.8 layer map
 
@@ -218,6 +222,35 @@ overflow). A proper fix would make the flush not interrupt in-pass resolves
 the next hardening step and has **not** been done. Do not close this thinking
 the 8 MB ring fixed it.
 
+### Structural hardening plan (open issue 2 — not started)
+
+A fix must make the flush stop interrupting an MSAA-resolving pass mid-frame.
+Notes from the driver (2026-11-26):
+
+- **Deferring the flush alone is not enough.** Draws already recorded reference
+  ring slots through dynamic offsets; if the ring wraps, a later slot overwrites
+  data that an earlier recorded draw still reads at submit time. Deferring the
+  submit only moves the corruption later.
+- **Chunked ring storage is the viable shape:** allocate ring buffers lazily in
+  chunks, one bind group per chunk (dynamic offset within that chunk), switch
+  chunk instead of ending the pass when the current one would overflow, and
+  reuse a chunk only after the submit that consumed it completes. Removal of the
+  mid-pass interruption is the structural part; an extreme frame then costs
+  memory, not correctness.
+- **Complication:** engine-side uniform sets merge the PC ring entry
+  (`merged_pc_group_layout` / `current_pc_bind_group`), so those bind groups
+  embed the ring buffer pointer; each needs a per-chunk variant or a rebind path.
+  This is the bulk of the work.
+- **Also touches:** the single fixed 8 MB `push_constant_shadow` array becomes
+  per-chunk shadows with dirty ranges; flush bookkeeping moves from "submit
+  mid-frame" to "commit at frame boundary".
+- **Test plan:** orbit-camera repro (2-10 black frames per 48 at MSAA 4x), then
+  `rendering/webgpu/debug_frames` must show zero mid-pass flushes and `RingOF=0`
+  on TPS gameplay, plus test_project smoke and an encrypted export boot; final
+  sign-off is a real-browser TPS check.
+- **Effort:** driver-only, a few hundred lines, but it needs a web-template
+  rebuild and browser verification — not something to land unverified.
+
 Diagnostics kept in the driver: `rendering/webgpu/debug_frames` prints per-frame
 pass/draw/resolve/ring counters to the browser console;
 `rendering/webgpu/disable_batching` disables the batch/firstInstance traits and
@@ -271,14 +304,14 @@ the working option.
 7. `~/notarize-work/Fast_Godot.app` is an old 4.7.2 Developer-ID build with the
    stock icon; a Dock tile pinned to it shows the old icon. Either re-pin
    `~/Applications/Fast_Godot_4.8.app` or re-sign a refreshed copy.
-8. **Release/tag consistency**: tag `4.8-beta5-source` resolves to the 4.7.2
-   full-source tip, not a 4.8 tree (see the ref table; confirmed against the
-   remote 2026-11-26). The only full-source 4.8 tree is branch `port48`
-   (`834c3d4fc2`, the `/tmp/godot48` worktree); fixing the tag means pushing
-   that tree (or a squashed export) as a source branch and re-pointing the tag
-   — a remote write, needs an owner decision. Nothing is broken today: the
-   toolchain provisioner copies the local checkout instead of downloading this
-   release.
+8. ~~**Release/tag consistency**~~ — **FIXED 2026-11-26.** The 4.8 source asset
+   was correct but the tag pointed at `d8cb1fd77c` (the 4.7.2 tree) and the
+   release's `targetCommitish` said `4.7.2`. Re-cut the tag to a parentless
+   snapshot of the `834c3d4fc2` tree (`35e42f7df2`, 26 MB pack; old value
+   `d8cb1fd77c` for reversal) and force-pushed it; `git ls-remote` and the
+   GitHub tag object both return `35e42f7df2`. GitHub keeps
+   `targetCommitish: 4.7.2` as creation metadata (the API rejects updating it)
+   but the release resolves through the tag, so it shows the correct commit.
 
 ## Practical notes
 
@@ -289,6 +322,9 @@ the working option.
 - Tag pushes on `patches/*` were force-pushed historically (branch renamed
   from `4.7.2`/`4.8-beta5`); `.gitignore` on those branches must exclude `out/`
   or a 100 MB app binary gets committed and GitHub rejects the push.
+- Release tags can be force-updated too: `4.8-beta5-source` was re-cut
+  2026-11-26 (`d8cb1fd77c` → `35e42f7df2`). Verify with
+  `git ls-remote origin refs/tags/<tag>` after any move.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring fix and the
   white-box pack-key port; re-apply `patches/4.8-beta5` to a fresh checkout to
