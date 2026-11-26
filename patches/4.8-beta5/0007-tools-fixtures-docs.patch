@@ -22604,10 +22604,10 @@ index 0000000000..8799958ecf
 +echo "[export] serve it with: cd \"$OUT_DIR\" && python3 -m http.server 8125 --bind 127.0.0.1"
 diff --git a/tools/grit_build.py b/tools/grit_build.py
 new file mode 100755
-index 0000000000..b3a448a152
+index 0000000000..0b85ed40ff
 --- /dev/null
 +++ b/tools/grit_build.py
-@@ -0,0 +1,912 @@
+@@ -0,0 +1,960 @@
 +#!/usr/bin/env python3
 +"""The one build script for Fast_Godot: editor, native export and HTML5 export.
 +
@@ -22644,6 +22644,7 @@ index 0000000000..b3a448a152
 +import os
 +import secrets
 +import shutil
++import signal
 +import subprocess
 +import sys
 +import time
@@ -22830,7 +22831,19 @@ index 0000000000..b3a448a152
 +
 +def scons_command(env, scons_extra):
 +    python = env.get("python") or sys.executable
-+    return [python, "-m", "SCons"] + scons_extra
++    command = [python, "-m", "SCons"] + scons_extra
++    # Share compiled objects between profile trees. The build profile only
++    # selects engine features, so thirdparty (Tint, SPIRV-Tools - the expensive
++    # part of a first build) compiles to identical objects across projects and
++    # platforms; the cache turns the next project's first export into a relink.
++    cache = env.get("scons_cache")
++    root = env.get("toolchain_root") or env.get("toolchain") or ""
++    if not cache and root:
++        cache = os.path.join(root, "scons-cache")
++    if cache:
++        os.makedirs(cache, exist_ok=True)
++        command += ["cache_path=%s" % cache, "cache_debug=no"]
++    return command
 +
 +
 +def seed_tree(engine, dest, generated):
@@ -23164,6 +23177,11 @@ index 0000000000..b3a448a152
 +    # The build has to see the toolchain it was provisioned with, even though the
 +    # editor process it was started from does not.
 +    child_env = dict(os.environ)
++    # Keep the host tint_convert_cli build (Tint + SPIRV-Tools) cached in the
++    # toolchain so profile trees created for other projects reuse it.
++    toolchain_root = env.get("toolchain_root") or ""
++    if toolchain_root:
++        child_env.setdefault("GRIT_TINT_CLI_CACHE", os.path.join(toolchain_root, "tint-cli-cache"))
 +    # The template must agree with the editor on GODOT_VERSION_HASH: ShaderRD folds
 +    # it into every shader cache key, so a template built from a tree without .git
 +    # computes different keys and never finds the shader cache the editor baked.
@@ -23221,8 +23239,35 @@ index 0000000000..b3a448a152
 +    announce("Grit: " + " ".join(command))
 +    # Redirecting sys.stdout does not touch fd 1, so the child's output has to be
 +    # sent to the log explicitly or every scons error would vanish.
-+    process = subprocess.Popen(command, cwd=source, env=child_env, stdout=log, stderr=log)
++    # Own session/process group so a cancel can kill the whole tree: scons
++    # spawns compilers (spirv-tools is the slow one) and killing only scons left
++    # them compiling in the background.
++    popen_kwargs = {}
++    if os.name == "posix":
++        popen_kwargs["start_new_session"] = True
++    else:
++        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
++    process = subprocess.Popen(command, cwd=source, env=child_env, stdout=log, stderr=log, **popen_kwargs)
 +    cancel_file = os.path.join(work_dir, "cancel_build")
++
++    def kill_build_tree():
++        if process.poll() is not None:
++            return
++        try:
++            if os.name == "posix":
++                os.killpg(os.getpgid(process.pid), signal.SIGKILL)
++            elif os.name == "nt":
++                subprocess.run(["taskkill", "/F", "/T", "/PID", str(process.pid)], capture_output=True)
++        except (ProcessLookupError, PermissionError, OSError):
++            pass
++        try:
++            process.kill()
++        except OSError:
++            pass
++        try:
++            process.wait(timeout=30)
++        except subprocess.TimeoutExpired:
++            pass
 +    try:
 +        os.remove(cancel_file)
 +    except OSError:
@@ -23230,21 +23275,24 @@ index 0000000000..b3a448a152
 +    with open(os.path.join(work_dir, "scons.pid"), "w", encoding="ascii") as handle:
 +        handle.write(str(process.pid))
 +
-+    while True:
-+        code = process.poll()
-+        if code is not None:
-+            break
-+        if os.path.exists(cancel_file):
-+            announce("Grit: cancel requested, stopping scons")
-+            process.kill()
-+            process.wait()
-+            for stale in (cancel_file, os.path.join(work_dir, "scons.pid")):
-+                try:
-+                    os.remove(stale)
-+                except OSError:
-+                    pass
-+            sys.exit(3)
-+        time.sleep(0.2)
++    try:
++        while True:
++            code = process.poll()
++            if code is not None:
++                break
++            if os.path.exists(cancel_file):
++                announce("Grit: cancel requested, stopping the build")
++                kill_build_tree()
++                for stale in (cancel_file, os.path.join(work_dir, "scons.pid")):
++                    try:
++                        os.remove(stale)
++                    except OSError:
++                        pass
++                sys.exit(3)
++            time.sleep(0.2)
++    except BaseException:
++        kill_build_tree()
++        raise
 +
 +    try:
 +        os.remove(os.path.join(work_dir, "scons.pid"))

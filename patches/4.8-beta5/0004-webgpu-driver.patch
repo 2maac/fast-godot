@@ -16628,10 +16628,10 @@ index 0000000000..5f3d2b1a79
 +fuzz/corpus/
 diff --git a/drivers/webgpu/tint_cli/build.sh b/drivers/webgpu/tint_cli/build.sh
 new file mode 100644
-index 0000000000..2a4495f9f8
+index 0000000000..d6b6895b19
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/build.sh
-@@ -0,0 +1,274 @@
+@@ -0,0 +1,330 @@
 +#!/usr/bin/env bash
 +# Build tint_convert_cli — native host tool for build-time SPIR-V → WGSL conversion.
 +#
@@ -16654,6 +16654,14 @@ index 0000000000..2a4495f9f8
 +SHIM_DIR="drivers/webgpu/tint_cli"
 +
 +JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
++# The host converter is a build-time tool: cap the fan-out (each Tint TU at -O2
++# can hold ~1-2 GB) and prefer -O1, which roughly halves wall time.
++JOBS=${GRIT_TINT_CLI_JOBS:-$JOBS}
++(( JOBS > 6 )) && JOBS=6
++OPT="${GRIT_TINT_CLI_OPT:--O1}"
++# Cache the finished converter: the build tree is seeded per profile, so without
++# this every project/export recompiled all of Tint and SPIRV-Tools for the host.
++CACHE_ROOT="${GRIT_TINT_CLI_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/fast-godot/tint-cli}"
 +CXX="${CXX:-c++}"
 +
 +# Parse args.
@@ -16667,11 +16675,54 @@ index 0000000000..2a4495f9f8
 +    rm -rf "$BUILD_DIR"
 +fi
 +
++# ─────────────────────────────────────────────────────────────────────────────
++# Host-tool cache: keyed by the source trees + this script + compiler/flags.
++# ─────────────────────────────────────────────────────────────────────────────
++cache_key() {
++    local stat_args
++    if [[ "$(uname -s)" == "Darwin" ]]; then
++        stat_args=(stat -f '%N %z')
++    else
++        stat_args=(stat -c '%n %s')
++    fi
++    {
++        "$CXX" --version 2>/dev/null | head -1
++        echo "$OPT"
++        cat "$SCRIPT_DIR/build.sh"
++        find "$TINT_DIR" "$SPIRV_TOOLS_DIR" -type f \( -name '*.cc' -o -name '*.cpp' -o -name '*.h' \) -print0 2>/dev/null \
++            | xargs -0 "${stat_args[@]}" 2>/dev/null || true
++    } | { shasum -a 256 2>/dev/null || sha256sum; } | cut -d' ' -f1
++}
++
++mkdir -p "$CACHE_ROOT"
++KEY=$(cache_key)
++CACHED="$CACHE_ROOT/$KEY/tint_convert_cli"
++if [[ "$CLEAN" != true && -x "$CACHED" ]]; then
++    mkdir -p bin
++    cp "$CACHED" bin/tint_convert_cli
++    echo "tint_convert_cli: cache hit ($KEY)"
++    exit 0
++fi
++
++# One host build at a time: concurrent exports used to launch several of these
++# (each with its own JOBS compilers), which is what pegged the machine.
++LOCK="$CACHE_ROOT/lock.$KEY"
++while ! mkdir "$LOCK" 2>/dev/null; do
++    if [[ "$CLEAN" != true && -x "$CACHED" ]]; then
++        mkdir -p bin
++        cp "$CACHED" bin/tint_convert_cli
++        echo "tint_convert_cli: cache hit after waiting ($KEY)"
++        exit 0
++    fi
++    sleep 3
++done
++trap 'rmdir "$LOCK" 2>/dev/null || true' EXIT
++
 +mkdir -p "$BUILD_DIR/spirv_tools" "$BUILD_DIR/tint" "$BUILD_DIR/cli"
 +
 +# Common flags.
 +WARNINGS="-w"  # Suppress warnings from thirdparty code.
-+COMMON_FLAGS="-O2 $WARNINGS"
++COMMON_FLAGS="$OPT $WARNINGS"
 +
 +# Include paths for SPIRV-Tools.
 +SPIRV_TOOLS_INCLUDES=(
@@ -16906,6 +16957,11 @@ index 0000000000..2a4495f9f8
 +
 +echo ""
 +echo "Built: bin/tint_convert_cli ($(du -h bin/tint_convert_cli | cut -f1))"
++
++# Publish the finished tool for every future profile tree.
++mkdir -p "$CACHE_ROOT/$KEY"
++cp bin/tint_convert_cli "$CACHED"
++echo "Cached: $CACHED"
 diff --git a/drivers/webgpu/tint_cli/core/templates/hash_map.h b/drivers/webgpu/tint_cli/core/templates/hash_map.h
 new file mode 100644
 index 0000000000..92f6511c04

@@ -7719,10 +7719,10 @@ index 0000000000..72e068203e
 +};
 diff --git a/modules/grit/editor/grit_provisioner.cpp b/modules/grit/editor/grit_provisioner.cpp
 new file mode 100644
-index 0000000000..95dfe52e16
+index 0000000000..968f3712fb
 --- /dev/null
 +++ b/modules/grit/editor/grit_provisioner.cpp
-@@ -0,0 +1,654 @@
+@@ -0,0 +1,661 @@
 +#include "grit_provisioner.h"
 +
 +#include "core/config/project_settings.h"
@@ -7818,16 +7818,23 @@ index 0000000000..95dfe52e16
 +
 +// The commit this editor was built from; the one-time toolchain bootstrap fetches
 +// exactly this revision so the downloader runs against a matching tree.
-+// The engine source for creating a toolchain: the repository's 4.7.2 branch.
-+// It is the 4.7.x line, so every 4.7.x editor creates the same kind of toolchain
-+// and a toolchain is never tied to one editor revision.
++// The engine source for creating a toolchain: the patched 4.8 tree this editor
++// was built from (published as a release asset next to the patch stack). The
++// 4.7.2 branch would bootstrap an Emscripten 4.0.11 toolchain, which the 4.8
++// engine cannot use (it requires Emscripten 6.0.1+).
 +static String _engine_source_url() {
-+	return "https://github.com/2maac/fast-godot/archive/refs/heads/4.7.2.zip";
++	return "https://github.com/2maac/fast-godot/releases/download/4.8-beta5-source/fast-godot-4.8-beta5-src.zip";
 +}
 +
 +static bool _engine_present(const String &p_dir) {
-+	return FileAccess::exists(p_dir.path_join("SConstruct")) &&
-+			FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"));
++	if (!FileAccess::exists(p_dir.path_join("SConstruct")) ||
++			!FileAccess::exists(p_dir.path_join("tools").path_join("grit_build.py"))) {
++		return false;
++	}
++	// Reject a tree from another Godot line: an existing 4.7.2 engine source
++	// would silently bootstrap the wrong toolchain (Emscripten 4.0.11).
++	const String version = FileAccess::get_file_as_string(p_dir.path_join("version.py"));
++	return version.contains("minor = 8");
 +}
 +
 +// DirAccess::remove_absolute() removes a file or an empty directory; a populated
