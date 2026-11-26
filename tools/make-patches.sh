@@ -11,13 +11,17 @@ SRC=${1:?usage: $0 <godot-source-dir> [stack]}
 STACK=${2:-4.8-beta5}
 DIR="$ROOT/patches/$STACK"
 PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/upstream.lock")
-[ -d "$SRC/.git" ] || { echo "$SRC is not a git checkout" >&2; exit 2; }
+# Accept linked worktrees too (their .git is a file, not a directory).
+git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1 || { echo "$SRC is not a git checkout" >&2; exit 2; }
 
 mkdir -p "$DIR"
 for list in "$DIR"/layers/*.files; do
 	name=$(basename "$list" .files)
-	mapfile -t paths < <(grep -v '^$' "$list")
-	git -C "$SRC" diff "$PINNED" -- "${paths[@]}" > "$DIR/$name.patch" 2>/dev/null || \
-		git -C "$SRC" diff HEAD -- "${paths[@]}" > "$DIR/$name.patch"
+	paths=()
+	while IFS= read -r p; do
+		if [ -n "$p" ]; then paths+=("$p"); fi
+	done < "$list"
+	git -C "$SRC" diff --binary "$PINNED" -- "${paths[@]}" > "$DIR/$name.patch" 2>/dev/null || \
+		git -C "$SRC" diff --binary HEAD -- "${paths[@]}" > "$DIR/$name.patch"
 	echo "$name.patch $(wc -c < "$DIR/$name.patch") bytes"
 done
