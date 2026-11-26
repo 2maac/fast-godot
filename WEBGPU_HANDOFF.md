@@ -1,7 +1,11 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~18:35 (single toolchain, MSAA fix,
-white-box PCK encryption, 4.7.2 branch removal, docs refresh).
+Resume doc. Last updated 2026-11-26 ~20:00 (facts re-verified on the live
+machine: the build worktree and staged editor moved to `834c3d4fc2`, the ref
+table and environment snapshot are corrected, a stale "pack key not ported" item
+is gone, and `tools/make-patches.sh` was fixed and round-trip verified). The
+push-constant ring flush path is still only mitigated, not structurally hardened
+— it stays open (open issue 2).
 
 ## Where to start (docs map)
 
@@ -18,20 +22,43 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 - ~~`patches/4.7.2`~~ — the old 4.7.2 stack, **dropped and deleted 2026-11-26**
   from GitHub (as was `integrate/komm64-webgpu`). The project is consolidated on
-  the 4.8 stack. The full-source `4.7.2` branch remains on GitHub only, for
-  history; there is no local branch for it.
+  the 4.8 stack. The full-source `4.7.2` branch remains on the remote for
+  history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree); a leftover
+  local branch `fresh` still points at that same commit and can be deleted.
 - `patches/4.8-beta5` — the 4.8 stack, same layers ported onto godot `master`
   @ `67421f36e5` (4.8.0-beta).
 - `tools/apply.sh <godot-checkout> <stack>` applies a stack; `tools/make-patches.sh`
-  regenerates it from a modified checkout. Patches are generated with
-  `git diff --binary` (icons/splash/logo/SPIR-V fixtures are binary patches).
+  regenerates it from a modified checkout with `git diff --binary`
+  (icons/splash/logo/SPIR-V fixtures are binary patches: 8 hunks in `0005`, 15
+  in `0007`). The script was fixed 2026-11-26 (it lacked `--binary`, used
+  bash-4-only `mapfile`, and rejected linked worktrees); its round-trip from
+  `/tmp/godot48` is byte-identical to the committed patches.
 - `upstream.lock` pins the Godot base per branch.
 
 | ref | commit | notes |
 |---|---|---|
-| `refs/heads/patches/4.8-beta5` | latest | base godot master 67421f36e5 |
-| `refs/tags/4.8-beta5` | same as branch | |
-| release `4.8-beta5-source` | `fast-godot-4.8-beta5-src.zip` | patched 4.8 source tree used by the Grit toolchain bootstrap |
+| `origin/patches/4.8-beta5` | `305312690f` | the stack; only the remote ref carries the `patches/` prefix |
+| tag `4.8-beta5` | `305312690f` | last release point (= remote branch tip at release) |
+| local branch `4.8-beta5` | `git log --oneline -1` | tracks the above; may carry un-pushed docs/tools commits on top |
+| `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** tree, history only, not maintained |
+| tag `4.8-beta5-source` | `d8cb1fd77c` | **suspect**: resolves to the 4.7.2 full-source tip (`version.py` says 4.7.2), not a 4.8 tree — re-cut or retire it before trusting the `fast-godot-4.8-beta5-src.zip` artifact |
+
+Note: the toolchain provisioner copies the engine source from the local checkout
+(`engine_root/../..` in `download_toolchain.sh`), so a fresh
+`~/fast_godot_toolchain` does not download the `4.8-beta5-source` release; that
+tag only matters if a source-release artifact is produced from it.
+
+## Environment snapshot (verified on this machine, 2026-11-26 ~19:15)
+
+| item | actual value |
+|---|---|
+| patch stack repo | branch `4.8-beta5`; tag `4.8-beta5` = `305312690f` (last release point; local branch may be ahead with un-pushed docs/tools commits) |
+| engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
+| build worktree | `/tmp/godot48` — branch `port48`, HEAD `834c3d4fc2`, clean, Godot 4.8.0-beta, not pushed (volatile) |
+| other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
+| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.834c3d4fc`, staged 2026-11-26 18:21; `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
+| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
 
 ## 4.8 layer map
 
@@ -51,11 +78,12 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 ## Build / toolchain
 
-## Single toolchain
+### Single toolchain
 
 There is exactly **one toolchain** for the whole project (4.7.2 was dropped):
 
-- Path: `~/fast_godot_toolchain` (~4.3 GB), provisioned by
+- Path: `~/fast_godot_toolchain` (~6.4 GB as of 2026-11-26, including the 4.7 GB
+  `engine/source` copy and build caches), provisioned by
   `tools/toolchain/download_toolchain.sh` (the same script is in the 4.8 patch
   stack; the editor runs it automatically on first use).
 - Contents: Python 3.12.16 + **zstandard 0.25.0**, SCons 4.11.1, MoltenVK 1.4.2,
@@ -71,7 +99,11 @@ There is exactly **one toolchain** for the whole project (4.7.2 was dropped):
 - The provisioning script sets `EMSDK_PYTHON` internally (via grit_build.py) to
   the toolchain's own Python 3.12; manual `scons platform=web` runs need
   `PATH=$HOME/fast_godot_toolchain/python/bin:$PATH` because macOS's python3 is
-  3.9 and emcc refuses it.
+  3.9 and emcc refuses it. Verified 2026-11-26: `emcc --version` asserts under
+  the system 3.9 and prints `6.0.12` once the toolchain python is first on
+  `PATH`. `emsdk/.emscripten` still records a nonexistent
+  `python/3.13.3_64bit` interpreter; ignore it — the toolchain is launched via
+  `PATH`, not that config.
 
 Editor (macOS, from a checkout + applied stack):
 ```
@@ -79,17 +111,22 @@ scons platform=macos arch=arm64 target=editor \
   vulkan_sdk_path=$HOME/fast_godot_toolchain/moltenvk \
   tests=no debug_symbols=no angle=no production=yes
 ```
-The current 4.8 build tree is a **volatile git worktree at `/tmp/godot48`**
-(branch `port48`, HEAD `f578f89fa9`, not pushed — it descends from the Godot
-history which the repo does not carry). If /tmp is wiped, rebuild by applying
+The current 4.8 build tree is a **volatile linked git worktree of this repo at
+`/tmp/godot48`** (`git worktree list` shows it; branch `port48`, HEAD
+`834c3d4fc2`, clean, not pushed). `a495fc3e93` is the push-constant
+ring/MSAA fix and `834c3d4fc2` the white-box pack-key port; `f578f89fa9` was the
+tip recorded before those two commits. If /tmp is wiped, rebuild by applying
 `patches/4.8-beta5` to a fresh Godot checkout.
 
 Staged build (gitignored): `out/editor-staging/`
-- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.f578f89fa`, Fast Godot icon,
-  ad-hoc signed) and `Fast_Godot_4.8-macos.zip`
+- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.834c3d4fc`, Fast Godot icon,
+  ad-hoc signed, staged 2026-11-26 18:21) and `Fast_Godot_4.8-macos.zip`
 - `godot.web.template_release.wasm32.nothreads.zip`
-- `Fast_Godot_4.8_BUILD.txt` (version/time/flags)
-Launchable install: `~/Applications/Fast_Godot_4.8.app`.
+- `Fast_Godot_4.8_BUILD.txt` (version/time/flags). Two quirks: its `HEAD` line
+  reads `a495fc3e93` (recorded before the `834c3d4fc2` commit landed) and its
+  `Known gaps` paragraph is stale (it still says the pack key was not ported);
+  trust the binary's `--version`.
+Launchable install: `~/Applications/Fast_Godot_4.8.app` (same `834c3d4fc` build).
 Note: the app folder's mtime can read like the template's old timestamp — use
 `Contents/MacOS/Godot` mtime/version.
 
@@ -174,10 +211,12 @@ if an extreme frame ever overflows. Verified with the orbit capture: before,
 2-10 black frames per 48; after, none and `RingOF=0`. User-verified in a real
 browser on the TPS demo with MSAA 4x.
 
-Residual risk: the ring flush path itself is still the weak point (a frame with
->32k push-constant slots would overflow). A proper fix would make the flush not
-interrupt in-pass resolves (e.g. defer flush to pass boundaries, or use a
-per-frame growing ring), and is the next hardening step.
+Residual risk — **still open, tracked as open issue 2**: the ring flush path
+itself is the weak point (a frame with >32k push-constant slots would still
+overflow). A proper fix would make the flush not interrupt in-pass resolves
+(e.g. defer flush to pass boundaries, or use a per-frame growing ring); that is
+the next hardening step and has **not** been done. Do not close this thinking
+the 8 MB ring fixed it.
 
 Diagnostics kept in the driver: `rendering/webgpu/debug_frames` prints per-frame
 pass/draw/resolve/ring counters to the browser console;
@@ -207,25 +246,39 @@ the working option.
 
 ## Open issues / next steps
 
-1. ~~**MSAA flicker**~~ — **RESOLVED** (see the section below). Root cause was
+1. ~~**MSAA flicker**~~ — **RESOLVED** (see the section above). Root cause was
    the WebGPU push-constant ring overflowing mid-frame; the flush broke the
    in-pass MSAA resolve. Fixed by an 8 MB ring (plus a one-shot warning).
-2. **LightmapGI/GI probes**: komm64's 4.7.2 build had them working; the 4.8
+2. **Push-constant ring flush — OPEN, structurally unhardened.** The 8 MB ring
+   is a mitigation, not a fix: an extreme frame (>32768 slots) would still
+   flush mid-frame, end the active pass and corrupt its in-pass MSAA resolve.
+   Next step: defer flushes to pass boundaries or grow the ring per frame, plus
+   a regression test. Keep this flagged in every status report.
+3. **LightmapGI/GI probes**: komm64's 4.7.2 build had them working; the 4.8
    port has not been checked.
-3. **Perf comparison**: 4.8 TPS stats - shaders=168/607/247ms, tint=370/13.7s,
+4. **Perf comparison**: 4.8 TPS stats - shaders=168/607/247ms, tint=370/13.7s,
    baked=280, spec_modules=788/27.5s, render_pipelines=409/34s,
-   draws/frame ~1750, fps 60. Compare against the 4.7.2 stack.
-4. **White-box pack key**: not ported (shim in `core/grit_script_key.cpp`);
-   encrypted web templates are unavailable. `FileAccessEncrypted` v2 chunk
-   format was reverted to the 4.8 base.
+   draws/frame ~1750, fps 60. The 4.7.2 stack is no longer buildable from this
+   repo, and the archived table in `WEBGPU_DRIVER_MIGRATION.md` compares the
+   komm64/4.7 driver, not the 4.7.2 stack — treat the 4.8 figures above as the
+   baseline unless an old 4.7.2 build turns up.
 5. The **4.7.2 stack is dropped** (2026-11-26): one toolchain, one engine line.
-   No fixes will be mirrored there; `patches/4.7.2` is frozen for history only.
+   No fixes are mirrored there; `patches/4.7.2` is frozen for history only
+   (`origin/4.7.2` = `d8cb1fd77c`; a stale local `fresh` branch points there).
 6. Bake-time noise: `Index p_pass out of bounds (draw_passes.size() = 1)` for
    particle shaders and a few leaked particle shader RIDs at editor exit; the
    exported build is unaffected so far.
 7. `~/notarize-work/Fast_Godot.app` is an old 4.7.2 Developer-ID build with the
    stock icon; a Dock tile pinned to it shows the old icon. Either re-pin
    `~/Applications/Fast_Godot_4.8.app` or re-sign a refreshed copy.
+8. **Release/tag consistency**: tag `4.8-beta5-source` resolves to the 4.7.2
+   full-source tip, not a 4.8 tree (see the ref table; confirmed against the
+   remote 2026-11-26). The only full-source 4.8 tree is branch `port48`
+   (`834c3d4fc2`, the `/tmp/godot48` worktree); fixing the tag means pushing
+   that tree (or a squashed export) as a source branch and re-pointing the tag
+   — a remote write, needs an owner decision. Nothing is broken today: the
+   toolchain provisioner copies the local checkout instead of downloading this
+   release.
 
 ## Practical notes
 
@@ -237,7 +290,8 @@ the working option.
   from `4.7.2`/`4.8-beta5`); `.gitignore` on those branches must exclude `out/`
   or a 100 MB app binary gets committed and GitHub rejects the push.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
-- The macOS editor build tree `/tmp/godot48` also carries the ring fix; re-apply
-  `patches/4.8-beta5` to a fresh checkout to reproduce it.
+- The macOS editor build tree `/tmp/godot48` also carries the ring fix and the
+  white-box pack-key port; re-apply `patches/4.8-beta5` to a fresh checkout to
+  reproduce it.
 - `GODOT_VERSION_HASH_OVERRIDE` is set by `tools/grit_build.py` from the editor
   version hash so baked shader cache keys match the runtime template.

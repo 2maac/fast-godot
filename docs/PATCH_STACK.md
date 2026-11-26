@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `patches/4.8-beta5` | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
+| `patches/4.8-beta5` (remote branch; local branch is `4.8-beta5`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -17,8 +17,18 @@ tools/apply.sh <godot-source-dir> [4.8-beta5]         # git apply --3way, in ord
 tools/make-patches.sh <godot-checkout> 4.8-beta5      # regenerate from a modified checkout
 ```
 
-`apply.sh`/`make-patches.sh` default to `4.8-beta5`. `install.sh <dest>` creates
-the Fast_Godot_Toolchain bundle from a staged `out/` directory.
+`apply.sh`/`make-patches.sh` default to `4.8-beta5`. There is no `install.sh` in
+this repo: the Fast_Godot_Toolchain bundle is created by the provisioner that
+lives in the patch stack (`tools/toolchain/download_toolchain.sh` +
+`tools/toolchain/make_bundle_zip.py`), run from a patched source tree.
+
+Regenerating binary layers: the committed patches contain 23 `GIT binary patch`
+hunks (8 in `0005`, 15 in `0007`); `make-patches.sh` passes `--binary` to both
+`git diff` calls (fixed 2026-11-26), so regeneration keeps them. The script also
+accepts linked worktrees (e.g. `/tmp/godot48`, whose `.git` is a file) and runs
+on macOS's bash 3.2. Verified 2026-11-26: regenerating all 8 layers from
+`/tmp/godot48` (`port48` @ `834c3d4fc2`) is byte-identical to the committed
+patches.
 
 ## `4.8-beta5` patches
 
