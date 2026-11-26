@@ -3,3 +3,7 @@ bin/
 .testhome/
 *.pyc
 __pycache__/
+
+# macOS / local-only artifacts
+.DS_Store
+.metadata_never_index
