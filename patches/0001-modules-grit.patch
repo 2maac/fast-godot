@@ -7719,10 +7719,10 @@ index 0000000000..72e068203e
 +};
 diff --git a/modules/grit/editor/grit_provisioner.cpp b/modules/grit/editor/grit_provisioner.cpp
 new file mode 100644
-index 0000000000..8136b0ecf9
+index 0000000000..54d55bc2cb
 --- /dev/null
 +++ b/modules/grit/editor/grit_provisioner.cpp
-@@ -0,0 +1,790 @@
+@@ -0,0 +1,791 @@
 +#include "grit_provisioner.h"
 +
 +#include "core/config/project_settings.h"
@@ -8335,10 +8335,11 @@ index 0000000000..8136b0ecf9
 +		_remove_tree(scratch);
 +		return String();
 +	}
-+	// The stack archive keeps its patches at the root (single-stack layout since
-+	// 2026-11-26). Builds before that look for patches/<ref>/ and cannot use a
-+	// restructured archive; the two need to be updated together.
-+	const String stack_dir = stack_root;
++	// The stack archive keeps its patch files in patches/ (single-stack layout
++	// since 2026-11-26, no version subfolder). Builds before that look for
++	// patches/<ref>/ and cannot use a restructured archive; the two need to be
++	// updated together.
++	const String stack_dir = stack_root.path_join("patches");
 +
 +	// 2. Godot's source at the pinned commit.
 +	const String godot_archive = scratch.path_join("godot-source.tar.gz");
