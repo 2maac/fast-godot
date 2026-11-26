@@ -1,12 +1,13 @@
 # Fast Godot — patch stack
 
 This repository holds **our changes to Godot as patches**, not a copy of the
-engine. There is a single active stack (`4.8-beta5`):
+engine. There is a single active stack (`4.8-beta5`), stored directly at the
+repository root:
 
 ```
 upstream.lock                 # Godot repo + exact commit the stack applies to
-patches/<godot-version>/      # ordered .patch files (git format)
-patches/<godot-version>/layers/  # path lists used to regenerate the stack
+0001-*.patch ... 0099-*.patch # ordered .patch files (git format)
+layers/                       # path lists used to regenerate the stack
 tools/apply.sh                # apply the stack to a Godot checkout
 tools/make-patches.sh         # regenerate the stack from a modified checkout
 docs/PATCH_STACK.md           # what every patch does and why
@@ -21,7 +22,7 @@ The Godot source itself is a link, not content: clone it from
 git clone https://github.com/godotengine/godot ../godot
 git -C ../godot checkout $(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' upstream.lock)
 
-./tools/apply.sh ../godot 4.8-beta5
+./tools/apply.sh ../godot
 ```
 
 Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
@@ -38,7 +39,7 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 
 | branch | Godot base |
 |---|---|
-| `4.8-beta5` branch and tag (patch files live in `patches/4.8-beta5/`) | godot master `67421f36e5` (4.8.0-beta) |
+| `4.8-beta5` branch and tag (patch files at the repo root) | godot master `67421f36e5` (4.8.0-beta) |
 
 `4.8-beta5` is the repository default branch (since 2026-11-26; it was `4.7.2`).
 The `4.7.2` full-source branch is kept on the remote for history only (not

@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; patch files live in `patches/4.8-beta5/`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; patch files at the repo root) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -13,12 +13,12 @@ GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
 ## Apply / regenerate
 
 ```sh
-tools/apply.sh <godot-source-dir> [4.8-beta5]         # git apply --3way, in order
-tools/make-patches.sh <godot-checkout> 4.8-beta5      # regenerate from a modified checkout
+tools/apply.sh <godot-source-dir>          # apply every *.patch at the repo root, in order
+tools/make-patches.sh <godot-checkout>     # regenerate the patches at the repo root
 ```
 
-`apply.sh`/`make-patches.sh` default to `4.8-beta5`. There is no `install.sh` in
-this repo: the Fast_Godot_Toolchain bundle is created by the provisioner that
+The patch series and its `layers/*.files` path lists live at the repository root
+(single-stack repo). There is no `install.sh` in this repo: the Fast_Godot_Toolchain bundle is created by the provisioner that
 lives in the patch stack (`tools/toolchain/download_toolchain.sh` +
 `tools/toolchain/make_bundle_zip.py`), run from a patched source tree.
 
@@ -27,8 +27,13 @@ hunks (8 in `0005`, 15 in `0007`); `make-patches.sh` passes `--binary` to both
 `git diff` calls (fixed 2026-11-26), so regeneration keeps them. The script also
 accepts linked worktrees (e.g. `/tmp/godot48`, whose `.git` is a file) and runs
 on macOS's bash 3.2. Verified 2026-11-26: regenerating all 8 layers from
-`/tmp/godot48` (`port48` @ `834c3d4fc2`) is byte-identical to the committed
-patches.
+`/tmp/godot48` is byte-identical to the committed patches.
+
+Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the repo
+root (there is only one stack left). The editor's toolchain bootstrap reads the
+root `*.patch` files; editor builds that predate this change look for
+`patches/4.8-beta5/` inside the stack archive and cannot bootstrap from the
+moved tag.
 
 ## `4.8-beta5` patches
 

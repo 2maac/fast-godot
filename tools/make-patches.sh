@@ -2,19 +2,18 @@
 # Regenerate the patch series from a working tree that already contains our
 # changes on top of the pinned Godot commit.
 #
-#   tools/make-patches.sh <godot-source-dir> [stack]
+#   tools/make-patches.sh <godot-source-dir>
 #
-# The split into layers comes from patches/<stack>/layers/*.files (path lists).
+# The split into layers comes from layers/*.files (path lists), and the
+# generated .patch files are written to the repository root.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SRC=${1:?usage: $0 <godot-source-dir> [stack]}
-STACK=${2:-4.8-beta5}
-DIR="$ROOT/patches/$STACK"
+SRC=${1:?usage: $0 <godot-source-dir>}
+DIR="$ROOT"
 PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/upstream.lock")
 # Accept linked worktrees too (their .git is a file, not a directory).
 git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1 || { echo "$SRC is not a git checkout" >&2; exit 2; }
 
-mkdir -p "$DIR"
 for list in "$DIR"/layers/*.files; do
 	name=$(basename "$list" .files)
 	paths=()

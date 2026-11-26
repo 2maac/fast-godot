@@ -6,7 +6,7 @@ ring is flushed only between passes, so a mid-frame submit can no longer
 interrupt an in-pass MSAA resolve. The `4.8-beta5` patch tag was moved to the
 hardening tip (`4209e2f7`) so fresh toolchains build the hardened driver, and the
 remote branch is now simply `4.8-beta5` (no `patches/` prefix; patch files still
-live in `patches/4.8-beta5/`, which is now also the repository default branch).
+live at the repo root; `4.8-beta5` is the repository default branch).
 The toolchain bootstrap builds the engine source
 from Godot's repository + that tag; the obsolete source release and its tag were
 deleted. Worktree HEAD `9267990dcd`.
@@ -29,8 +29,9 @@ The repo is a **patch stack**, not a Godot fork checkout:
   the 4.8 stack. The full-source `4.7.2` branch remains on the remote for
   history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree); a leftover
   local branch `fresh` still points at that same commit and can be deleted.
-- `patches/4.8-beta5/` — the 4.8 stack (branch and tag `4.8-beta5`), same layers
-  ported onto godot `master` @ `67421f36e5` (4.8.0-beta).
+- The 4.8 stack (branch and tag `4.8-beta5`, repo default branch) is stored
+  **directly at the repo root** (`0001-…0099-*.patch` + `layers/`), ported onto
+  godot `master` @ `67421f36e5` (4.8.0-beta). Only one stack exists now.
 - `tools/apply.sh <godot-checkout> <stack>` applies a stack; `tools/make-patches.sh`
   regenerates it from a modified checkout with `git diff --binary`
   (icons/splash/logo/SPIR-V fixtures are binary patches: 8 hunks in `0005`, 15
@@ -126,8 +127,9 @@ builds the toolchain's engine source the same way this editor is built:
    (~8 MB) — the patch stack;
 2. read `godot_commit` from its `upstream.lock` (the single pin);
 3. download `https://github.com/godotengine/godot/archive/<commit>.tar.gz` (~76 MB);
-4. apply `patches/4.8-beta5/*.patch` in order with the system `git apply` (the
-   tree is a plain directory; the patches target the exact pinned commit);
+4. apply the archive's root-level `*.patch` files in order with the system
+   `git apply` (the tree is a plain directory; the patches target the exact
+   pinned commit);
 5. validate `SConstruct` + `tools/grit_build.py` + `version.py` `minor = 8`, move
    the tree to `<toolchain>/engine/source`, then run its `download_toolchain.sh`.
 
@@ -161,7 +163,7 @@ The current 4.8 build tree is a **volatile linked git worktree of this repo at
 `130ed7f48d`, clean, not pushed). The ring fix `a495fc3e93`, the pack-key port
 `834c3d4fc2` and the bootstrap commit `130ed7f48d` are its tip and ancestors
 (`f578f89fa9` was the tip before the ring/pack-key work). If /tmp is wiped,
-rebuild by applying `patches/4.8-beta5` to a fresh Godot checkout.
+rebuild by applying the repo's `*.patch` files to a fresh Godot checkout.
 
 Staged build (gitignored): `out/editor-staging/`
 - `Fast_Godot_4.8.app` (`4.8.beta.custom_build.130ed7f48`, Fast Godot icon,
@@ -365,14 +367,14 @@ the working option.
   provisioning also needs system `git` on the machine.
 - Ref naming (2026-11-26): the remote branch was renamed from `patches/4.8-beta5`
   to plain `4.8-beta5` (same name as the tag and the local branch; the patch
-  files stay in `patches/4.8-beta5/`). Use full refs when the ambiguity matters.
+  files live at the repo root). Use full refs when the ambiguity matters.
   `4.8-beta5` is the repository **default branch** since 2026-11-26 (was
   `4.7.2`), so pushes to it no longer trigger GitHub's "recent pushes → compare
   & pull request" banner; `4.7.2` stays history-only.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
   the pass-boundary ring flush and the white-box pack-key port; re-apply
-  `patches/4.8-beta5` to a fresh checkout to reproduce it.
+  the repo's `*.patch` files to a fresh checkout to reproduce it.
 - Ring diagnostics: `rendering/webgpu/debug_frames` prints `passFlush=` and
   `ringOF=` per frame; `passFlush` is normal on heavy frames, `ringOF` must stay
   0 (it now means a single pass exceeded the whole ring).
