@@ -1,11 +1,12 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~20:45 (facts re-verified on the live
-machine; the toolchain bootstrap builds the engine source from Godot's
-repository plus the `4.8-beta5` patch tag with git, and the obsolete source
-release + its tag were deleted; worktree HEAD is `130ed7f48d`, with the ring fix
-`a495fc3e93` and the pack-key port `834c3d4fc2` as ancestors). The push-constant ring flush path
-is still only mitigated, not structurally hardened — it stays open (open issue 2).
+Resume doc. Last updated 2026-11-26 ~20:25. Ring hardening landed: the
+push-constant ring is flushed only between passes now, so a mid-frame submit can
+no longer interrupt an in-pass MSAA resolve (browser check of this build
+pending). The toolchain bootstrap builds the engine source from Godot's
+repository + the `4.8-beta5` patch tag; the obsolete source release and its tag
+were deleted 2026-11-26. Worktree HEAD `9267990dcd`; earlier on 2026-11-26 the
+pack-key port `834c3d4fc2` and the 8 MB ring mitigation `a495fc3e93` landed.
 
 ## Where to start (docs map)
 
@@ -59,11 +60,12 @@ already have a toolchain are unaffected).
 | patch stack repo | branch `4.8-beta5`, pushed to `origin/patches/4.8-beta5`; tag `4.8-beta5` = `305312690f` is the last release point, docs/tools commits sit on top |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
-| build worktree | `/tmp/godot48` — branch `port48`, HEAD `130ed7f48d` (bootstrap commit; ring fix `a495fc3e93` and pack-key port `834c3d4fc2` are ancestors), clean, not pushed (volatile) |
+| build worktree | `/tmp/godot48` — branch `port48`, HEAD `9267990dcd` (ring hardening; `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors), clean, not pushed (volatile) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.130ed7f48`, staged 2026-11-26 19:59 (bootstrap change); `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.130ed7f48`, staged 2026-11-26 19:59 (bootstrap change); `~/Applications/Fast_Godot_4.8.app` is the same build. The ring hardening is driver/template-only, so the editor binary is unchanged |
+| web template | rebuilt 2026-11-26 20:13 from the hardened driver (new warning + `passFlush` present, the old mid-frame warning gone) and exported into the test site |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
 | source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before the removal can no longer provision a fresh toolchain |
 
@@ -242,49 +244,29 @@ target, so the frame presents without its 3D content. Without MSAA there is no
 resolve target, which is why the bug never appeared there. Facing the Core is
 the worst case because it has the most draws.
 
-Fix: ring grows to 8 MB (32768 slots, ~15x headroom), plus a one-shot warning
-if an extreme frame ever overflows. Verified with the orbit capture: before,
-2-10 black frames per 48; after, none and `RingOF=0`. User-verified in a real
-browser on the TPS demo with MSAA 4x.
+Mitigation (first step, 2026-11-26): the ring grew to 8 MB (32768 slots, ~15x
+headroom). Verified with the orbit capture: before, 2-10 black frames per 48;
+after, none and `RingOF=0`. User-verified in a real browser on TPS with MSAA 4x.
 
-Residual risk — **still open, tracked as open issue 2**: the ring flush path
-itself is the weak point (a frame with >32k push-constant slots would still
-overflow). A proper fix would make the flush not interrupt in-pass resolves
-(e.g. defer flush to pass boundaries, or use a per-frame growing ring); that is
-the next hardening step and has **not** been done. Do not close this thinking
-the 8 MB ring fixed it.
+**Structural hardening (2026-11-26): the flush never runs from inside a pass.**
+`_ring_pass_boundary()` runs before every render/compute pass: it measures the
+pass that just ended, keeps `2x` the largest pass usage free (1 MB floor), and
+when the next pass would not fit it freezes the shadow data, finishes the
+encoder, submits **between passes** (no pass active) and resets the ring. A pass
+therefore always starts with room for a pass like recent ones, so an
+MSAA-resolving pass is never ended early. Residual: a *single* pass needing more
+than the whole ring (>32768 slots — vs ~2.2k draws for a whole TPS frame) still
+hits the old fallback, which now warns "overflowed inside a single pass" and
+counts as `RingOF`.
 
-### Structural hardening plan (open issue 2 — not started)
-
-A fix must make the flush stop interrupting an MSAA-resolving pass mid-frame.
-Notes from the driver (2026-11-26):
-
-- **Deferring the flush alone is not enough.** Draws already recorded reference
-  ring slots through dynamic offsets; if the ring wraps, a later slot overwrites
-  data that an earlier recorded draw still reads at submit time. Deferring the
-  submit only moves the corruption later.
-- **Chunked ring storage is the viable shape:** allocate ring buffers lazily in
-  chunks, one bind group per chunk (dynamic offset within that chunk), switch
-  chunk instead of ending the pass when the current one would overflow, and
-  reuse a chunk only after the submit that consumed it completes. Removal of the
-  mid-pass interruption is the structural part; an extreme frame then costs
-  memory, not correctness.
-- **Complication:** engine-side uniform sets merge the PC ring entry
-  (`merged_pc_group_layout` / `current_pc_bind_group`), so those bind groups
-  embed the ring buffer pointer; each needs a per-chunk variant or a rebind path.
-  This is the bulk of the work.
-- **Also touches:** the single fixed 8 MB `push_constant_shadow` array becomes
-  per-chunk shadows with dirty ranges; flush bookkeeping moves from "submit
-  mid-frame" to "commit at frame boundary".
-- **Test plan:** orbit-camera repro (2-10 black frames per 48 at MSAA 4x), then
-  `rendering/webgpu/debug_frames` must show zero mid-pass flushes and `RingOF=0`
-  on TPS gameplay, plus test_project smoke and an encrypted export boot; final
-  sign-off is a real-browser TPS check.
-- **Effort:** driver-only, a few hundred lines, but it needs a web-template
-  rebuild and browser verification — not something to land unverified.
+Verification so far: the wasm template rebuilt clean and contains the new
+warning plus the `passFlush=` DBGFRAME field; TPS was exported for the browser
+check. Browser verification of this build is still pending (owner) — enable
+`rendering/webgpu/debug_frames`: `passFlush` may be >0 on a heavy frame,
+`ringOF` must stay 0.
 
 Diagnostics kept in the driver: `rendering/webgpu/debug_frames` prints per-frame
-pass/draw/resolve/ring counters to the browser console;
+pass/draw/resolve/ring counters (including `passFlush`) to the browser console;
 `rendering/webgpu/disable_batching` disables the batch/firstInstance traits and
 was used to rule the batching path out.
 
@@ -314,11 +296,13 @@ the working option.
 1. ~~**MSAA flicker**~~ — **RESOLVED** (see the section above). Root cause was
    the WebGPU push-constant ring overflowing mid-frame; the flush broke the
    in-pass MSAA resolve. Fixed by an 8 MB ring (plus a one-shot warning).
-2. **Push-constant ring flush — OPEN, structurally unhardened.** The 8 MB ring
-   is a mitigation, not a fix: an extreme frame (>32768 slots) would still
-   flush mid-frame, end the active pass and corrupt its in-pass MSAA resolve.
-   Next step: defer flushes to pass boundaries or grow the ring per frame, plus
-   a regression test. Keep this flagged in every status report.
+2. **Push-constant ring flush — HARDENED 2026-11-26** (browser check pending).
+   Flushes now happen only between passes (`_ring_pass_boundary()`), never from
+   inside one, so a mid-frame submit can no longer interrupt an in-pass MSAA
+   resolve. The whole-frame case that caused the flicker is fixed; residual is a
+   single pass needing >32768 slots, which hits the old warned fallback
+   (`RingOF`). Verify with `rendering/webgpu/debug_frames`: `passFlush` may be
+   >0 on heavy frames, `ringOF` must stay 0.
 3. **LightmapGI/GI probes**: komm64's 4.7.2 build had them working; the 4.8
    port has not been checked.
 4. **Perf comparison**: 4.8 TPS stats - shaders=168/607/247ms, tint=370/13.7s,
@@ -372,9 +356,12 @@ the working option.
   fixes only reach new toolchains after the move. First-use provisioning also
   needs system `git` on the machine.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
-- The macOS editor build tree `/tmp/godot48` also carries the ring fix and the
-  white-box pack-key port; re-apply `patches/4.8-beta5` to a fresh checkout to
-  reproduce it.
+- The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
+  the pass-boundary ring flush and the white-box pack-key port; re-apply
+  `patches/4.8-beta5` to a fresh checkout to reproduce it.
+- Ring diagnostics: `rendering/webgpu/debug_frames` prints `passFlush=` and
+  `ringOF=` per frame; `passFlush` is normal on heavy frames, `ringOF` must stay
+  0 (it now means a single pass exceeded the whole ring).
 - `GODOT_VERSION_HASH_OVERRIDE` is set by `tools/grit_build.py` from the editor
   version hash so baked shader cache keys match the runtime template.
 - After committing in `/tmp/godot48`, explicitly force `core/version_hash.gen.cpp`
