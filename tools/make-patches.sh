@@ -4,14 +4,14 @@
 #
 #   tools/make-patches.sh <godot-source-dir>
 #
-# The split into layers comes from layers/*.files (path lists), and the
+# The split into layers comes from patches/layers/*.files (path lists), and the
 # generated .patch files are written to ./patches/.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:?usage: $0 <godot-source-dir>}
 PATCH_DIR="$ROOT/patches"
-LAYERS_DIR="$ROOT/layers"
-PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/upstream.lock")
+LAYERS_DIR="$PATCH_DIR/layers"
+PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/patches/upstream.lock")
 mkdir -p "$PATCH_DIR"
 # Accept linked worktrees too (their .git is a file, not a directory).
 git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1 || { echo "$SRC is not a git checkout" >&2; exit 2; }

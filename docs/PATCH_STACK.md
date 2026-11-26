@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; patch files in `patches/`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -17,9 +17,11 @@ tools/apply.sh <godot-source-dir>          # apply every patches/*.patch, in ord
 tools/make-patches.sh <godot-checkout>     # regenerate patches/*.patch
 ```
 
-The patch series lives in `patches/` (single stack, no version subfolder); the
-`layers/*.files` path lists that drive regeneration are at the repository root.
-There is no `install.sh` in this repo: the Fast_Godot_Toolchain bundle is created by the provisioner that
+`patches/` is a **self-contained portable bundle**: the ordered `.patch` files,
+the `layers/*.files` path lists that drive regeneration and `upstream.lock` (the
+Godot pin) all live in it. Copy `patches/` plus `tools/apply.sh` to another
+machine and you can reproduce the stack without the rest of this repo. There is
+no `install.sh` in this repo: the Fast_Godot_Toolchain bundle is created by the provisioner that
 lives in the patch stack (`tools/toolchain/download_toolchain.sh` +
 `tools/toolchain/make_bundle_zip.py`), run from a patched source tree.
 
@@ -30,12 +32,12 @@ accepts linked worktrees (e.g. `/tmp/godot48`, whose `.git` is a file) and runs
 on macOS's bash 3.2. Verified 2026-11-26: regenerating all 8 layers from
 `/tmp/godot48` is byte-identical to the committed patches.
 
-Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to
-`patches/` (single stack, no version subfolder; `layers/` stays at the repo
-root). The editor's toolchain bootstrap reads `patches/*.patch` from the stack
-archive; editor builds that predate the layout change look for
-`patches/4.8-beta5/` and cannot bootstrap from the current tag, so the editor
-and the layout are updated together.
+Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
+self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,
+no version subfolder). The editor's toolchain bootstrap reads `patches/*.patch`
+and `patches/upstream.lock` from the stack archive; editor builds that predate
+the layout change look for `patches/4.8-beta5/` and cannot bootstrap from the
+current tag, so the editor and the layout are updated together.
 
 ## `4.8-beta5` patches
 
@@ -61,10 +63,10 @@ Windows `.ico`, docs images and the SPIR-V shader-corpus fixtures.
 - Python 3.12 (+ `zstandard` for SCons 4.x), SCons 4.11.1 — all provisioned by
   the same toolchain script.
 - macOS editor: `vulkan_sdk_path` pointing at the toolchain's MoltenVK.
-- First-use toolchain bootstrap: downloads Godot's source at `upstream.lock`'s
-  commit plus the `4.8-beta5` stack archive and applies it with the system
-  `git apply`; needs git on the machine (`GRIT_ENGINE_PROBE=1` tests just that
-  step).
+- First-use toolchain bootstrap: downloads Godot's source at
+  `patches/upstream.lock`'s commit plus the `4.8-beta5` stack archive and applies
+  it with the system `git apply`; needs git on the machine
+  (`GRIT_ENGINE_PROBE=1` tests just that step).
 
 Verified: editor builds/boots; web template builds
 (`platform=web target=template_release threads=no webgpu=yes opengl3=no`);

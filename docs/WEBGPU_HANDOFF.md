@@ -31,17 +31,20 @@ The repo is a **patch stack**, not a Godot fork checkout:
   the 4.8 stack. The full-source `4.7.2` branch remains on the remote for
   history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree); a leftover
   local branch `fresh` still points at that same commit and can be deleted.
-- The 4.8 stack (branch and tag `4.8-beta5`, repo default branch) is stored in
-  **`patches/`** (`0001-…0099-*.patch`), with the `layers/*.files` path lists at
-  the repo root; ported onto godot `master` @ `67421f36e5` (4.8.0-beta). Only one
-  stack exists now.
-- `tools/apply.sh <godot-checkout> <stack>` applies a stack; `tools/make-patches.sh`
-  regenerates it from a modified checkout with `git diff --binary`
+- The 4.8 stack (branch and tag `4.8-beta5`, repo default branch) is a
+  **self-contained portable bundle in `patches/`**: patch files
+  (`0001-…0099-*.patch`), the `layers/*.files` regeneration lists and
+  `upstream.lock` (the Godot pin) all live there; ported onto godot `master`
+  @ `67421f36e5` (4.8.0-beta). Copying `patches/` + `tools/apply.sh` reproduces
+  the stack elsewhere. Only one stack exists now.
+- `tools/apply.sh <godot-checkout>` applies the bundle (every `patches/*.patch`
+  in order); `tools/make-patches.sh <godot-checkout>` regenerates it with
+  `git diff --binary`
   (icons/splash/logo/SPIR-V fixtures are binary patches: 8 hunks in `0005`, 15
   in `0007`). The script was fixed 2026-11-26 (it lacked `--binary`, used
   bash-4-only `mapfile`, and rejected linked worktrees); its round-trip from
   `/tmp/godot48` is byte-identical to the committed patches.
-- `upstream.lock` pins the Godot base per branch.
+- `patches/upstream.lock` pins the Godot base (inside the bundle).
 
 | ref | commit | notes |
 |---|---|---|
@@ -52,7 +55,7 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 **Toolchain bootstrap (2026-11-26) no longer uses a source release.** New editor
 builds download the patch stack tag archive (~8 MB), read `godot_commit` from its
-`upstream.lock`, download Godot's own source at that commit from
+`patches/upstream.lock`, download Godot's own source at that commit from
 `godotengine/godot` (~76 MB), apply the stack's layers with `git apply`, and move
 the result into `<toolchain>/engine/source` — see the Toolchain bootstrap
 subsection under Build / toolchain. The old release asset and its tag were
@@ -65,7 +68,7 @@ already have a toolchain are unaffected).
 | item | actual value |
 |---|---|
 | patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch since 2026-11-26** (simple name, same as the tag); tag `4.8-beta5` = `4209e2f749` — moved 2026-11-26 to the ring-hardening tip, which is what the bootstrap downloads |
-| engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
+| engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `cdc0907bf6` (patches/ bootstrap; `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors), clean, not pushed (volatile) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
@@ -128,7 +131,7 @@ builds the toolchain's engine source the same way this editor is built:
 
 1. download `https://github.com/2maac/fast-godot/archive/refs/tags/4.8-beta5.tar.gz`
    (~8 MB) — the patch stack;
-2. read `godot_commit` from its `upstream.lock` (the single pin);
+2. read `godot_commit` from its `patches/upstream.lock` (the single pin);
 3. download `https://github.com/godotengine/godot/archive/<commit>.tar.gz` (~76 MB);
 4. apply the archive's `patches/*.patch` files in order with the system
    `git apply` (the tree is a plain directory; the patches target the exact
@@ -343,7 +346,7 @@ the working option.
    ref nor asset exists on `origin` anymore. Only editors built before the new
    bootstrap used it.
 9. **Toolchain bootstrap integrity**: the source step pins its inputs by commit
-   and tag (`upstream.lock`'s `godot_commit`, patch tag `4.8-beta5`) and applies
+   and tag (`patches/upstream.lock`'s `godot_commit`, patch tag `4.8-beta5`) and applies
    them with system git, but nothing verifies the downloaded tarballs beyond
    HTTPS, and the patch tag is mutable (force-pushable). A silently moved tag
    changes what fresh installs build. Pinning the stack by commit inside the
@@ -370,14 +373,13 @@ the working option.
   installs download it. It was moved to the ring-hardening tip on 2026-11-26
   (`4209e2f749`); move it again for later engine-side fixes. First-use
   provisioning also needs system `git` on the machine.
-- Layout (2026-11-26): the patch stack moved from `patches/4.8-beta5/` to
-  `patches/` (single stack, no version subfolder; `layers/` at the repo root),
-  and this handoff + the migration history moved into `docs/` (the handoff is
-  `docs/WEBGPU_HANDOFF.md` now). The bootstrap and the editor are coupled:
-  editor builds before the layout change look for `patches/4.8-beta5/` inside
-  the stack archive and cannot bootstrap from the current tag; the matching
-  build is `4.8.beta.custom_build.cdc0907bf`. Rebuild the editor whenever the
-  patch layout changes.
+- Layout (2026-11-26): the patch stack became a **self-contained portable
+  bundle in `patches/`** (patch files + `layers/` + `upstream.lock`, no version
+  subfolder), and this handoff + the migration history moved into `docs/` (the
+  handoff is `docs/WEBGPU_HANDOFF.md` now). The bootstrap and the editor are
+  coupled: editor builds before the layout change look for `patches/4.8-beta5/`
+  (and `upstream.lock` at the archive root) and cannot bootstrap from the current
+  tag; rebuild the editor whenever the bundle layout changes.
 - Ref naming (2026-11-26): the remote branch was renamed from `patches/4.8-beta5`
   to plain `4.8-beta5` (same name as the tag and the local branch; the patch
   files live at the repo root). Use full refs when the ambiguity matters.

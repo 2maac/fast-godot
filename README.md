@@ -5,9 +5,10 @@ engine. There is a single active stack (`4.8-beta5`), stored directly at the
 repository root:
 
 ```
-upstream.lock                 # Godot repo + exact commit the stack applies to
-patches/*.patch               # ordered .patch files (git format)
-layers/                       # path lists used to regenerate the stack
+patches/                      # self-contained portable stack bundle:
+  *.patch                     #   ordered .patch files (git format)
+  layers/                     #   path lists used to regenerate the stack
+  upstream.lock               #   Godot repo + exact commit the stack applies to
 tools/apply.sh                # apply the stack to a Godot checkout
 tools/make-patches.sh         # regenerate the stack from a modified checkout
 docs/PATCH_STACK.md           # what every patch does and why
@@ -25,7 +26,7 @@ state, build/export flow, MSAA/ring status, encryption and open work.
 
 ```sh
 git clone https://github.com/godotengine/godot ../godot
-git -C ../godot checkout $(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' upstream.lock)
+git -C ../godot checkout $(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' patches/upstream.lock)
 
 ./tools/apply.sh ../godot
 ```
@@ -44,7 +45,7 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 
 | branch | Godot base |
 |---|---|
-| `4.8-beta5` branch and tag (patch files in `patches/`) | godot master `67421f36e5` (4.8.0-beta) |
+| `4.8-beta5` branch and tag (self-contained stack bundle in `patches/`) | godot master `67421f36e5` (4.8.0-beta) |
 
 `4.8-beta5` is the repository default branch (since 2026-11-26; it was `4.7.2`).
 The `4.7.2` full-source branch is kept on the remote for history only (not

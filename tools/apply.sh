@@ -4,7 +4,7 @@
 #   tools/apply.sh <godot-source-dir>
 #
 # The ordered .patch files live in ./patches/ (single-stack repo). The source dir
-# must be a git checkout at (or near) the commit pinned in upstream.lock; patches
+# must be a git checkout at (or near) the commit pinned in patches/upstream.lock;
 # are applied with `git apply --3way` so a slightly newer base can still resolve.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -12,7 +12,7 @@ SRC=${1:?usage: $0 <godot-source-dir>}
 # Accept linked worktrees too (their .git is a file, not a directory).
 git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1 || { echo "$SRC is not a git checkout" >&2; exit 2; }
 
-PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/upstream.lock")
+PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/patches/upstream.lock")
 HEAD=$(git -C "$SRC" rev-parse HEAD)
 if [ -n "$PINNED" ] && [ "$PINNED" != "$HEAD" ]; then
 	echo "note: base is $HEAD, pinned is $PINNED (continuing with 3-way apply)"
