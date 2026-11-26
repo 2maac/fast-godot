@@ -7719,10 +7719,10 @@ index 0000000000..72e068203e
 +};
 diff --git a/modules/grit/editor/grit_provisioner.cpp b/modules/grit/editor/grit_provisioner.cpp
 new file mode 100644
-index 0000000000..54d55bc2cb
+index 0000000000..2ac3f8c889
 --- /dev/null
 +++ b/modules/grit/editor/grit_provisioner.cpp
-@@ -0,0 +1,791 @@
+@@ -0,0 +1,792 @@
 +#include "grit_provisioner.h"
 +
 +#include "core/config/project_settings.h"
@@ -7982,9 +7982,10 @@ index 0000000000..54d55bc2cb
 +	return String();
 +}
 +
-+// Reads the Godot commit the patch stack applies to (upstream.lock's godot_commit).
-+static String _read_upstream_commit(const String &p_stack_root, String *r_error) {
-+	const String path = p_stack_root.path_join("upstream.lock");
++// Reads the Godot commit the patch stack applies to (patches/upstream.lock's
++// godot_commit). p_stack_dir is the bundle directory inside the archive.
++static String _read_upstream_commit(const String &p_stack_dir, String *r_error) {
++	const String path = p_stack_dir.path_join("upstream.lock");
 +	Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
 +	if (file.is_null()) {
 +		*r_error = vformat("could not open %s.", path);
@@ -8308,8 +8309,8 @@ index 0000000000..54d55bc2cb
 +	_remove_tree(scratch);
 +	DirAccess::make_dir_recursive_absolute(scratch);
 +
-+	// 1. The patch stack: it is small, and its upstream.lock says which Godot
-+	// commit to fetch, so the pin lives in exactly one place.
++	// 1. The patch stack: it is small, and its patches/upstream.lock says which
++	// Godot commit to fetch, so the pin lives in exactly one place.
 +	const String stack_archive = scratch.path_join("patch-stack.tar.gz");
 +	const String stack_unpacked = scratch.path_join("patch-stack");
 +	String download_error;
@@ -8330,16 +8331,16 @@ index 0000000000..54d55bc2cb
 +		error = "the downloaded patch stack has no top-level folder.";
 +		return String();
 +	}
-+	const String commit = _read_upstream_commit(stack_root, &error);
++	// The stack archive keeps a self-contained bundle in patches/ (patch files +
++	// layers/ + upstream.lock; single-stack layout since 2026-11-26, no version
++	// subfolder). Builds before that look for patches/<ref>/ and cannot use a
++	// restructured archive; the two need to be updated together.
++	const String stack_dir = stack_root.path_join("patches");
++	const String commit = _read_upstream_commit(stack_dir, &error);
 +	if (commit.is_empty()) {
 +		_remove_tree(scratch);
 +		return String();
 +	}
-+	// The stack archive keeps its patch files in patches/ (single-stack layout
-+	// since 2026-11-26, no version subfolder). Builds before that look for
-+	// patches/<ref>/ and cannot use a restructured archive; the two need to be
-+	// updated together.
-+	const String stack_dir = stack_root.path_join("patches");
 +
 +	// 2. Godot's source at the pinned commit.
 +	const String godot_archive = scratch.path_join("godot-source.tar.gz");
