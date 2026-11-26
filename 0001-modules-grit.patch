@@ -7719,10 +7719,10 @@ index 0000000000..72e068203e
 +};
 diff --git a/modules/grit/editor/grit_provisioner.cpp b/modules/grit/editor/grit_provisioner.cpp
 new file mode 100644
-index 0000000000..5436631311
+index 0000000000..8136b0ecf9
 --- /dev/null
 +++ b/modules/grit/editor/grit_provisioner.cpp
-@@ -0,0 +1,787 @@
+@@ -0,0 +1,790 @@
 +#include "grit_provisioner.h"
 +
 +#include "core/config/project_settings.h"
@@ -7955,7 +7955,7 @@ index 0000000000..5436631311
 +// GitHub archives wrap the tree in a single top-level directory. Return that
 +// directory, or p_dir itself for a bare tree, or empty when the layout is odd.
 +static String _extracted_root(const String &p_dir) {
-+	if (FileAccess::exists(p_dir.path_join("SConstruct")) || DirAccess::dir_exists_absolute(p_dir.path_join("patches"))) {
++	if (FileAccess::exists(p_dir.path_join("SConstruct")) || DirAccess::dir_exists_absolute(p_dir.path_join("layers")) || DirAccess::dir_exists_absolute(p_dir.path_join("patches"))) {
 +		return p_dir;
 +	}
 +	Ref<DirAccess> dir = DirAccess::open(p_dir);
@@ -8335,7 +8335,10 @@ index 0000000000..5436631311
 +		_remove_tree(scratch);
 +		return String();
 +	}
-+	const String stack_dir = stack_root.path_join("patches").path_join(PATCH_STACK_REF);
++	// The stack archive keeps its patches at the root (single-stack layout since
++	// 2026-11-26). Builds before that look for patches/<ref>/ and cannot use a
++	// restructured archive; the two need to be updated together.
++	const String stack_dir = stack_root;
 +
 +	// 2. Godot's source at the pinned commit.
 +	const String godot_archive = scratch.path_join("godot-source.tar.gz");
