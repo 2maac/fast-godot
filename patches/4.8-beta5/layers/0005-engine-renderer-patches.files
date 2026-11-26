@@ -1,8 +1,11 @@
 SConstruct
+core/SCsub
+core/core_builders.py
 core/crypto/ghash.cpp
 core/crypto/ghash.h
 core/debugger/frame_profile.h
-core/grit_script_key.cpp
+core/io/file_access_encrypted.cpp
+core/io/file_access_encrypted.h
 core/io/file_access_pack.cpp
 core/io/file_access_pack.h
 core/io/logger.cpp

@@ -6,9 +6,10 @@ Resume doc. Last updated 2026-11-26 ~14:20.
 
 The repo is a **patch stack**, not a Godot fork checkout:
 
-- ~~`patches/4.7.2`~~ — the old 4.7.2 stack, **dropped 2026-11-26**: the project is
-  consolidated on the 4.8 stack, and the 4.7.2 branch is no longer built,
-  tested or maintained (kept only for history).
+- ~~`patches/4.7.2`~~ — the old 4.7.2 stack, **dropped and deleted 2026-11-26**
+  from GitHub (as was `integrate/komm64-webgpu`). The project is consolidated on
+  the 4.8 stack. The full-source `4.7.2` branch remains on GitHub only, for
+  history; there is no local branch for it.
 - `patches/4.8-beta5` — the 4.8 stack, same layers ported onto godot `master`
   @ `67421f36e5` (4.8.0-beta).
 - `tools/apply.sh <godot-checkout> <stack>` applies a stack; `tools/make-patches.sh`
@@ -18,7 +19,6 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| `refs/heads/patches/4.7.2` | `f067ebc1d2` | frozen/deprecated (4.7.2 dropped) |
 | `refs/heads/patches/4.8-beta5` | latest | base godot master 67421f36e5 |
 | `refs/tags/4.8-beta5` | same as branch | |
 | release `4.8-beta5-source` | `fast-godot-4.8-beta5-src.zip` | patched 4.8 source tree used by the Grit toolchain bootstrap |
@@ -103,6 +103,41 @@ Grit build performance/cancel fixes in the 4.8 stack:
   jobs, -O1;
 - SCons objects shared across profile trees via `cache_path`;
 - cancel (Esc) kills the whole process group, so compilers stop too.
+
+## PCK encryption — white-box keystream (2026-11-26)
+
+HTML5 Fast exports support encrypted PCKs again, with the 4.7.2 white-box design
+ported to 4.8:
+
+- `core/core_builders.py` generates `script_encryption_key.gen.cpp` from the
+  **per-export pack key** (`GRIT_PACK_KEY`): a Chow-style white-box AES-256 table
+  network (`_wb_make_tables`/`_wb_emit_tables`, random invertible byte encodings
+  between rounds). The pack key never exists as bytes at runtime - a dump yields
+  tables, a breakpoint yields one CFB keystream block. An editor/plain build (no
+  pack key) instead emits the split-share key form so its editor-side code paths
+  keep working.
+- `FileAccessEncrypted::open_and_parse_keystream()` decodes the stock CFB stream
+  through the provider (CFB decryption only needs AES **block encryption**),
+  keeping the stock MD5 check. The stock editor-side writer is unchanged, so
+  nothing in the export format moved.
+- `file_access_pack.cpp` uses the keystream provider on both load paths when the
+  build has no recoverable key; otherwise it falls back to the plain key.
+- `core/grit_script_key.cpp` (the 4.8 shim with an all-zero key) is gone; the
+  generated file supplies `script_encryption_key_{get,keystream_available,encrypt_block}`.
+- Per-export wiring was already in the export plugin: with preset
+  `encrypt_pck`/`encrypt_directory`, the plugin generates a fresh pack key,
+  writes `script_pack_key.txt`, sets `GODOT_SCRIPT_ENCRYPTION_KEY`, and passes
+  `GRIT_PACK_KEY`/`GRIT_WB_SEED` to the helper so the template is rebuilt for
+  exactly that pack key (only the generated file's rebuild is triggered).
+
+Verified: an encrypted `test_project` export contains no plaintext resource
+paths, boots in Chrome/WebGPU with **0 errors and no key present**; an
+unencrypted export is byte-identical to before the port (25,917,148-byte PCK)
+and still boots.
+
+Template-build caveat: encrypted builds of the **editor** (no pack key in the
+environment) still compile, using the split-share key form; only Grit template
+builds for an encrypted export get the table network.
 
 ## MSAA flicker — root cause and fix (2026-11-26)
 

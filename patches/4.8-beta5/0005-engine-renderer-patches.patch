@@ -68,6 +68,529 @@ index 18538d363f..0375aa1217 100644
  # These need to be set before platform detection.
  if not env["rendering_device"] or not (env["forward_mobile_renderer"] or env["forward_plus_renderer"]):
      env["d3d12"] = False
+diff --git a/core/SCsub b/core/SCsub
+index a77a2a5ed1..f701b68201 100644
+--- a/core/SCsub
++++ b/core/SCsub
+@@ -233,22 +233,23 @@ gen_hash = env.CommandNoCache(
+ )
+ env.add_source_files(env.core_sources, gen_hash)
+ 
+-# Generate AES256 script encryption key
++# Generate AES256 script encryption key. The per-export pack key and the white-box
++# seed also change every export, so they are part of the command's dependencies:
++# otherwise SCons would keep a generated file from a previous export (the template
++# would then decode with an old key while the PCK is encrypted with the new one).
++# GRIT_PACK_KEY selects the white-box keystream form, which is the only form an
++# encrypted template has.
+ encryption_key = os.environ.get("SCRIPT_AES256_ENCRYPTION_KEY")
+-encryption_key_var = "SCRIPT_AES256_ENCRYPTION_KEY"
+-if encryption_key is None:
+-    # Fallback to the environment variable used by Godot on export.
+-    # This allows setting only one environment variable for both compiling and exporting.
+-    encryption_key = os.environ.get("GODOT_SCRIPT_ENCRYPTION_KEY")
+-    encryption_key_var = "GODOT_SCRIPT_ENCRYPTION_KEY"
++pack_key = os.environ.get("GRIT_PACK_KEY")
++wb_seed = os.environ.get("GRIT_WB_SEED")
+ if encryption_key:
+     print(
+-        f"\n*** IMPORTANT: Compiling Godot with custom `{encryption_key_var}` set as environment variable."
++        "\n*** IMPORTANT: Compiling Godot with custom `SCRIPT_AES256_ENCRYPTION_KEY` set as environment variable."
+         "\n*** Make sure to use templates compiled with this key when exporting a project with encryption.\n"
+     )
+ gen_encrypt = env.CommandNoCache(
+     "script_encryption_key.gen.cpp",
+-    env.Value(encryption_key),
++    [env.Value(encryption_key), env.Value(wb_seed or ""), env.Value(pack_key or "")],
+     env.Run(core_builders.encryption_key_builder),
+ )
+ env.add_source_files(env.core_sources, gen_encrypt)
+diff --git a/core/core_builders.py b/core/core_builders.py
+index b596aa3deb..6be2725afb 100644
+--- a/core/core_builders.py
++++ b/core/core_builders.py
+@@ -3,6 +3,10 @@
+ from collections import OrderedDict
+ from io import TextIOWrapper
+ 
++import hashlib
++import os
++import random
++
+ import methods
+ 
+ 
+@@ -46,6 +50,362 @@ const unsigned long long GODOT_VERSION_TIMESTAMP = {git_timestamp};
+         )
+ 
+ 
++# --- White-box AES-256 for the PCK keystream --------------------------------
++# A Chow-style table network: AES-256 encryption with the key baked into
++# randomized lookup tables and random invertible GF(2) byte encodings between
++# rounds, so the working key never exists as bytes in the binary or in code
++# immediates. The export is encrypted with the very key the tables are built
++# for; decoding only ever needs AES block *encryption* of the previous
++# ciphertext block, so a game asks the tables for its CFB keystream one block at
++# a time and never holds the key.
++_WB_SBOX = [
++    0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
++    0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
++    0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
++    0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75,
++    0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84,
++    0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf,
++    0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8,
++    0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2,
++    0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73,
++    0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb,
++    0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79,
++    0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08,
++    0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a,
++    0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e,
++    0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf,
++    0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
++]
++_WB_MC = ((2, 3, 1, 1), (1, 2, 3, 1), (1, 1, 2, 3), (3, 1, 1, 2))
++_WB_ROUNDS = 13  # AES-256: 13 full rounds + the final round
++
++
++def _wb_xtime(a):
++    a <<= 1
++    return (a ^ 0x11B) & 0xFF if a & 0x100 else a
++
++
++def _wb_gmul(a, b):
++    result = 0
++    while b:
++        if b & 1:
++            result ^= a
++        a = _wb_xtime(a)
++        b >>= 1
++    return result
++
++
++def _wb_key_expand(key):
++    words = [list(key[4 * i : 4 * i + 4]) for i in range(8)]
++    rcon = 1
++    for i in range(8, 60):
++        temp = list(words[i - 1])
++        if i % 8 == 0:
++            temp = temp[1:] + temp[:1]
++            temp = [_WB_SBOX[x] for x in temp]
++            temp[0] ^= rcon
++            rcon = _wb_xtime(rcon)
++        elif i % 8 == 4:
++            temp = [_WB_SBOX[x] for x in temp]
++        words.append([words[i - 8][j] ^ temp[j] for j in range(4)])
++    round_keys = []
++    for r in range(15):
++        rk = bytearray(16)
++        for c in range(4):
++            for row in range(4):
++                rk[row + 4 * c] = words[4 * r + c][row]
++        round_keys.append(bytes(rk))
++    return round_keys
++
++
++def _wb_rand_linear(rng):
++    while True:
++        rows = [rng.getrandbits(8) for _ in range(8)]
++        basis = []
++        independent = True
++        for row in rows:
++            x = row
++            for b in basis:
++                x = min(x, x ^ b)
++            if x == 0:
++                independent = False
++                break
++            basis.append(x)
++            basis.sort(reverse=True)
++        if independent:
++            return rows
++
++
++def _wb_apply_lin(rows, value):
++    out = 0
++    for bit in range(8):
++        out |= (bin(rows[bit] & value).count("1") & 1) << bit
++    return out
++
++
++def _wb_invert_lin(rows):
++    table = [_wb_apply_lin(rows, x) for x in range(256)]
++    inverse = [0] * 256
++    for x, y in enumerate(table):
++        inverse[y] = x
++    return inverse
++
++
++_WB_T_DECOYS = 64  # Whole 32-bit tables that are never used.
++_WB_F_DECOYS = 16  # Decoys for the byte-wide final-round tables.
++
++
++def _wb_make_tables(key, seed):
++    """Four 32-bit T-tables per output column instead of 64 byte lookups per round.
++
++    Each round's ShiftRows + SubBytes + MixColumns is folded into four 32-bit tables
++    per output column, indexed by the encoded input byte of one row/column position.
++    The four tables of a column are XORed into the encoded output word, so a round
++    costs 16 loads instead of 64 and the encoded round key rides on the first table
++    of each column. The per-byte output encodings, the per-entry masking and the
++    decoy shuffling are the same hardening as the byte-wise network.
++    """
++    rng = random.Random(seed)
++    round_keys = _wb_key_expand(key)
++    enc = [[_wb_rand_linear(rng) for _ in range(16)] for _ in range(_WB_ROUNDS)]
++    enc_inv = [[_wb_invert_lin(enc[r][p]) for p in range(16)] for r in range(_WB_ROUNDS)]
++
++    tables = []
++    for r in range(1, _WB_ROUNDS + 1):
++        round_tables = []
++        for c in range(4):
++            for k in range(4):
++                in_pos = k + 4 * ((c + k) % 4)
++                table = [0] * 256
++                for idx in range(256):
++                    if r == 1:
++                        # The whitening key is folded into the first round's input,
++                        # so this round indexes by the real plaintext byte.
++                        real_in = idx ^ round_keys[0][in_pos]
++                    else:
++                        real_in = enc_inv[r - 2][in_pos][idx]
++                    sb = _WB_SBOX[real_in]
++                    word = 0
++                    for out_row in range(4):
++                        out_pos = out_row + 4 * c
++                        contribution = _wb_gmul(_WB_MC[out_row][k], sb)
++                        encoded = _wb_apply_lin(enc[r - 1][out_pos], contribution)
++                        if k == 0:
++                            # One contribution per column carries the encoded round
++                            # key: the four tables are XORed, so exactly one must.
++                            encoded ^= _wb_apply_lin(enc[r - 1][out_pos], round_keys[r][out_pos])
++                        word |= encoded << (8 * out_row)
++                    table[idx] = word
++                round_tables.append(table)
++        tables.append(round_tables)
++
++    final_tables = []
++    for out_pos in range(16):
++        out_row, out_col = out_pos % 4, out_pos // 4
++        in_pos = out_row + 4 * ((out_col + out_row) % 4)
++        table = [0] * 256
++        for idx in range(256):
++            table[idx] = _WB_SBOX[enc_inv[_WB_ROUNDS - 1][in_pos][idx]] ^ round_keys[14][out_pos]
++        final_tables.append(table)
++
++    # Hardening: every entry is XOR-masked with its own 32-bit mask and the real
++    # tables are shuffled among random decoys, so the blob does not look like a
++    # table network (the same scheme as the byte-wise layout).
++    n_real = _WB_ROUNDS * 16
++    total = n_real + _WB_T_DECOYS
++    slots = list(range(total))
++    rng.shuffle(slots)
++    real_slots = slots[:n_real]
++    t_blob = [[rng.getrandbits(32) for _ in range(256)] for _ in range(total)]
++    t_masks = [[rng.getrandbits(32) for _ in range(256)] for _ in range(total)]
++    flat = 0
++    for round_tables in tables:
++        for table in round_tables:
++            slot = real_slots[flat]
++            flat += 1
++            for i in range(256):
++                t_blob[slot][i] = table[i] ^ t_masks[slot][i]
++
++    n_final = 16
++    f_total = n_final + _WB_F_DECOYS
++    f_slots = list(range(f_total))
++    rng.shuffle(f_slots)
++    f_real = f_slots[:n_final]
++    f_blob = [[rng.getrandbits(8) for _ in range(256)] for _ in range(f_total)]
++    f_masks = [[rng.getrandbits(8) for _ in range(256)] for _ in range(f_total)]
++    for i, table in enumerate(final_tables):
++        slot = f_real[i]
++        for j in range(256):
++            f_blob[slot][j] = table[j] ^ f_masks[slot][j]
++
++    return {
++        "t_blob": t_blob,
++        "t_masks": t_masks,
++        "t_slots": real_slots,
++        "f_blob": f_blob,
++        "f_masks": f_masks,
++        "f_slots": f_real,
++    }
++
++
++def _wb_emit_tables(bundle):
++    # One 64-bit entry per T-box lookup: the 32-bit mask in the high half and the
++    # masked value in the low half, so a lookup is a single load.
++    t_total = len(bundle["t_blob"])
++    parts = ["static const uint64_t grit_wb_t[%d][256] = {" % t_total]
++    for slot in range(t_total):
++        blob = bundle["t_blob"][slot]
++        masks = bundle["t_masks"][slot]
++        parts.append("{" + ",".join("0x%08x%08x" % (masks[i], blob[i]) for i in range(256)) + "},")
++    parts.append("};")
++    parts.append("static const uint16_t grit_wb_t_slots[%d] = {" % len(bundle["t_slots"]))
++    parts.append(",".join(str(s) for s in bundle["t_slots"]))
++    parts.append("};")
++    f_total = len(bundle["f_blob"])
++    parts.append("static const uint16_t grit_wb_f[%d][256] = {" % f_total)
++    for slot in range(f_total):
++        blob = bundle["f_blob"][slot]
++        masks = bundle["f_masks"][slot]
++        parts.append("{" + ",".join("0x%02x%02x" % (masks[i], blob[i]) for i in range(256)) + "},")
++    parts.append("};")
++    parts.append("static const uint8_t grit_wb_f_slots[16] = {")
++    parts.append(",".join(str(s) for s in bundle["f_slots"]))
++    parts.append("};")
++    return "\n".join(parts)
++
++
++def _wb_source_value(source, index):
++    if len(source) > index:
++        try:
++            value = source[index].read()
++        except (AttributeError, IndexError):
++            value = ""
++        if value:
++            return str(value)
++    return ""
++
++
++# Anti-debug prelude shared by every generated key file that derives key material:
++# an encrypted template never hands out a key or a keystream to a traced process.
++_WB_DEBUG_PRELUDE = """\
++// A debugger attached to the game could read the key material derived below.
++// Encrypted templates refuse to run under one: the derived value comes out zeroed
++// and the pack cannot be opened.
++#if defined(MACOS_ENABLED)
++#include <sys/proc.h>
++#include <sys/ptrace.h>
++#include <sys/sysctl.h>
++#include <sys/types.h>
++#include <unistd.h>
++static bool grit_debugger_attached() {
++	ptrace(PT_DENY_ATTACH, 0, nullptr, 0);
++	int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)getpid() };
++	struct kinfo_proc info;
++	size_t size = sizeof(info);
++	memset(&info, 0, sizeof(info));
++	if (sysctl(mib, 4, &info, &size, nullptr, 0) == 0 && (info.kp_proc.p_flag & P_TRACED) != 0) {
++		return true;
++	}
++	return false;
++}
++#elif defined(WINDOWS_ENABLED)
++#include <windows.h>
++static bool grit_debugger_attached() {
++	return IsDebuggerPresent() != 0;
++}
++#elif defined(LINUXBSD_ENABLED) && !defined(WEB_ENABLED)
++#include <cstdio>
++#include <cstdlib>
++static bool grit_debugger_attached() {
++	FILE *status = fopen("/proc/self/status", "r");
++	if (status == nullptr) {
++		return false;
++	}
++	char line[256];
++	bool traced = false;
++	while (fgets(line, sizeof(line), status)) {
++		if (strncmp(line, "TracerPid:", 10) == 0) {
++			traced = atoi(line + 10) != 0;
++			break;
++		}
++	}
++	fclose(status);
++	return traced;
++}
++#else
++static bool grit_debugger_attached() {
++	return false;
++}
++#endif
++
++// Checked once: ptrace(PT_DENY_ATTACH) only takes effect the first time, and a
++// per-block check would be wasted work.
++static bool grit_tracing_allowed() {
++	static const bool allowed = !grit_debugger_attached();
++	return allowed;
++}
++"""
++
++# The table network itself, parameterized only by the round count. Each lookup
++# fetches the value and its XOR mask as one 16-bit pair: the two bytes carry
++# exactly the information the separate blob/mask arrays carried, but a single
++# load per lookup is ~1.75x faster (the lookup tables are the hot path, ~40% of a
++# pack read).
++_WB_ENCRYPT_BLOCK = """\
++static inline uint32_t grit_wb_t_lookup(const uint16_t slot, const uint8_t key) {
++	const uint64_t pair = grit_wb_t[slot][key];
++	return uint32_t(pair) ^ uint32_t(pair >> 32);
++}
++
++static inline uint8_t grit_wb_f_lookup(const uint8_t slot, const uint8_t key) {
++	const uint16_t pair = grit_wb_f[slot][key];
++	return uint8_t(pair) ^ uint8_t(pair >> 8);
++}
++
++static void grit_wb_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {
++	uint32_t s[4];
++	uint32_t o[4];
++	// Round 1 folds the whitening key into its tables, so it indexes by the real
++	// plaintext byte; later rounds index by the encoded byte of the previous word.
++	for (int c = 0; c < 4; c++) {
++		uint32_t value = 0;
++		for (int k = 0; k < 4; k++) {
++			const int in_pos = k + 4 * ((c + k) %% 4);
++			value ^= grit_wb_t_lookup(grit_wb_t_slots[c * 4 + k], p_in[in_pos]);
++		}
++		o[c] = value;
++	}
++	for (int round = 1; round < %d; round++) {
++		for (int c = 0; c < 4; c++) {
++			uint32_t value = 0;
++			for (int k = 0; k < 4; k++) {
++				const int col = (c + k) %% 4;
++				value ^= grit_wb_t_lookup(grit_wb_t_slots[(round * 4 + c) * 4 + k], uint8_t(o[col] >> (8 * k)));
++			}
++			s[c] = value;
++		}
++		memcpy(o, s, sizeof(o));
++	}
++	for (int out_pos = 0; out_pos < 16; out_pos++) {
++		const int out_row = out_pos %% 4;
++		const int col = (out_pos / 4 + out_row) %% 4;
++		r_out[out_pos] = grit_wb_f_lookup(grit_wb_f_slots[out_pos], uint8_t(o[col] >> (8 * out_row)));
++	}
++}
++""" % _WB_ROUNDS
++
++_WB_NO_KEYSTREAM = """\
++bool script_encryption_key_keystream_available() {
++	return false;
++}
++
++bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {
++	memset(r_out, 0, 16);
++	return false;
++}
++"""
++
++
+ def encryption_key_builder(target, source, env):
+     src = source[0].read() or "0" * 64
+     try:
+@@ -60,17 +420,103 @@ def encryption_key_builder(target, source, env):
+         )
+         raise
+ 
++    def _hex32(index, env_name, label):
++        value = (_wb_source_value(source, index) or os.environ.get(env_name) or "").strip().lower()
++        if not value:
++            return None
++        try:
++            raw = bytes.fromhex(value)
++            if len(raw) != 32:
++                raise ValueError
++        except ValueError:
++            methods.print_error(f'Invalid {label} (expected 64 hexadecimal characters): "{value}".')
++            raise
++        return raw
++
++    pack_key = _hex32(2, "GRIT_PACK_KEY", "PCK pack key")
++    wb_seed = _wb_source_value(source, 1) or os.environ.get("GRIT_WB_SEED") or ""
++
++    if pack_key is not None:
++        # Encrypted template (the only form there is): the template is built for
++        # exactly one pack, so the tables are keyed with the pack key itself. CFB
++        # decoding only needs AES *encryption* of the previous ciphertext block,
++        # which is what the table network computes, so the key never has to exist as
++        # bytes anywhere in the process: a dump yields tables, a breakpoint yields
++        # one block of keystream. The user key still selects the table layout (so the
++        # binary depends on it) but plays no part at runtime.
++        seed_material = wb_seed + buffer.hex() + pack_key.hex()
++        seed = int.from_bytes(hashlib.sha256(b"grit-wb-keystream:" + seed_material.encode("utf-8")).digest(), "big")
++        table_source = _wb_emit_tables(_wb_make_tables(pack_key, seed))
++        with methods.generated_wrapper(str(target[0])) as file:
++            file.write(
++                f"""\
++#include <cstdint>
++#include <cstring>
++
++{_WB_DEBUG_PRELUDE}
++{table_source}
++
++{_WB_ENCRYPT_BLOCK}
++
++// Keystream provider: AES-256 block encryption under the pack key, expressed only
++// through the tables above. FileAccessEncrypted uses it for CFB decoding, so the
++// pack key never enters the process.
++bool script_encryption_key_keystream_available() {{
++	return grit_tracing_allowed();
++}}
++
++bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {{
++	if (!grit_tracing_allowed()) {{
++		memset(r_out, 0, 16);
++		return false;
++	}}
++	grit_wb_encrypt_block(p_in, r_out);
++	return true;
++}}
++
++// Nothing to recover in a keystream build: the key exists only inside the tables.
++void script_encryption_key_get(uint8_t *p_key) {{
++	memset(p_key, 0, 32);
++}}
++"""
++            )
++        return
++
++    # Builds without an exported pack (editor builds) only need the split-share
++    # form: no plaintext key array, and no table network to generate.
++    seed = hashlib.sha256(b"grit-encryption-key-shares-v1" + buffer).digest()
++    rng = random.Random(int.from_bytes(seed, "big"))
++    share1 = bytes(rng.randrange(256) for _ in range(32))
++    share2 = bytes(rng.randrange(256) for _ in range(32))
++    share0 = bytes(a ^ b ^ c for a, b, c in zip(buffer, share1, share2))
++    order = list(range(32))
++    rng.shuffle(order)
++    stores = []
++    for index in order:
++        stores.append(
++            "\tp[%d] = uint8_t(0x%02x ^ 0x%02x ^ 0x%02x);\n"
++            % (index, share0[index], share1[index], share2[index])
++        )
+     with methods.generated_wrapper(str(target[0])) as file:
+         file.write(
+             f"""\
+ #include <cstdint>
+-
+-uint8_t script_encryption_key[32] = {{
+-	{methods.format_buffer(buffer, 1)}
+-}};"""
++#include <cstring>
++
++// Rebuilds the script/PCK encryption key compiled into this build. The key is
++// split into XOR shares written byte by byte in a build-specific order through
++// a volatile pointer, so no contiguous key exists in the binary's data.
++// Called only when a pack is opened.
++void script_encryption_key_get(uint8_t *p_key) {{
++	volatile uint8_t *p = p_key;
++{''.join(stores)}}}
++
++{_WB_NO_KEYSTREAM}
++"""
+         )
+ 
+ 
++
+ def make_certs_header(target, source, env):
+     buffer = methods.get_buffer(str(source[0]))
+     decomp_size = len(buffer)
 diff --git a/core/crypto/ghash.cpp b/core/crypto/ghash.cpp
 new file mode 100644
 index 0000000000..01af00fe2d
@@ -616,68 +1139,124 @@ index 0000000000..ccb045535c
 +}
 +
 +} // namespace FrameProf
-diff --git a/core/grit_script_key.cpp b/core/grit_script_key.cpp
-new file mode 100644
-index 0000000000..22e09149e9
---- /dev/null
-+++ b/core/grit_script_key.cpp
-@@ -0,0 +1,46 @@
-+/**************************************************************************/
-+/*  grit_script_key.cpp                                                   */
-+/**************************************************************************/
-+/*                         This file is part of:                          */
-+/*                             GODOT ENGINE                               */
-+/*                        https://godotengine.org                         */
-+/**************************************************************************/
+diff --git a/core/io/file_access_encrypted.cpp b/core/io/file_access_encrypted.cpp
+index e4bbe87581..f0a0bf5f29 100644
+--- a/core/io/file_access_encrypted.cpp
++++ b/core/io/file_access_encrypted.cpp
+@@ -30,6 +30,8 @@
+ 
+ #include "file_access_encrypted.h"
+ 
++#include "core/os/secure_memory.h"
 +
-+#include "core/crypto/crypto_core.h"
-+#include "core/object/script_language.h"
+ #include "core/variant/variant.h"
+ 
+ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<uint8_t> &p_key, Mode p_mode, bool p_with_magic, const Vector<uint8_t> &p_iv) {
+@@ -95,6 +97,71 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
+ 	return OK;
+ }
+ 
++Error FileAccessEncrypted::open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic) {
++	ERR_FAIL_COND_V_MSG(file.is_valid(), ERR_ALREADY_IN_USE, vformat("Can't open file while another file from path '%s' is open.", file->get_path_absolute()));
++	ERR_FAIL_NULL_V(p_block_encrypt, ERR_INVALID_PARAMETER);
 +
-+#include <cstring>
++	pos = 0;
++	eofed = false;
++	use_magic = p_with_magic;
++	writing = false;
++	key.clear(); // No key exists in this process.
 +
-+// 4.8 port shim for the Fast/HTML5 export's pack-key provider.
-+//
-+// The 4.7.2 fork generated a white-box keystream provider from core_builders.py
-+// so the pack key never appeared as plaintext in the template. Porting that
-+// generator to 4.8 is still pending, so this build compiles no key at all:
-+// encrypted web templates are unavailable (and report so), while everything
-+// else (including the editor and unencrypted exports) works unchanged.
-+// TODO(4.8): re-port core_builders.py's white-box provider.
++	if (use_magic) {
++		uint32_t magic = p_base->get_32();
++		ERR_FAIL_COND_V(magic != ENCRYPTED_HEADER_MAGIC, ERR_FILE_UNRECOGNIZED);
++	}
 +
-+static const uint8_t grit_pack_key[32] = {};
-+static const bool grit_pack_key_available = false;
++	unsigned char md5d[16];
++	p_base->get_buffer(md5d, 16);
++	length = p_base->get_64();
 +
-+void script_encryption_key_get(uint8_t p_key[32]) {
-+	memcpy(p_key, grit_pack_key, 32);
++	iv.resize(16);
++	p_base->get_buffer(iv.ptrw(), 16);
++
++	base = p_base->get_position();
++	ERR_FAIL_COND_V(p_base->get_length() < base + length, ERR_FILE_CORRUPT);
++	uint64_t ds = length;
++	if (ds % 16) {
++		ds += 16 - (ds % 16);
++	}
++	data.resize(ds);
++	uint64_t blen = p_base->get_buffer(data.ptrw(), ds);
++	ERR_FAIL_COND_V(blen != ds, ERR_FILE_CORRUPT);
++
++	// AES-CFB(128) decryption: keystream block i = E(prev ciphertext block), with
++	// the IV standing in for block -1. Only block encryption is needed, so the
++	// white-box tables can drive it without ever materialising the key.
++	uint8_t prev[16];
++	memcpy(prev, iv.ptr(), 16);
++	for (uint64_t off = 0; off < ds; off += 16) {
++		uint8_t keystream[16];
++		if (!p_block_encrypt(prev, keystream)) {
++			SecureMemory::zero(keystream, sizeof(keystream));
++			SecureMemory::zero(prev, sizeof(prev));
++			data.clear();
++			ERR_FAIL_V_MSG(ERR_UNAVAILABLE, "The white-box keystream provider refused a block (a debugger may be attached).");
++		}
++		uint8_t cipher[16];
++		memcpy(cipher, data.ptr() + off, 16);
++		for (int i = 0; i < 16; i++) {
++			data.write[off + i] ^= keystream[i];
++		}
++		memcpy(prev, cipher, 16);
++		SecureMemory::zero(keystream, sizeof(keystream));
++		SecureMemory::zero(cipher, sizeof(cipher));
++	}
++	SecureMemory::zero(prev, sizeof(prev));
++	data.resize(length);
++
++	unsigned char hash[16];
++	ERR_FAIL_COND_V(CryptoCore::md5(data.ptr(), data.size(), hash) != OK, ERR_BUG);
++	ERR_FAIL_COND_V_MSG(String::md5(hash) != String::md5(md5d), ERR_FILE_CORRUPT, "The MD5 sum of the decrypted file does not match the expected value. It could be that the file is corrupt, or that the template does not match the pack key it was built for.");
++
++	file = p_base;
++	return OK;
 +}
 +
-+bool script_encryption_key_keystream_available() {
-+	return false;
-+}
-+
-+bool script_encryption_key_encrypt_block(const uint8_t p_in[16], uint8_t r_out[16]) {
-+	if (!grit_pack_key_available) {
-+		return false;
-+	}
-+	CryptoCore::AESContext ctx;
-+	if (ctx.setup(CryptoCore::AESContext::Mode::ENCRYPT, CryptoCore::AESContext::Cipher::ECB, grit_pack_key, 32, nullptr, 0) != OK) {
-+		return false;
-+	}
-+	if (ctx.update(p_in, 16, r_out, 16) != OK) {
-+		return false;
-+	}
-+	return ctx.finish(nullptr, 0) == OK;
-+}
+ Error FileAccessEncrypted::open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode) {
+ 	String cs = p_key.md5_text();
+ 	ERR_FAIL_COND_V(cs.length() != 32, ERR_INVALID_PARAMETER);
+diff --git a/core/io/file_access_encrypted.h b/core/io/file_access_encrypted.h
+index 9dc4333dd5..f93a2f2bcf 100644
+--- a/core/io/file_access_encrypted.h
++++ b/core/io/file_access_encrypted.h
+@@ -61,6 +61,11 @@ private:
+ 
+ public:
+ 	Error open_and_parse(Ref<FileAccess> p_base, const Vector<uint8_t> &p_key, Mode p_mode, bool p_with_magic = true, const Vector<uint8_t> &p_iv = Vector<uint8_t>());
++	// A white-box build has no pack key to hand out: decode the same CFB stream
++	// through the compiled-in block-encryption tables instead of a key vector.
++	// CFB only ever needs AES block *encryption*, which is what the tables compute.
++	typedef bool (*BlockEncryptFunc)(const uint8_t p_in[16], uint8_t r_out[16]);
++	Error open_and_parse_keystream(Ref<FileAccess> p_base, BlockEncryptFunc p_block_encrypt, bool p_with_magic = true);
+ 	Error open_and_parse_password(Ref<FileAccess> p_base, const String &p_key, Mode p_mode);
+ 
+ 	Vector<uint8_t> get_iv() const { return iv; }
 diff --git a/core/io/file_access_pack.cpp b/core/io/file_access_pack.cpp
-index cc4bef27a2..e926faf816 100644
+index cc4bef27a2..a6b002cf7a 100644
 --- a/core/io/file_access_pack.cpp
 +++ b/core/io/file_access_pack.cpp
-@@ -330,18 +330,22 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files,
+@@ -30,6 +30,8 @@
+ 
+ #include "file_access_pack.h"
+ 
++#include "core/os/secure_memory.h"
++
+ #include "core/io/file_access_encrypted.h"
+ #include "core/io/file_access_patched.h"
+ #include "core/object/script_language.h"
+@@ -330,21 +332,40 @@ bool PackedSourcePCK::try_open_pack(const String &p_path, bool p_replace_files,
  		ERR_FAIL_COND_V_MSG(fae.is_null(), false, "Can't open encrypted pack directory.");
  
  		Vector<uint8_t> key;
-+		// 4.8 exposes the compiled-in pack key through an accessor instead of a
-+		// plaintext global.
 +		uint8_t script_key[32];
 +		script_encryption_key_get(script_key);
  #ifdef TOOLS_ENABLED
@@ -688,21 +1267,43 @@ index cc4bef27a2..e926faf816 100644
 +			if (memcmp(script_key, empty_key, sizeof(empty_key)) == 0) {
  				key = p_decryption_key;
  			}
- 		} else
+-		} else
++		}
  #endif
- 		{
- 			key.resize(32);
+-		{
+-			key.resize(32);
 -			memcpy(key.ptrw(), script_encryption_key, 32);
-+			memcpy(key.ptrw(), script_key, 32);
++		bool use_keystream = false;
++		if (key.is_empty()) {
++			// A white-box build has no pack key to copy: decode through the
++			// keystream provider instead, so the key never enters this process.
++			if (script_encryption_key_keystream_available()) {
++				use_keystream = true;
++			} else {
++				key.resize(32);
++				memcpy(key.ptrw(), script_key, 32);
++			}
  		}
++		SecureMemory::zero(script_key, sizeof(script_key));
  
- 		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
-@@ -558,18 +562,22 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
+-		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
++		Error err = OK;
++		if (use_keystream) {
++			// The directory is verified at open: it is small, and a template/pack
++			// mismatch has to stop the pack from loading instead of surfacing as
++			// corrupted resources later. Files verify while they are read.
++			err = fae->open_and_parse_keystream(f, script_encryption_key_encrypt_block, false);
++		} else {
++			err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
++			SecureMemory::zero(key.ptrw(), key.size());
++		}
+ 		ERR_FAIL_COND_V_MSG(err, false, "Can't open encrypted pack directory.");
+ 		f = fae;
+ 	}
+@@ -558,22 +579,43 @@ FileAccessPack::FileAccessPack(const String &p_path, const PackedData::PackedFil
  		ERR_FAIL_COND_MSG(fae.is_null(), vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s".)", p_path, pf.pack));
  
  		Vector<uint8_t> key;
-+		// 4.8 exposes the compiled-in pack key through an accessor instead of a
-+		// plaintext global.
 +		uint8_t script_key[32];
 +		script_encryption_key_get(script_key);
  #ifdef TOOLS_ENABLED
@@ -713,15 +1314,43 @@ index cc4bef27a2..e926faf816 100644
 +			if (memcmp(script_key, empty_key, sizeof(empty_key)) == 0) {
  				key = p_decryption_key;
  			}
- 		} else
+-		} else
++		}
  #endif
- 		{
- 			key.resize(32);
+-		{
+-			key.resize(32);
 -			memcpy(key.ptrw(), script_encryption_key, 32);
-+			memcpy(key.ptrw(), script_key, 32);
++		bool use_keystream = false;
++		if (key.is_empty()) {
++			// White-box build: no pack key exists to copy, decode through the
++			// keystream provider (see FileAccessEncrypted::open_and_parse_keystream).
++			if (script_encryption_key_keystream_available()) {
++				use_keystream = true;
++			} else {
++				key.resize(32);
++				memcpy(key.ptrw(), script_key, 32);
++			}
  		}
++		SecureMemory::zero(script_key, sizeof(script_key));
  
- 		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+-		Error err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
+-		ERR_FAIL_COND_MSG(err != OK, vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s" due to error "%s".)", p_path, pf.pack, error_names[err]));
++		Error err = OK;
++		if (use_keystream) {
++			err = fae->open_and_parse_keystream(f, script_encryption_key_encrypt_block, false);
++		} else {
++			err = fae->open_and_parse(f, key, FileAccessEncrypted::MODE_READ, false);
++			SecureMemory::zero(key.ptrw(), key.size());
++		}
++		if (err != OK) {
++			// Do not leave the raw (still encrypted) bytes readable through this
++			// entry: a failed open has to read as nothing.
++			f.unref();
++			ERR_FAIL_MSG(vformat(R"(Can't open encrypted pack-referenced file "%s" from pack "%s" due to error "%s".)", p_path, pf.pack, error_names[err]));
++		}
+ 		f = fae;
+ 		off = 0;
+ 	}
 diff --git a/core/io/file_access_pack.h b/core/io/file_access_pack.h
 index 490778f203..339267ea51 100644
 --- a/core/io/file_access_pack.h
