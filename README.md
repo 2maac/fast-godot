@@ -11,10 +11,15 @@ layers/                       # path lists used to regenerate the stack
 tools/apply.sh                # apply the stack to a Godot checkout
 tools/make-patches.sh         # regenerate the stack from a modified checkout
 docs/PATCH_STACK.md           # what every patch does and why
+docs/WEBGPU_HANDOFF.md        # primary handoff (start here)
+docs/WEBGPU_DRIVER_MIGRATION.md  # archived 4.7 driver history
 ```
 
 The Godot source itself is a link, not content: clone it from
 <https://github.com/godotengine/godot> at the commit pinned in `upstream.lock`.
+
+**Start here:** [`docs/WEBGPU_HANDOFF.md`](docs/WEBGPU_HANDOFF.md) — current
+state, build/export flow, MSAA/ring status, encryption and open work.
 
 ## Quick start
 
@@ -50,6 +55,6 @@ points at the same commit and can be deleted.
 
 | doc | what it is |
 |---|---|
-| `WEBGPU_HANDOFF.md` | **primary handoff** — current state, build/export flow, MSAA fix, encryption, open work |
-| `docs/PATCH_STACK.md` | what every patch layer contains and how to apply/regenerate |
-| `WEBGPU_DRIVER_MIGRATION.md` | archived history of the komm64 WebGPU driver adoption (4.7) |
+| [`docs/WEBGPU_HANDOFF.md`](docs/WEBGPU_HANDOFF.md) | **primary handoff** — current state, build/export flow, MSAA/ring status, encryption, open work |
+| [`docs/PATCH_STACK.md`](docs/PATCH_STACK.md) | what every patch layer contains and how to apply/regenerate |
+| [`docs/WEBGPU_DRIVER_MIGRATION.md`](docs/WEBGPU_DRIVER_MIGRATION.md) | archived history of the komm64 WebGPU driver adoption (4.7) |

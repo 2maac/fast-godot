@@ -71,7 +71,7 @@ encrypted and plain HTML5 Fast exports both boot with 0 errors.
 ## Known gaps
 
 - Push-constant ring flush path is mitigated (8 MB ring) but not structurally
-  hardened; see `../WEBGPU_HANDOFF.md`.
+  hardened; see `WEBGPU_HANDOFF.md`.
 - Forward+ on WebGPU is out of scope for this stack.
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime
   only needs the keystream decoder (see the handoff).
