@@ -43,13 +43,24 @@ The repo is a **patch stack**, not a Godot fork checkout:
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | tag `4.8-beta5-source` | `35e42f7df2` | single parentless commit holding the 4.8-beta5 source tree; **re-cut 2026-11-26** from `d8cb1fd77c` (the 4.7.2 tree). The release asset `fast-godot-4.8-beta5-src.zip` (96,229,476 B, sha256 `25bb6f17…`) is byte-verified to this tree |
 
-Note: the toolchain provisioner copies the engine source from the local checkout
-(`engine_root/../..` in `download_toolchain.sh`), so a fresh
-`~/fast_godot_toolchain` does not download the `4.8-beta5-source` release; the
-tag only matters when cutting the source-release artifact. Verified 2026-11-26:
-extracting `fast-godot-4.8-beta5-src.zip` yields exactly the 16,064 tracked
-files of the `834c3d4fc2` worktree (no differing file; only generated build
-artifacts are absent), and the zip's comment is that commit hash.
+**The `4.8-beta5-source` release is required for the editor's first-use toolchain
+bootstrap.** `modules/grit/editor/grit_provisioner.cpp` (`_engine_source_url()`,
+patch 0001) hardcodes
+`https://github.com/2maac/fast-godot/releases/download/4.8-beta5-source/fast-godot-4.8-beta5-src.zip`.
+When no toolchain is installed, the editor downloads that zip, extracts it into
+`<toolchain>/engine/source`, accepts it only if it has `SConstruct`,
+`tools/grit_build.py` and `version.py` `minor = 8`, then runs the tree's
+`download_toolchain.sh`. Keep the release, tag name and asset name alive —
+installed editors hardcode that URL. The URL is not revision-pinned, so when the
+source changes, replace the asset under the same name. (`download_toolchain.sh`
+itself copies the engine source from a local checkout when run from one, so a
+manual source-tree provision does not touch the release; the editor path does.)
+
+Verified 2026-11-26: after the tag was re-cut the URL still returns HTTP 200 /
+96,229,476 B unauthenticated (repo is public) — downloads resolve by release tag
+name, not by the tag's commit. Extracting the zip yields exactly the 16,064
+tracked files of the `834c3d4fc2` worktree (no differing file; only generated
+build artifacts absent), and the zip's comment is that commit hash.
 
 ## Environment snapshot (verified on this machine, 2026-11-26 ~19:15)
 
@@ -63,7 +74,7 @@ artifacts are absent), and the zip's comment is that commit hash.
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
 | staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.834c3d4fc`, staged 2026-11-26 18:21; `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
-| source release | tag `4.8-beta5-source` = `35e42f7df2` (parentless snapshot, 16,064 files, tree = `834c3d4fc2`; re-cut and force-pushed 2026-11-26, old ref `d8cb1fd77c`). Asset `fast-godot-4.8-beta5-src.zip`, sha256 `25bb6f17…`, byte-verified |
+| source release | tag `4.8-beta5-source` = `35e42f7df2` (parentless snapshot, 16,064 files, tree = `834c3d4fc2`; re-cut and force-pushed 2026-11-26, old ref `d8cb1fd77c`). Asset `fast-godot-4.8-beta5-src.zip`, sha256 `25bb6f17…`, byte-verified. **Required**: the editor downloads this asset on first-use toolchain bootstrap via a hardcoded URL |
 
 ## 4.8 layer map
 
@@ -313,6 +324,13 @@ the working option.
    GitHub tag object both return `35e42f7df2`. GitHub keeps
    `targetCommitish: 4.7.2` as creation metadata (the API rejects updating it)
    but the release resolves through the tag, so it shows the correct commit.
+   After the move the asset URL still returns the 96,229,476-byte zip, so
+   installed editors' toolchain bootstrap is unaffected.
+9. **Toolchain download has no integrity check**: the editor fetches the 92 MB
+   source zip over HTTPS and only checks that it extracts and looks like a 4.8
+   tree (`_engine_present`); no sha256/signature is pinned. A corrupted or
+   replaced asset would be extracted silently. Pinning a hash in
+   `grit_provisioner.cpp` needs a code change plus refreshed editor builds.
 
 ## Practical notes
 
@@ -326,6 +344,10 @@ the working option.
 - Release tags can be force-updated too: `4.8-beta5-source` was re-cut
   2026-11-26 (`d8cb1fd77c` → `35e42f7df2`). Verify with
   `git ls-remote origin refs/tags/<tag>` after any move.
+- The `4.8-beta5-source` release/asset is **load-bearing**: installed editors
+  hardcode its download URL for the toolchain bootstrap. Never delete or rename
+  the release, tag or asset; replace the zip's content in place when the source
+  changes (the provisioner accepts any valid 4.8 Fast_Godot tree).
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring fix and the
   white-box pack-key port; re-apply `patches/4.8-beta5` to a fresh checkout to
