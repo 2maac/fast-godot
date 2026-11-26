@@ -1,12 +1,13 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~20:40. Ring hardening landed and was
+Resume doc. Last updated 2026-11-26 ~20:50. Ring hardening landed and was
 browser-checked (owner, 2026-11-26: the TPS export works fine): the push-constant
 ring is flushed only between passes, so a mid-frame submit can no longer
 interrupt an in-pass MSAA resolve. The `4.8-beta5` patch tag was moved to the
 hardening tip (`4209e2f7`) so fresh toolchains build the hardened driver, and the
 remote branch is now simply `4.8-beta5` (no `patches/` prefix; patch files still
-live in `patches/4.8-beta5/`). The toolchain bootstrap builds the engine source
+live in `patches/4.8-beta5/`, which is now also the repository default branch).
+The toolchain bootstrap builds the engine source
 from Godot's repository + that tag; the obsolete source release and its tag were
 deleted. Worktree HEAD `9267990dcd`.
 
@@ -59,7 +60,7 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` (simple name, same as the tag); tag `4.8-beta5` = `4209e2f749` — moved 2026-11-26 to the ring-hardening tip, which is what the bootstrap downloads |
+| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch since 2026-11-26** (simple name, same as the tag); tag `4.8-beta5` = `4209e2f749` — moved 2026-11-26 to the ring-hardening tip, which is what the bootstrap downloads |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `9267990dcd` (ring hardening; `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors), clean, not pushed (volatile) |
@@ -365,8 +366,9 @@ the working option.
 - Ref naming (2026-11-26): the remote branch was renamed from `patches/4.8-beta5`
   to plain `4.8-beta5` (same name as the tag and the local branch; the patch
   files stay in `patches/4.8-beta5/`). Use full refs when the ambiguity matters.
-  GitHub shows its "recent pushes → compare & pull request" banner for pushes to
-  this non-default branch; the repo default is still `4.7.2`.
+  `4.8-beta5` is the repository **default branch** since 2026-11-26 (was
+  `4.7.2`), so pushes to it no longer trigger GitHub's "recent pushes → compare
+  & pull request" banner; `4.7.2` stays history-only.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
   the pass-boundary ring flush and the white-box pack-key port; re-apply
