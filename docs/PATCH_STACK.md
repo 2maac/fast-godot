@@ -20,15 +20,23 @@ Regenerate: `./tools/make-patches.sh <godot-checkout> 4.7.2`
 
 ## `4.8-beta5` (base: godot `master` at `67421f36e5`, 4.8.0-beta)
 
+Ported from the `4.7.2` stack — same layers, adapted to 4.8:
+
 | patch | contents |
 |---|---|
-| `0001-modules-grit` | Fast/Grit module |
-| `0002-webgpu-driver` | 4.8-native WebGPU driver + shader bake support (`drivers/webgpu`, brotli, webgpu scripts) |
-| `0003-engine-renderer-patches` | rendering/editor/main/platform patches for the 4.8 driver |
-| `0004-web-html5-fast-and-grit` | HTML5 Fast export wiring, Grit build tools, test project, docs |
+| `0001-modules-grit` | Fast/Grit module (adapted to 4.8 GDScript internals: GDType member maps, const MethodBind codegen, parser resolved_type/type_constraint) |
+| `0002-modules-cffi` | CFFI module |
+| `0003-web-html5-fast-export` | "HTML5 Fast" export platform + web platform hooks |
+| `0004-webgpu-driver` | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: base RenderingDeviceDriver gained `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion hooks, layered copy/initialize, and the shader container format now returns the SPIR-V version per stage |
+| `0005-engine-renderer-patches` | engine/renderer patches the driver needs (batching with `batch_instance_index`, shader container format override, driver traits, GDScript native-call hooks, frame profiler) |
+| `0006-thirdparty-vendored` | vendored Tint + SPIRV-Tools for the export-time WGSL bake |
+| `0007-tools-fixtures-docs` | tools/, test_project/, docs, webgpu notes/tests |
+| `0099-misc` | remaining touched files |
 
-Provenance: the initial 4.8 WebGPU port incorporates MIT-licensed code from
-`davtamay/Godot_WebGPU` and `komm64/godot-webgpu`, adapted and maintained as
-our own stack from here on.
+Build requirements: Emscripten 6.0.1+ for web, `zstandard` Python module for SCons.
+Verified on macOS: editor builds and boots; web template builds
+(`platform=web target=template_release threads=no webgpu=yes opengl3=no`).
 
-Regenerate: `./tools/make-patches.sh <godot-checkout> 4.8-beta5`
+Deferred when porting: the white-box pack-key generator from `core_builders.py`
+(shimmed, so encrypted web templates are unavailable) and the v2 authenticated
+chunk format in `FileAccessEncrypted` (4.8 API drifted).

@@ -1,0 +1,17 @@
+platform/web/detect.py
+platform/web/display_server_web.cpp
+platform/web/display_server_web.h
+platform/web/emscripten_helpers.py
+platform/web/export/export.cpp
+platform/web/export/export_plugin.cpp
+platform/web/export/export_plugin.h
+platform/web/export/export_plugin_fast.h
+platform/web/godot_js.h
+platform/web/js/engine/config.js
+platform/web/js/engine/engine.js
+platform/web/js/libs/audio.worklet.js
+platform/web/js/libs/library_godot_audio.js
+platform/web/js/libs/library_godot_os.js
+platform/web/os_web.cpp
+platform/web/os_web.h
+platform/web/web_main.cpp

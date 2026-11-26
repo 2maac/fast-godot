@@ -1,0 +1,11 @@
+# Build outputs and local scratch that never belong to the patch stack.
+out/
+bin/
+.testhome/
+*.pyc
+__pycache__/
+test_project/.godot/
+test_project/build/
+test_project/build-fast/
+test_project/exports/
+test_project/wgsl_bake/

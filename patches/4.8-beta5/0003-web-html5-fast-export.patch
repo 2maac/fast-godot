@@ -1,0 +1,1103 @@
+diff --git a/platform/web/detect.py b/platform/web/detect.py
+index 36aae28ee6..29aad2ceee 100644
+--- a/platform/web/detect.py
++++ b/platform/web/detect.py
+@@ -91,6 +91,7 @@ def get_flags():
+         # run-time performance.
+         # Note that this overrides the "auto" behavior for target/dev_build.
+         "optimize": "size",
++        "supported": ["webgpu"],
+     }
+ 
+ 
+@@ -251,6 +252,13 @@ def configure(env: "SConsEnvironment"):
+         # See https://emscripten.org/docs/tools_reference/settings_reference.html#gl-enable-get-proc-address
+         env.Append(LINKFLAGS=["-sGL_ENABLE_GET_PROC_ADDRESS=0"])
+ 
++    if env["webgpu"]:
++        env.AppendUnique(CPPDEFINES=["WEBGPU_ENABLED", "RD_ENABLED"])
++        # Emscripten 4.0.10+ uses the emdawnwebgpu port; -sUSE_WEBGPU=1 was removed in 5.0.
++        # Pass --use-port=emdawnwebgpu to both CCFLAGS (for headers) and LINKFLAGS (for JS glue).
++        env.Append(CCFLAGS=["--use-port=emdawnwebgpu"])
++        env.Append(LINKFLAGS=["--use-port=emdawnwebgpu"])
++
+     if env["javascript_eval"]:
+         env.Append(CPPDEFINES=["JAVASCRIPT_EVAL_ENABLED"])
+ 
+@@ -259,11 +267,18 @@ def configure(env: "SConsEnvironment"):
+     if env["threads"]:
+         # Thread support (via SharedArrayBuffer).
+         env.Append(CPPDEFINES=["PTHREAD_NO_RENAME"])
+-        env.Append(CCFLAGS=["-pthread"])
+-        env.Append(LINKFLAGS=["-pthread"])
+-        env.Append(LINKFLAGS=[f"-sDEFAULT_PTHREAD_STACK_SIZE={env['default_pthread_stack_size']}KB"])
+-        env.Append(LINKFLAGS=["-sPTHREAD_POOL_SIZE=\"Module['emscriptenPoolSize']||8\""])
+-        env.Append(LINKFLAGS=["-sMAXIMUM_MEMORY=2048MB"])
++        env.Append(CCFLAGS=["-sUSE_PTHREADS=1"])
++        env.Append(LINKFLAGS=["-sUSE_PTHREADS=1"])
++        env.Append(LINKFLAGS=["-sDEFAULT_PTHREAD_STACK_SIZE=%sKB" % env["default_pthread_stack_size"]])
++        # No preallocated workers: Godot's WorkerThreadPool creates exactly the
++        # threads its project setting asks for (threading/worker_pool/max_threads,
++        # -1 = the reported CPU count) and Emscripten spawns them on demand.
++        env.Append(LINKFLAGS=["-sPTHREAD_POOL_SIZE=0", "-sPTHREAD_POOL_SIZE_STRICT=0"])
++        env.Append(LINKFLAGS=["-sWASM_MEM_MAX=2048MB"])
++        if not env["dlink_enabled"]:
++            # Workaround https://github.com/emscripten-core/emscripten/issues/21844#issuecomment-2116936414.
++            # Not needed (and potentially dangerous) when dlink_enabled=yes, since we set EXPORT_ALL=1 in that case.
++            env["EXPORTED_FUNCTIONS"] += ["__emscripten_thread_crashed"]
+ 
+     elif env["proxy_to_pthread"]:
+         print_warning('"threads=no" support requires "proxy_to_pthread=no", disabling proxy to pthread.')
+@@ -306,6 +321,11 @@ def configure(env: "SConsEnvironment"):
+     # us since we don't know requirements at compile-time.
+     env.Append(LINKFLAGS=["-sALLOW_MEMORY_GROWTH=1"])
+ 
++    # Ensure malloc returns NULL on failure instead of aborting. Emscripten
++    # sets this automatically when ALLOW_MEMORY_GROWTH=1, but being explicit
++    # prevents regressions if the default ever changes and documents intent.
++    env.Append(LINKFLAGS=["-sABORTING_MALLOC=0"])
++
+     # Do not call main immediately when the support code is ready.
+     env.Append(LINKFLAGS=["-sINVOKE_RUN=0"])
+ 
+diff --git a/platform/web/display_server_web.cpp b/platform/web/display_server_web.cpp
+index 3a5a8c3878..260bc5cc92 100644
+--- a/platform/web/display_server_web.cpp
++++ b/platform/web/display_server_web.cpp
+@@ -42,6 +42,7 @@
+ #include "core/os/os.h"
+ #include "servers/display/native_menu.h"
+ #include "servers/rendering/dummy/rasterizer_dummy.h"
++#include "servers/rendering/rendering_device.h"
+ 
+ #ifdef PROXY_TO_PTHREAD_ENABLED
+ #include "core/object/callable_mp.h"
+@@ -51,6 +52,11 @@
+ #include "drivers/gles3/rasterizer_gles3.h"
+ #endif
+ 
++#ifdef WEBGPU_ENABLED
++#include "drivers/webgpu/rendering_context_driver_webgpu.h"
++#include "servers/rendering/renderer_rd/renderer_compositor_rd.h"
++#endif
++
+ #include <emscripten.h>
+ #include <png.h>
+ 
+@@ -72,6 +78,12 @@ bool DisplayServerWeb::check_size_force_redraw() {
+ 		Variant size = Rect2i(Point2i(), window_size); // TODO use window_get_position if implemented.
+ 		rect_changed_callback.call(size);
+ 		emscripten_set_canvas_element_size(canvas_id, window_size.x, window_size.y);
++#ifdef WEBGPU_ENABLED
++		// Also update the rendering context surface so the swap chain resizes correctly.
++		if (rendering_context != nullptr) {
++			rendering_context->window_set_size(DisplayServerEnums::MAIN_WINDOW_ID, window_size.x, window_size.y);
++		}
++#endif
+ 	}
+ 	return size_changed;
+ }
+@@ -1009,6 +1021,9 @@ void DisplayServerWeb::process_joypads() {
+ 
+ Vector<String> DisplayServerWeb::get_rendering_drivers_func() {
+ 	Vector<String> drivers;
++#ifdef WEBGPU_ENABLED
++	drivers.push_back("webgpu");
++#endif
+ #ifdef GLES3_ENABLED
+ 	drivers.push_back("opengl3");
+ #endif
+@@ -1137,6 +1152,49 @@ DisplayServerWeb::DisplayServerWeb(const String &p_rendering_driver, DisplayServ
+ 	// Expose method for requesting quit.
+ 	godot_js_os_request_quit_cb(request_quit_callback);
+ 
++#ifdef WEBGPU_ENABLED
++	if (p_rendering_driver == "webgpu") {
++		// The WebGPU device is pre-initialized by the JS shell (navigator.gpu.requestDevice)
++		// and imported via Module["preinitializedWebGPUDevice"]. We initialize the
++		// context driver, create the canvas surface, initialize RenderingDevice, and
++		// register the RD compositor so rendering_server->init() finds it.
++		rendering_context = memnew(RenderingContextDriverWebGPU);
++		if (rendering_context->initialize() != OK) {
++			memdelete(rendering_context);
++			rendering_context = nullptr;
++			r_error = ERR_CANT_CREATE;
++			ERR_FAIL_MSG("WebGPU: Failed to initialize rendering context. Ensure navigator.gpu is available and the device was pre-initialized in the HTML shell.");
++		}
++		Error err = rendering_context->window_create(DisplayServerEnums::MAIN_WINDOW_ID, nullptr);
++		if (err != OK) {
++			memdelete(rendering_context);
++			rendering_context = nullptr;
++			r_error = err;
++			ERR_FAIL_MSG("WebGPU: Failed to create canvas surface.");
++		}
++		rendering_context->window_set_size(DisplayServerEnums::MAIN_WINDOW_ID, p_resolution.x, p_resolution.y);
++		rendering_context->window_set_vsync_mode(DisplayServerEnums::MAIN_WINDOW_ID, p_vsync_mode);
++
++		rendering_device = memnew(RenderingDevice);
++		err = rendering_device->initialize(rendering_context, DisplayServerEnums::MAIN_WINDOW_ID);
++		if (err != OK) {
++			memdelete(rendering_device);
++			rendering_device = nullptr;
++			memdelete(rendering_context);
++			rendering_context = nullptr;
++			r_error = err;
++			ERR_FAIL_MSG("WebGPU: Failed to initialize rendering device.");
++		}
++		err = rendering_device->screen_create(DisplayServerEnums::MAIN_WINDOW_ID);
++		if (err != OK) {
++			// Non-fatal: the swapchain may be resized on first frame.
++			WARN_PRINT("WebGPU: screen_create() failed — swapchain will be set up on first frame.");
++		}
++
++		RendererCompositorRD::make_current();
++	} else
++#endif // WEBGPU_ENABLED
++	{
+ #ifdef GLES3_ENABLED
+ 	bool webgl2_inited = false;
+ 	if (godot_js_display_has_webgl(2)) {
+@@ -1166,6 +1224,7 @@ DisplayServerWeb::DisplayServerWeb(const String &p_rendering_driver, DisplayServ
+ #else
+ 	RasterizerDummy::make_current();
+ #endif
++	} // end of webgpu else block
+ 
+ 	// JS Input interface (js/libs/library_godot_input.js)
+ 	godot_js_input_mouse_button_cb(&DisplayServerWeb::mouse_button_callback);
+@@ -1202,6 +1261,17 @@ DisplayServerWeb::~DisplayServerWeb() {
+ 		emscripten_webgl_destroy_context(webgl_ctx);
+ 	}
+ #endif
++#ifdef WEBGPU_ENABLED
++	if (rendering_device) {
++		rendering_device->screen_free(DisplayServerEnums::MAIN_WINDOW_ID);
++		memdelete(rendering_device);
++		rendering_device = nullptr;
++	}
++	if (rendering_context) {
++		memdelete(rendering_context);
++		rendering_context = nullptr;
++	}
++#endif
+ }
+ 
+ bool DisplayServerWeb::has_feature(DisplayServerEnums::Feature p_feature) const {
+diff --git a/platform/web/display_server_web.h b/platform/web/display_server_web.h
+index 9b3901c3b7..1d36a915d5 100644
+--- a/platform/web/display_server_web.h
++++ b/platform/web/display_server_web.h
+@@ -39,6 +39,10 @@
+ #include <emscripten.h>
+ #include <emscripten/html5.h>
+ 
++#ifdef WEBGPU_ENABLED
++#include "servers/rendering/rendering_device.h"
++#endif
++
+ class InputEvent;
+ class InputEventWithModifiers;
+ class NativeMenu;
+@@ -63,6 +67,10 @@ private:
+ #ifdef GLES3_ENABLED
+ 	EMSCRIPTEN_WEBGL_CONTEXT_HANDLE webgl_ctx = 0;
+ #endif
++#ifdef WEBGPU_ENABLED
++	RenderingContextDriver *rendering_context = nullptr;
++	RenderingDevice *rendering_device = nullptr;
++#endif
+ 
+ 	HashMap<int64_t, CharString> utterance_ids;
+ 
+diff --git a/platform/web/emscripten_helpers.py b/platform/web/emscripten_helpers.py
+index f387d23f6c..26465b0cf0 100644
+--- a/platform/web/emscripten_helpers.py
++++ b/platform/web/emscripten_helpers.py
+@@ -57,6 +57,9 @@ def create_template_zip(env, js, wasm, side):
+         in_files.append(side)  # Side wasm (contains the actual Godot code).
+         out_files.append(zip_dir.File(binary_name + ".side.wasm"))
+ 
++    # WebGPU SPIR-V→WGSL conversion is now handled by Tint, compiled directly
++    # into the engine WASM binary. No separate translator module needed.
++
+     service_worker = "#misc/dist/html/service-worker.js"
+     if env.editor_build:
+         # HTML
+diff --git a/platform/web/export/export.cpp b/platform/web/export/export.cpp
+index fa17b6c7c2..a4ac9c140d 100644
+--- a/platform/web/export/export.cpp
++++ b/platform/web/export/export.cpp
+@@ -31,6 +31,7 @@
+ #include "export.h"
+ 
+ #include "export_plugin.h"
++#include "export_plugin_fast.h"
+ 
+ #include "core/object/class_db.h"
+ #include "editor/export/editor_export.h"
+@@ -51,7 +52,9 @@ void register_web_exporter() {
+ 	EditorSettings::get_singleton()->add_property_hint(PropertyInfo(Variant::STRING, "export/web/tls_key", PROPERTY_HINT_GLOBAL_FILE, "*.key"));
+ 	EditorSettings::get_singleton()->add_property_hint(PropertyInfo(Variant::STRING, "export/web/tls_certificate", PROPERTY_HINT_GLOBAL_FILE, "*.crt,*.pem"));
+ 
+-	Ref<EditorExportPlatformWeb> platform;
++	// Only "HTML5 Fast" is offered, matching the native platforms: the project's
++	// scripts are compiled into the wasm template rather than shipped as GDScript.
++	Ref<EditorExportPlatformWebFast> platform;
+ 	platform.instantiate();
+ 	EditorExport::get_singleton()->add_export_platform(platform);
+ }
+diff --git a/platform/web/export/export_plugin.cpp b/platform/web/export/export_plugin.cpp
+index 7b130205a6..ed23fe7092 100644
+--- a/platform/web/export/export_plugin.cpp
++++ b/platform/web/export/export_plugin.cpp
+@@ -153,8 +153,13 @@ void EditorExportPlatformWeb::_fix_html(Vector<uint8_t> &p_html, const Ref<Edito
+ 	config["fileSizes"] = p_file_sizes;
+ 	config["ensureCrossOriginIsolationHeaders"] = (bool)p_preset->get("progressive_web_app/ensure_cross_origin_isolation_headers");
+ 
+-	config["godotPoolSize"] = p_preset->get("threads/godot_pool_size");
+-	config["emscriptenPoolSize"] = p_preset->get("threads/emscripten_pool_size");
++	// Pass the rendering driver so the HTML shell can pre-initialize WebGPU if needed.
++	String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
++	if (rendering_method == "forward_plus" || rendering_method == "mobile") {
++		config["renderingDriver"] = "webgpu";
++	} else {
++		config["renderingDriver"] = "opengl3";
++	}
+ 
+ 	String head_include;
+ 	if (p_preset->get("html/export_icon")) {
+@@ -364,6 +369,9 @@ void EditorExportPlatformWeb::get_preset_features(const Ref<EditorExportPreset>
+ 	} else {
+ 		r_features->push_back("web_noextensions");
+ 	}
++	if (p_preset->get("shader_baker/enabled").operator bool()) {
++		r_features->push_back("shader_baker");
++	}
+ 	r_features->push_back("wasm32");
+ }
+ 
+@@ -376,6 +384,11 @@ void EditorExportPlatformWeb::get_export_options(List<ExportOption> *r_options)
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "vram_texture_compression/for_desktop"), true)); // S3TC
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "vram_texture_compression/for_mobile"), false)); // ETC or ETC2, depending on renderer
+ 
++	// Bake shader binaries (SPIR-V for the WebGPU driver) into the PCK so the
++	// runtime skips GLSL compilation. Requires an editor with a GPU and a
++	// renderer matching the project's web renderer.
++	r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "shader_baker/enabled"), false));
++
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::BOOL, "html/export_icon"), true));
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "html/custom_html_shell", PROPERTY_HINT_FILE, "*.html"), ""));
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "html/head_include", PROPERTY_HINT_MULTILINE_TEXT, "monospace,no_wrap"), ""));
+@@ -391,9 +404,6 @@ void EditorExportPlatformWeb::get_export_options(List<ExportOption> *r_options)
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "progressive_web_app/icon_180x180", PROPERTY_HINT_FILE, "*.png,*.webp,*.svg"), ""));
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::STRING, "progressive_web_app/icon_512x512", PROPERTY_HINT_FILE, "*.png,*.webp,*.svg"), ""));
+ 	r_options->push_back(ExportOption(PropertyInfo(Variant::COLOR, "progressive_web_app/background_color", PROPERTY_HINT_COLOR_NO_ALPHA), Color()));
+-
+-	r_options->push_back(ExportOption(PropertyInfo(Variant::INT, "threads/emscripten_pool_size"), 8));
+-	r_options->push_back(ExportOption(PropertyInfo(Variant::INT, "threads/godot_pool_size"), 4));
+ }
+ 
+ bool EditorExportPlatformWeb::get_export_option_visibility(const EditorExportPreset *p_preset, const String &p_option) const {
+@@ -402,10 +412,6 @@ bool EditorExportPlatformWeb::get_export_option_visibility(const EditorExportPre
+ 		return advanced_options_enabled;
+ 	}
+ 
+-	if (p_option == "threads/godot_pool_size" || p_option == "threads/emscripten_pool_size") {
+-		return p_preset->get("variant/thread_support").operator bool();
+-	}
+-
+ 	return true;
+ }
+ 
+@@ -413,6 +419,10 @@ String EditorExportPlatformWeb::get_name() const {
+ 	return "Web";
+ }
+ 
++String EditorExportPlatformWeb::get_shader_baker_driver(const Ref<EditorExportPreset> &p_preset) const {
++	return "webgpu";
++}
++
+ String EditorExportPlatformWeb::get_os_name() const {
+ 	return "Web";
+ }
+diff --git a/platform/web/export/export_plugin.h b/platform/web/export/export_plugin.h
+index 11782c6d0b..c0261ac436 100644
+--- a/platform/web/export/export_plugin.h
++++ b/platform/web/export/export_plugin.h
+@@ -120,6 +120,10 @@ public:
+ 
+ 	virtual String get_name() const override;
+ 	virtual String get_os_name() const override;
++	// HTML5 templates in this build ship the WebGPU driver only, and the project's
++	// `rendering_device/driver.web` override may not even exist (the native editor
++	// drops unknown platform overrides when it saves project settings).
++	virtual String get_shader_baker_driver(const Ref<EditorExportPreset> &p_preset) const override;
+ 	virtual Ref<Texture2D> get_logo() const override;
+ 
+ 	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug = false) const override;
+diff --git a/platform/web/export/export_plugin_fast.h b/platform/web/export/export_plugin_fast.h
+new file mode 100644
+index 0000000000..4a346cac68
+--- /dev/null
++++ b/platform/web/export/export_plugin_fast.h
+@@ -0,0 +1,94 @@
++#pragma once
++
++#include "export_plugin.h"
++
++#include "core/config/project_settings.h"
++#include "core/io/file_access.h"
++
++// "HTML5 Fast": the project's Grit-compiled code in a WebAssembly template. Unlike
++// the native Fast platforms this one is registered on every host, because Emscripten
++// cross-compiles to wasm from macOS, Windows and Linux alike.
++class EditorExportPlatformWebFast : public EditorExportPlatformWeb {
++	GDCLASS(EditorExportPlatformWebFast, EditorExportPlatformWeb);
++
++public:
++	virtual String get_name() const override {
++		return "HTML5 Fast";
++	}
++
++	// The compiled template belongs to the project, never to the editor's template
++	// directory, and presets therefore need no custom_template path.
++	static constexpr const char *TEMPLATE_FILE = "web_fast.zip";
++
++	static constexpr const char *TEMPLATE_DIR = "res://exports";
++
++	static String template_path() {
++		return ProjectSettings::get_singleton()->globalize_path(String(TEMPLATE_DIR) + "/" + TEMPLATE_FILE);
++	}
++
++	virtual String find_export_template(const String &p_template_file_name, String *r_err = nullptr) const override {
++		const String path = template_path();
++		if (FileAccess::exists(path)) {
++			return path;
++		}
++		if (r_err) {
++			*r_err += TTR("No export template found at the expected path:") + "\n" + path + "\n";
++		}
++		return String();
++	}
++	virtual bool exists_export_template(const String &p_template_file_name, String *r_err) const override {
++		return FileAccess::exists(template_path());
++	}
++
++	// The template is produced by the export itself, so "no template yet" must not
++	// disable the Export button. Any other configuration error still does.
++	// (The WebGPU-specific renderer check below is the only addition to the
++	// pre-WebGPU Fast platform.)
++	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const override {
++		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
++		const bool webgpu_method = rendering_method == "mobile";
++		String message;
++		bool missing = false;
++		const bool base_valid = EditorExportPlatformWeb::has_valid_export_configuration(p_preset, message, missing, p_debug);
++		if (base_valid) {
++			if (!webgpu_method) {
++				r_error = vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method);
++				r_missing_templates = false;
++				return false;
++			}
++			r_error = message;
++			r_missing_templates = missing;
++			return true;
++		}
++		if (!missing) {
++			r_error = message;
++			r_missing_templates = missing;
++			return false;
++		}
++		// Drop the template lines, keep whatever else is wrong.
++		Vector<String> kept;
++		for (const String &line : message.split("\n")) {
++			if (!line.begins_with("No export template found")) {
++				kept.push_back(line);
++			}
++		}
++		if (!webgpu_method) {
++			kept.push_back(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
++		}
++		r_error = String("\n").join(kept).strip_edges();
++		r_missing_templates = false;
++		return r_error.is_empty();
++	}
++
++	// `has_valid_export_configuration` is only consulted by the editor UI; a
++	// scripted export (`--export-release "HTML5 Fast" ...`) goes straight to
++	// export_project, so enforce the renderer check here as well.
++	virtual Error export_project(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags = 0, bool p_notify = true) override {
++		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
++		if (rendering_method != "mobile") {
++			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
++			return ERR_UNCONFIGURED;
++		}
++		return EditorExportPlatformWeb::export_project(p_preset, p_debug, p_path, p_flags, p_notify);
++	}
++};
+diff --git a/platform/web/godot_js.h b/platform/web/godot_js.h
+index 30cc1df979..3f2e39a320 100644
+--- a/platform/web/godot_js.h
++++ b/platform/web/godot_js.h
+@@ -55,7 +55,6 @@ extern int godot_js_os_execute(const char *p_path, const char *p_json_args);
+ extern int godot_js_os_kill(int p_pid);
+ extern void godot_js_os_shell_open(const char *p_uri);
+ extern int godot_js_os_hw_concurrency_get();
+-extern int godot_js_os_thread_pool_size_get();
+ extern int godot_js_os_has_feature(const char *p_ftr);
+ extern int godot_js_pwa_cb(void (*p_callback)());
+ extern int godot_js_pwa_update();
+diff --git a/platform/web/js/engine/config.js b/platform/web/js/engine/config.js
+index d78f1e61fc..b8cd0624e1 100644
+--- a/platform/web/js/engine/config.js
++++ b/platform/web/js/engine/config.js
+@@ -138,23 +138,33 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
+ 		 */
+ 		gdextensionLibs: [],
+ 		/**
+-		 * @ignore
+-		 * @export
+-		 * @type {!Object<string, number>}
++		 * The rendering driver to use. Set by Godot export based on project settings.
++		 *
++		 * ``'webgpu'`` will automatically request a WebGPU device before engine init.
++		 *
++		 * ``'opengl3'`` (or empty) uses WebGL 2.0.
++		 *
++		 * @memberof EngineConfig
++		 * @default
++		 * @type {string}
+ 		 */
+-		fileSizes: {},
++		renderingDriver: '',
+ 		/**
+-		 * @ignore
+-		 * @export
+-		 * @type {number}
++		 * A pre-initialized WebGPU device to pass to the Emscripten module.
++		 * Required for WebGPU rendering. Must be set before engine init.
++		 * If not provided and ``renderingDriver`` is ``'webgpu'``, one will be
++		 * requested automatically.
++		 *
++		 * @memberof EngineConfig
++		 * @default
++		 * @type {?GPUDevice}
+ 		 */
+-		emscriptenPoolSize: 8,
++		preinitializedWebGPUDevice: null,
+ 		/**
+ 		 * @ignore
+-		 * @export
+-		 * @type {number}
++		 * @type {Array.<string>}
+ 		 */
+-		godotPoolSize: 4,
++		fileSizes: [],
+ 		/**
+ 		 * A MessagePort used to send debug messages when using protocol messageport://
+ 		 * @export
+@@ -289,14 +299,38 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
+ 	 */
+ 	Config.prototype.update = function (opts) {
+ 		const config = opts || {};
+-		const me = this;
+-		Object.keys(cfg).forEach((key) => {
+-			/**
+-			 * @ignore
+-			 * @suppress {checkTypes}
+-			 */
+-			me[key] = typeof (config[key]) === 'undefined' ? me[key] : config[key];
+-		});
++		// NOTE: We must explicitly pass the default, accessing it via
++		// the key will fail due to closure compiler renames.
++		function parse(key, def) {
++			if (typeof (config[key]) === 'undefined') {
++				return def;
++			}
++			return config[key];
++		}
++		// Module config
++		this.unloadAfterInit = parse('unloadAfterInit', this.unloadAfterInit);
++		this.onPrintError = parse('onPrintError', this.onPrintError);
++		this.onPrint = parse('onPrint', this.onPrint);
++		this.onProgress = parse('onProgress', this.onProgress);
++
++		// Godot config
++		this.canvas = parse('canvas', this.canvas);
++		this.executable = parse('executable', this.executable);
++		this.mainPack = parse('mainPack', this.mainPack);
++		this.locale = parse('locale', this.locale);
++		this.canvasResizePolicy = parse('canvasResizePolicy', this.canvasResizePolicy);
++		this.persistentPaths = parse('persistentPaths', this.persistentPaths);
++		this.persistentDrops = parse('persistentDrops', this.persistentDrops);
++		this.experimentalVK = parse('experimentalVK', this.experimentalVK);
++		this.focusCanvas = parse('focusCanvas', this.focusCanvas);
++		this.serviceWorker = parse('serviceWorker', this.serviceWorker);
++		this.gdextensionLibs = parse('gdextensionLibs', this.gdextensionLibs);
++		this.renderingDriver = parse('renderingDriver', this.renderingDriver);
++		this.preinitializedWebGPUDevice = parse('preinitializedWebGPUDevice', this.preinitializedWebGPUDevice);
++		this.fileSizes = parse('fileSizes', this.fileSizes);
++		this.args = parse('args', this.args);
++		this.onExecute = parse('onExecute', this.onExecute);
++		this.onExit = parse('onExit', this.onExit);
+ 	};
+ 
+ 	/**
+@@ -315,6 +349,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
+ 			'noExitRuntime': false,
+ 			'dynamicLibraries': [`${loadPath}.side.wasm`].concat(this.gdextensionLibs),
+ 			'emscriptenPoolSize': this.emscriptenPoolSize,
++			// WebGPU: pass pre-initialized device if provided (for emscripten_webgpu_get_device()).
++			...(this.preinitializedWebGPUDevice ? { 'preinitializedWebGPUDevice': this.preinitializedWebGPUDevice } : {}),
+ 			'instantiateWasm': function (imports, onSuccess) {
+ 				function done(result) {
+ 					onSuccess(result['instance'], result['module']);
+@@ -388,7 +424,6 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
+ 			'canvasResizePolicy': this.canvasResizePolicy,
+ 			'locale': locale,
+ 			'virtualKeyboard': this.experimentalVK,
+-			'godotPoolSize': this.godotPoolSize,
+ 			'focusCanvas': this.focusCanvas,
+ 			'debugPort': this.debugPort,
+ 			'onExecute': this.onExecute,
+diff --git a/platform/web/js/engine/engine.js b/platform/web/js/engine/engine.js
+index 592a97f9e9..e67cc5b96e 100644
+--- a/platform/web/js/engine/engine.js
++++ b/platform/web/js/engine/engine.js
+@@ -207,11 +207,26 @@ const Engine = (function () {
+ 				this.config.args = ['--main-pack', pack].concat(this.config.args);
+ 				// Start and init with execName as loadPath if not inited.
+ 				const me = this;
+-				return Promise.all([
+-					this.init(exe),
+-					this.preloadFile(pack, pack),
+-				]).then(function () {
+-					return me.start.apply(me);
++
++				// If WebGPU rendering is requested, pre-initialize a GPUDevice
++				// before the WASM module starts (the C++ side expects it in
++				// Module.preinitializedWebGPUDevice).
++				// SPIR-V→WGSL conversion is handled by Tint, compiled directly
++				// into the engine WASM — no separate translator module needed.
++				let webgpuReady = Promise.resolve();
++				if (me.config.renderingDriver === 'webgpu' && !me.config.preinitializedWebGPUDevice) {
++					webgpuReady = Engine.requestWebGPUDevice().then(function (device) {
++						me.config.preinitializedWebGPUDevice = device;
++					});
++				}
++
++				return webgpuReady.then(function () {
++					return Promise.all([
++						me.init(exe),
++						me.preloadFile(pack, pack),
++					]).then(function () {
++						return me.start.apply(me);
++					});
+ 				});
+ 			},
+ 
+@@ -293,9 +308,123 @@ const Engine = (function () {
+ 		return new Engine(initConfig);
+ 	}
+ 
++	/**
++	 * Request a WebGPU device from the browser. Returns a Promise that resolves
++	 * to a ``GPUDevice``, or rejects if WebGPU is not available.
++	 *
++	 * This is called automatically by :js:meth:`startGame <Engine.prototype.startGame>`
++	 * when ``renderingDriver`` is ``'webgpu'``.
++	 *
++	 * @param {Object=} adapterOptions Optional ``GPURequestAdapterOptions``.
++	 * @param {Object=} deviceDescriptor Optional ``GPUDeviceDescriptor``.
++	 * @returns {Promise<GPUDevice>} A promise resolving to the GPU device.
++	 *
++	 * @function Engine.requestWebGPUDevice
++	 */
++	Engine.requestWebGPUDevice = function (adapterOptions, deviceDescriptor) {
++		if (typeof navigator === 'undefined' || !navigator.gpu) {
++			return Promise.reject(new Error(
++				'WebGPU is not supported in this browser.\n'
++				+ 'Try using a recent version of Chrome, Edge, or Firefox.'
++			));
++		}
++		return navigator.gpu.requestAdapter(adapterOptions || {
++			powerPreference: 'high-performance',
++		}).then(function (adapter) {
++			if (!adapter) {
++				return Promise.reject(new Error(
++					'WebGPU adapter not found. Your GPU may not support WebGPU.'
++				));
++			}
++			const desc = deviceDescriptor || {
++				requiredFeatures: [],
++			};
++			// Request timestamp-query if available.
++			if (adapter.features.has('timestamp-query')) {
++				desc.requiredFeatures = (desc.requiredFeatures || []).concat(['timestamp-query']);
++			}
++			// Request optional texture format tiers used by Godot (r16snorm, rg16snorm, etc.).
++			var optionalFeatures = [
++				'readonly-and-readwrite-storage-textures',
++				'texture-formats-tier1',
++				'texture-formats-tier2',
++				'float32-filterable',
++				'float32-blendable',
++				'rg11b10ufloat-renderable',
++				'clip-distances',
++				'dual-source-blending',
++				// Texture compression families — without these, Godot's DXT5/ETC2/ASTC
++				// assets get decompressed on the CPU to RGBA8, which triggers a warning
++				// and wastes VRAM. The driver only reports the formats as supported
++				// when the corresponding feature is actually enabled here.
++				'texture-compression-bc',
++				'texture-compression-etc2',
++				'texture-compression-astc',
++				// 3D textures in these formats (Texture3D imports) need the
++				// sliced-3d features on top of the base ones.
++				'texture-compression-bc-sliced-3d',
++				'texture-compression-astc-sliced-3d',
++			];
++			for (var i = 0; i < optionalFeatures.length; i++) {
++				if (adapter.features.has(optionalFeatures[i])) {
++					desc.requiredFeatures = (desc.requiredFeatures || []).concat([optionalFeatures[i]]);
++				}
++			}
++			// Request higher limits that Godot's renderer needs.
++			// The adapter may support more than the default; request what it offers.
++			var adapterLimits = adapter.limits || {};
++			desc.requiredLimits = desc.requiredLimits || {};
++			var limitsToMax = [
++				'maxStorageBuffersPerShaderStage',
++				'maxStorageBufferBindingSize',
++				'maxBufferSize',
++				'maxUniformBufferBindingSize',
++				'maxUniformBuffersPerShaderStage',
++				'maxSampledTexturesPerShaderStage',
++				'maxSamplersPerShaderStage',
++				'maxColorAttachments',
++				'maxColorAttachmentBytesPerSample',
++				'maxBindGroups',
++				// Shaders with more than the default 16 varyings (e.g. 3D materials
++				// on the Mobile renderer) fail to compile without this.
++				'maxInterStageShaderVariables',
++				'maxInterStageShaderComponents',
++				'maxVertexAttributes',
++				'maxStorageTexturesPerShaderStage',
++				'maxComputeWorkgroupStorageSize',
++				'maxComputeInvocationsPerWorkgroup',
++			];
++			for (var li = 0; li < limitsToMax.length; li++) {
++				var key = limitsToMax[li];
++				if (adapterLimits[key] !== undefined) {
++					desc.requiredLimits[key] = adapterLimits[key];
++				}
++			}
++			return adapter.requestDevice(desc).then(function (device) {
++				// Monitor device loss (non-blocking — just log).
++				device.lost.then(function (info) {
++					const reason = info.reason || 'unknown';
++					const msg = info.message || '';
++					console.error(`[Godot] WebGPU device lost (reason: ${reason}): ${msg}`);
++				});
++				device.addEventListener('uncapturederror', function (event) {
++					// Include the full error message — `event.error` alone only
++					// serializes to the constructor name ("GPUValidationError"),
++					// hiding the detail. `.message` contains the Dawn error text.
++					const err = event.error;
++					const kind = (err && err.constructor && err.constructor.name) || 'UnknownError';
++					const msg = (err && err.message) ? err.message : String(err);
++					console.error(`[Godot] WebGPU uncaptured error: ${kind}: ${msg}`);
++				});
++				return device;
++			});
++		});
++	};
++
+ 	// Closure compiler exported static methods.
+ 	SafeEngine['load'] = Engine.load;
+ 	SafeEngine['unload'] = Engine.unload;
++	SafeEngine['requestWebGPUDevice'] = Engine.requestWebGPUDevice;
+ 
+ 	// Feature-detection utilities.
+ 	SafeEngine['isWebGLAvailable'] = Features.isWebGLAvailable;
+diff --git a/platform/web/js/libs/audio.worklet.js b/platform/web/js/libs/audio.worklet.js
+index 3b94cab85c..d610a322c1 100644
+--- a/platform/web/js/libs/audio.worklet.js
++++ b/platform/web/js/libs/audio.worklet.js
+@@ -93,6 +93,8 @@ class RingBuffer {
+ 	}
+ }
+ 
++const MAX_PENDING_INPUT_CHUNKS = 32;
++
+ class GodotProcessor extends AudioWorkletProcessor {
+ 	constructor() {
+ 		super();
+@@ -104,6 +106,7 @@ class GodotProcessor extends AudioWorkletProcessor {
+ 		this.output_buffer = new Float32Array();
+ 		this.input = null;
+ 		this.input_buffer = new Float32Array();
++		this.pending_input_chunks = 0;
+ 		this.port.onmessage = (event) => {
+ 			const cmd = event.data['cmd'];
+ 			const data = event.data['data'];
+@@ -137,8 +140,11 @@ class GodotProcessor extends AudioWorkletProcessor {
+ 			this.notifier = null;
+ 		} else if (p_cmd === 'start_nothreads') {
+ 			this.output = new RingBuffer(p_data[0], p_data[0].length, false);
++			this.pending_input_chunks = 0;
+ 		} else if (p_cmd === 'chunk') {
+ 			this.output.write(p_data);
++		} else if (p_cmd === 'input_ack') {
++			this.pending_input_chunks = Math.max(0, this.pending_input_chunks - 1);
+ 		}
+ 	}
+ 
+@@ -161,8 +167,18 @@ class GodotProcessor extends AudioWorkletProcessor {
+ 				this.input_buffer = new Float32Array(chunk);
+ 			}
+ 			if (!this.threads) {
+-				GodotProcessor.write_input(this.input_buffer, input);
+-				this.port.postMessage({ 'cmd': 'input', 'data': this.input_buffer });
++				// Keep the worklet-to-main-thread queue bounded. Browsers may throttle the
++				// main thread while a tab is hidden even though the audio thread continues,
++				// otherwise stale input can accumulate and be processed after focus returns.
++				if (this.pending_input_chunks < MAX_PENDING_INPUT_CHUNKS) {
++					GodotProcessor.write_input(this.input_buffer, input);
++					this.port.postMessage({
++						'cmd': 'input',
++						'data': this.input_buffer,
++						'time': currentTime,
++					});
++					this.pending_input_chunks++;
++				}
+ 			} else if (this.input.space_left() >= chunk) {
+ 				GodotProcessor.write_input(this.input_buffer, input);
+ 				this.input.write(this.input_buffer);
+diff --git a/platform/web/js/libs/library_godot_audio.js b/platform/web/js/libs/library_godot_audio.js
+index fb3dce49b8..f1f28321cf 100644
+--- a/platform/web/js/libs/library_godot_audio.js
++++ b/platform/web/js/libs/library_godot_audio.js
+@@ -640,6 +640,10 @@ const _GodotAudio = {
+ 		/** @type {AudioContext} */
+ 		ctx: null,
+ 		input: null,
++		externalInput: null,
++		externalInputElement: null,
++		externalInputBypass: false,
++		externalInputBridge: null,
+ 		driver: null,
+ 		sample_driver: null,
+ 		interval: 0,
+@@ -656,6 +660,7 @@ const _GodotAudio = {
+ 			// opts['latencyHint'] = latency / 1000;
+ 			const ctx = new (window.AudioContext || window.webkitAudioContext)(opts);
+ 			GodotAudio.ctx = ctx;
++			GodotAudio.install_external_input_bridge();
+ 			ctx.onstatechange = function () {
+ 				let state = 0;
+ 				switch (ctx.state) {
+@@ -694,10 +699,101 @@ const _GodotAudio = {
+ 			return ctx.destination.channelCount;
+ 		},
+ 
++		install_external_input_bridge: function () {
++			const bridge = {
++				version: 1,
++				prepareMediaElement: function (element) {
++					if (!GodotAudio.ctx || typeof HTMLMediaElement === 'undefined'
++						|| !(element instanceof HTMLMediaElement)) {
++						return false;
++					}
++					if (GodotAudio.externalInputElement
++						&& GodotAudio.externalInputElement !== element) {
++						return false;
++					}
++					if (!GodotAudio.externalInput) {
++						GodotAudio.externalInput = GodotAudio.ctx.createMediaElementSource(element);
++						GodotAudio.externalInputElement = element;
++					}
++					return true;
++				},
++				resume: function () {
++					if (!GodotAudio.ctx || GodotAudio.ctx.state === 'running') {
++						return Promise.resolve();
++					}
++					return GodotAudio.ctx.resume();
++				},
++				getState: function () {
++					return GodotAudio.ctx ? GodotAudio.ctx.state : 'uninitialized';
++				},
++				setBypass: function (enabled) {
++					return GodotAudio.set_external_input_bypass(Boolean(enabled));
++				},
++			};
++			GodotAudio.externalInputBridge = bridge;
++			window.GodotAudioInputBridge = bridge;
++		},
++
++		set_external_input_bypass: function (enabled) {
++			if (!GodotAudio.externalInput || !GodotAudio.ctx) {
++				return false;
++			}
++			if (enabled && !GodotAudio.externalInputBypass) {
++				GodotAudio.externalInput.connect(GodotAudio.ctx.destination);
++				GodotAudio.externalInputBypass = true;
++			} else if (!enabled && GodotAudio.externalInputBypass) {
++				GodotAudio.externalInput.disconnect(GodotAudio.ctx.destination);
++				GodotAudio.externalInputBypass = false;
++			}
++			return true;
++		},
++
++		connect_input: function (input) {
++			const driver = GodotAudio.driver;
++			const connect = function () {
++				if (GodotAudio.input !== input || !driver
++					|| typeof driver.get_node !== 'function') {
++					return false;
++				}
++				const node = driver.get_node();
++				if (!node) {
++					return false;
++				}
++				input.connect(node);
++				return true;
++			};
++			if (connect()) {
++				return;
++			}
++			// AudioWorklet creation is asynchronous. In a no-thread build the
++			// external media input can start before the worklet node exists.
++			// Keep the input identity guard so a stopped/replaced input is never
++			// connected when the deferred driver initialization completes.
++			const ready = driver && driver.promise;
++			if (!ready || typeof ready.then !== 'function') {
++				GodotRuntime.error('Audio input driver node is not ready.');
++				return;
++			}
++			ready.then(function () {
++				if (GodotAudio.input === input && !connect()) {
++					GodotRuntime.error('Audio input driver node is unavailable after initialization.');
++				}
++			}).catch(function (error) {
++				if (GodotAudio.input === input) {
++					GodotRuntime.error('Error connecting deferred audio input.', error);
++				}
++			});
++		},
++
+ 		create_input: function (callback) {
+ 			if (GodotAudio.input) {
+ 				return 0; // Already started.
+ 			}
++			if (GodotAudio.externalInput) {
++				GodotAudio.input = GodotAudio.externalInput;
++				callback(GodotAudio.input);
++				return 0;
++			}
+ 			function gotMediaInput(stream) {
+ 				try {
+ 					GodotAudio.input = GodotAudio.ctx.createMediaStreamSource(stream);
+@@ -752,6 +848,16 @@ const _GodotAudio = {
+ 				GodotAudio.input.disconnect();
+ 				GodotAudio.input = null;
+ 			}
++			if (GodotAudio.externalInput) {
++				GodotAudio.externalInput.disconnect();
++				GodotAudio.externalInput = null;
++				GodotAudio.externalInputElement = null;
++				GodotAudio.externalInputBypass = false;
++			}
++			if (window.GodotAudioInputBridge === GodotAudio.externalInputBridge) {
++				delete window.GodotAudioInputBridge;
++			}
++			GodotAudio.externalInputBridge = null;
+ 			// Disconnect output
+ 			let closed = Promise.resolve();
+ 			if (GodotAudio.driver) {
+@@ -824,7 +930,7 @@ const _GodotAudio = {
+ 	godot_audio_input_start__sig: 'i',
+ 	godot_audio_input_start: function () {
+ 		return GodotAudio.create_input(function (input) {
+-			input.connect(GodotAudio.driver.get_node());
++			GodotAudio.connect_input(input);
+ 		});
+ 	},
+ 
+@@ -832,12 +938,18 @@ const _GodotAudio = {
+ 	godot_audio_input_stop__sig: 'v',
+ 	godot_audio_input_stop: function () {
+ 		if (GodotAudio.input) {
+-			const tracks = GodotAudio.input['mediaStream']['getTracks']();
+-			for (let i = 0; i < tracks.length; i++) {
+-				tracks[i]['stop']();
++			const stream = GodotAudio.input['mediaStream'];
++			if (stream && stream['getTracks']) {
++				const tracks = stream['getTracks']();
++				for (let i = 0; i < tracks.length; i++) {
++					tracks[i]['stop']();
++				}
+ 			}
+ 			GodotAudio.input.disconnect();
+ 			GodotAudio.input = null;
++			if (GodotAudio.externalInput && GodotAudio.externalInputBypass) {
++				GodotAudio.externalInput.connect(GodotAudio.ctx.destination);
++			}
+ 		}
+ 	},
+ };
+@@ -1095,6 +1207,7 @@ const GodotAudioWorklet = {
+ 		promise: null,
+ 		worklet: null,
+ 		ring_buffer: null,
++		max_input_chunk_age: 0.1,
+ 
+ 		create: function (channels) {
+ 			const path = GodotConfig.locate_file('godot.audio.worklet.js');
+@@ -1178,7 +1291,7 @@ const GodotAudioWorklet = {
+ 						rpos = 0;
+ 					}
+ 					if (to_write) {
+-						buffer.set(recv_buf.subarray(high, to_write), rpos);
++						buffer.set(recv_buf.subarray(high, high + to_write), rpos);
+ 					}
+ 					in_callback(from, recv_buf.length);
+ 					rpos += to_write;
+@@ -1209,10 +1322,17 @@ const GodotAudioWorklet = {
+ 						);
+ 					} else if (event.data['cmd'] === 'input') {
+ 						const buf = event.data['data'];
++						const input_time = event.data['time'];
++						GodotAudioWorklet.worklet.port.postMessage({ 'cmd': 'input_ack' });
+ 						if (buf.length > p_in_size) {
+ 							GodotRuntime.error('Input chunk is too big');
+ 							return;
+ 						}
++						if (typeof input_time === 'number' && GodotAudio.ctx
++							&& GodotAudio.ctx.currentTime - input_time
++							> GodotAudioWorklet.max_input_chunk_age) {
++							return;
++						}
+ 						GodotAudioWorklet.ring_buffer.receive(buf);
+ 					} else {
+ 						GodotRuntime.error(event.data);
+diff --git a/platform/web/js/libs/library_godot_os.js b/platform/web/js/libs/library_godot_os.js
+index 3e7d0ab267..f466bbe9c0 100644
+--- a/platform/web/js/libs/library_godot_os.js
++++ b/platform/web/js/libs/library_godot_os.js
+@@ -62,6 +62,7 @@ const GodotConfig = {
+ 		virtual_keyboard: false,
+ 		godot_pool_size: 4,
+ 		debug_port: null,
++		persistent_drops: false,
+ 		on_execute: null,
+ 		on_terminate_pid: null,
+ 		on_exit: null,
+@@ -75,6 +76,7 @@ const GodotConfig = {
+ 			GodotConfig.godot_pool_size = p_opts['godotPoolSize'];
+ 			GodotConfig.debug_port = p_opts['debugPort'];
+ 			GodotConfig.pid = p_opts['pid'];
++			GodotConfig.persistent_drops = !!p_opts['persistentDrops'];
+ 			GodotConfig.on_execute = p_opts['onExecute'];
+ 			GodotConfig.on_terminate_pid = p_opts['onTerminatePID'];
+ 			GodotConfig.on_exit = p_opts['onExit'];
+@@ -365,20 +367,10 @@ const GodotOS = {
+ 	godot_js_os_hw_concurrency_get__proxy: 'sync',
+ 	godot_js_os_hw_concurrency_get__sig: 'i',
+ 	godot_js_os_hw_concurrency_get: function () {
+-		// TODO Godot core needs fixing to avoid spawning too many threads (> 24).
+-		const concurrency = navigator.hardwareConcurrency || 1;
+-		return concurrency < 2 ? concurrency : 2;
+-	},
+-
+-	godot_js_os_thread_pool_size_get__proxy: 'sync',
+-	godot_js_os_thread_pool_size_get__sig: 'i',
+-	godot_js_os_thread_pool_size_get: function () {
+-		if (typeof PThread === 'undefined') {
+-			// Threads aren't supported, so default to `1`.
+-			return 1;
+-		}
+-
+-		return GodotConfig.godot_pool_size;
++		// Report the real CPU thread count. This used to be clamped to 2 (with a
++		// TODO about Godot core spawning too many threads above 24), which made
++		// 2D/worker-heavy projects size themselves for two cores on any machine.
++		return navigator.hardwareConcurrency || 1;
+ 	},
+ 
+ 	godot_js_os_download_buffer__proxy: 'sync',
+diff --git a/platform/web/os_web.cpp b/platform/web/os_web.cpp
+index b2b38516be..21a23119bc 100644
+--- a/platform/web/os_web.cpp
++++ b/platform/web/os_web.cpp
+@@ -155,14 +155,6 @@ String OS_Web::get_unique_id() const {
+ 	ERR_FAIL_V_MSG("", "OS::get_unique_id() is not available on the Web platform.");
+ }
+ 
+-int OS_Web::get_default_thread_pool_size() const {
+-#ifdef THREADS_ENABLED
+-	return godot_js_os_thread_pool_size_get();
+-#else // No threads.
+-	return 1;
+-#endif
+-}
+-
+ bool OS_Web::_check_internal_feature_support(const String &p_feature) {
+ 	if (p_feature == "web") {
+ 		return true;
+@@ -204,9 +196,9 @@ String OS_Web::get_name() const {
+ }
+ 
+ void OS_Web::add_frame_delay(bool p_can_draw, bool p_wake_for_events) {
+-#ifdef PROXY_TO_PTHREAD_ENABLED
+-	OS::add_frame_delay(p_can_draw, p_wake_for_events);
+-#endif
++	// Frames are paced by requestAnimationFrame, and max_fps is applied by
++	// skipping callbacks in main_loop_callback(). Sleeping here would not yield
++	// to the browser: without threads, nanosleep() spins on emscripten_get_now().
+ }
+ 
+ void OS_Web::vibrate_handheld(int p_duration_ms, float p_amplitude) {
+diff --git a/platform/web/os_web.h b/platform/web/os_web.h
+index 6e8282aabe..360f66bdbc 100644
+--- a/platform/web/os_web.h
++++ b/platform/web/os_web.h
+@@ -90,7 +90,6 @@ public:
+ 	int get_process_exit_code(const ProcessID &p_pid) const override;
+ 	int get_processor_count() const override;
+ 	String get_unique_id() const override;
+-	int get_default_thread_pool_size() const override;
+ 
+ 	String get_executable_path() const override;
+ 	Error shell_open(const String &p_uri) override;
+diff --git a/platform/web/web_main.cpp b/platform/web/web_main.cpp
+index 7de15bd989..365116a354 100644
+--- a/platform/web/web_main.cpp
++++ b/platform/web/web_main.cpp
+@@ -83,17 +83,23 @@ void main_loop_callback() {
+ 	uint64_t current_ticks = os->get_ticks_usec();
+ #endif
+ 
++#ifndef PROXY_TO_PTHREAD_ENABLED
++	int max_fps = Engine::get_singleton()->get_max_fps();
++	// Allow a quarter frame of requestAnimationFrame jitter, so a cap equal to
++	// the display rate does not skip every other frame.
++	uint64_t jitter = max_fps > 0 ? (uint64_t)(250000 / max_fps) : 0;
++#endif
++
+ 	bool force_draw = DisplayServerWeb::get_singleton()->check_size_force_redraw();
+ 	if (force_draw) {
+ 		Main::force_redraw();
+ #ifndef PROXY_TO_PTHREAD_ENABLED
+-	} else if (current_ticks < target_ticks) {
++	} else if (current_ticks + jitter < target_ticks) {
+ 		return; // Skip frame.
+ #endif
+ 	}
+ 
+ #ifndef PROXY_TO_PTHREAD_ENABLED
+-	int max_fps = Engine::get_singleton()->get_max_fps();
+ 	if (max_fps > 0) {
+ 		if (current_ticks - target_ticks > 1000000) {
+ 			// When the window loses focus, we stop getting updates and accumulate delay.
