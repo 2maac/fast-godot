@@ -1,6 +1,7 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~14:20.
+Resume doc. Last updated 2026-11-26 ~18:35 (single toolchain, MSAA fix,
+white-box PCK encryption, 4.7.2 branch removal, docs refresh).
 
 ## Where to start (docs map)
 
