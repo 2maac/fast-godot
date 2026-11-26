@@ -62,7 +62,7 @@ only needed by editors built **before** 2026-11-26.
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.834c3d4fc`, staged 2026-11-26 18:21; `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.130ed7f48`, staged 2026-11-26 20:20 (bootstrap change); `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
 | source release | tag `4.8-beta5-source` = `35e42f7df2` (parentless snapshot, 16,064 files, tree = `834c3d4fc2`; re-cut and force-pushed 2026-11-26, old ref `d8cb1fd77c`). Asset `fast-godot-4.8-beta5-src.zip`, sha256 `25bb6f17…`, byte-verified. **Legacy**: new builds bootstrap from Godot's repo + the patch tag; only editors built before 2026-11-26 download this asset |
 
@@ -150,20 +150,18 @@ scons platform=macos arch=arm64 target=editor \
 ```
 The current 4.8 build tree is a **volatile linked git worktree of this repo at
 `/tmp/godot48`** (`git worktree list` shows it; branch `port48`, HEAD
-`834c3d4fc2`, clean, not pushed). `a495fc3e93` is the push-constant
-ring/MSAA fix and `834c3d4fc2` the white-box pack-key port; `f578f89fa9` was the
-tip recorded before those two commits. If /tmp is wiped, rebuild by applying
-`patches/4.8-beta5` to a fresh Godot checkout.
+`130ed7f48d`, clean, not pushed). The ring fix `a495fc3e93`, the pack-key port
+`834c3d4fc2` and the bootstrap commit `130ed7f48d` are its tip and ancestors
+(`f578f89fa9` was the tip before the ring/pack-key work). If /tmp is wiped,
+rebuild by applying `patches/4.8-beta5` to a fresh Godot checkout.
 
 Staged build (gitignored): `out/editor-staging/`
-- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.834c3d4fc`, Fast Godot icon,
-  ad-hoc signed, staged 2026-11-26 18:21) and `Fast_Godot_4.8-macos.zip`
-- `godot.web.template_release.wasm32.nothreads.zip`
-- `Fast_Godot_4.8_BUILD.txt` (version/time/flags). Two quirks: its `HEAD` line
-  reads `a495fc3e93` (recorded before the `834c3d4fc2` commit landed) and its
-  `Known gaps` paragraph is stale (it still says the pack key was not ported);
-  trust the binary's `--version`.
-Launchable install: `~/Applications/Fast_Godot_4.8.app` (same `834c3d4fc` build).
+- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.130ed7f48`, Fast Godot icon,
+  ad-hoc signed, staged 2026-11-26 20:20) and `Fast_Godot_4.8-macos.zip`
+- `godot.web.template_release.wasm32.nothreads.zip` (built 18:22; the bootstrap
+  change is editor-only, so templates were not rebuilt)
+- `Fast_Godot_4.8_BUILD.txt` (version/time/flags; refreshed with this build)
+Launchable install: `~/Applications/Fast_Godot_4.8.app` (same `130ed7f48` build).
 Note: the app folder's mtime can read like the template's old timestamp — use
 `Contents/MacOS/Godot` mtime/version.
 
