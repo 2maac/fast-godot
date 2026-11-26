@@ -6,7 +6,7 @@ repository root:
 
 ```
 upstream.lock                 # Godot repo + exact commit the stack applies to
-0001-*.patch ... 0099-*.patch # ordered .patch files (git format)
+patches/*.patch               # ordered .patch files (git format)
 layers/                       # path lists used to regenerate the stack
 tools/apply.sh                # apply the stack to a Godot checkout
 tools/make-patches.sh         # regenerate the stack from a modified checkout
@@ -44,7 +44,7 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 
 | branch | Godot base |
 |---|---|
-| `4.8-beta5` branch and tag (patch files at the repo root) | godot master `67421f36e5` (4.8.0-beta) |
+| `4.8-beta5` branch and tag (patch files in `patches/`) | godot master `67421f36e5` (4.8.0-beta) |
 
 `4.8-beta5` is the repository default branch (since 2026-11-26; it was `4.7.2`).
 The `4.7.2` full-source branch is kept on the remote for history only (not
