@@ -8,7 +8,7 @@
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:?usage: $0 <godot-source-dir> [stack]}
-STACK=${2:-4.7.2}
+STACK=${2:-4.8-beta5}
 DIR="$ROOT/patches/$STACK"
 PINNED=$(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' "$ROOT/upstream.lock")
 [ -d "$SRC/.git" ] || { echo "$SRC is not a git checkout" >&2; exit 2; }

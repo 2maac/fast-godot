@@ -2,6 +2,15 @@
 
 Resume doc. Last updated 2026-11-26 ~14:20.
 
+## Where to start (docs map)
+
+| doc | status |
+|---|---|
+| `README.md` | repo mechanics (patch stack, tools, rules) |
+| **this file** | current state: toolchain, build/export, MSAA fix, encryption, open work |
+| `docs/PATCH_STACK.md` | what every patch layer contains; apply/regenerate commands |
+| `WEBGPU_DRIVER_MIGRATION.md` | archived history of the komm64 driver adoption (4.7) |
+
 ## What this repository is
 
 The repo is a **patch stack**, not a Godot fork checkout:

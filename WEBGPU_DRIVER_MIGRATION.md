@@ -1,3 +1,9 @@
+> **ARCHIVED — 2026-11-26.** This is the historical checklist for adopting
+> `komm64/godot-webgpu` (4.7) and is kept for reference only. Its branch
+> (`integrate/komm64-webgpu`) and the 4.7.2 stack have been deleted. For current
+> status, build/export instructions, the MSAA fix, encryption and open work, use
+> [`WEBGPU_HANDOFF.md`](WEBGPU_HANDOFF.md) instead.
+
 # WebGPU driver migration: adopt `komm64/godot-webgpu` (4.7)
 
 Status: **in progress** on branch `integrate/komm64-webgpu` (see Progress at the end). This document is the checklist for replacing the

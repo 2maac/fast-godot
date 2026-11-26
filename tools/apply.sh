@@ -3,13 +3,13 @@
 #
 #   tools/apply.sh <godot-source-dir> [stack]
 #
-# stack defaults to 4.7.2. The source dir must be a git checkout at (or near)
+# stack defaults to 4.8-beta5. The source dir must be a git checkout at (or near)
 # the commit pinned in upstream.lock; patches are applied with `git apply
 # --3way` so a slightly newer base can still resolve.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SRC=${1:?usage: $0 <godot-source-dir> [stack]}
-STACK=${2:-4.7.2}
+STACK=${2:-4.8-beta5}
 DIR="$ROOT/patches/$STACK"
 [ -d "$DIR" ] || { echo "no such stack: $STACK" >&2; exit 2; }
 [ -d "$SRC/.git" ] || { echo "$SRC is not a git checkout" >&2; exit 2; }

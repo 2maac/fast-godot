@@ -1,7 +1,7 @@
 # Fast Godot — patch stack
 
 This repository holds **our changes to Godot as patches**, not a copy of the
-engine. Each branch targets one Godot version and contains:
+engine. There is a single active stack (`4.8-beta5`):
 
 ```
 upstream.lock                 # Godot repo + exact commit the stack applies to
@@ -21,7 +21,7 @@ The Godot source itself is a link, not content: clone it from
 git clone https://github.com/godotengine/godot ../godot
 git -C ../godot checkout $(sed -n 's/^godot_commit *= *"\(.*\)"/\1/p' upstream.lock)
 
-./tools/apply.sh ../godot 4.7.2      # or: 4.8-beta5
+./tools/apply.sh ../godot 4.8-beta5
 ```
 
 Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
@@ -29,14 +29,24 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 ## Rules
 
 - Do not modify upstream `ResourceLoader::_run_load_task()`.
-- Built editors are staged to `out/editor-staging/Fast_Godot.app`.
+- Built editors are staged to `out/editor-staging/Fast_Godot_4.8.app`.
 - HTML5 exports are written straight to the Godot Web Server site folder
   (`~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/`).
 - Patch order matters; keep the numbering when adding a patch.
 
-## Branches
+## Branch
 
 | branch | Godot base |
 |---|---|
-| `4.7.2` | `4.7.2-stable` (`ed1daf0bf0`) |
-| `4.8-beta5` | `master` at 4.8-beta (`67421f36e5`) |
+| `patches/4.8-beta5` | godot master `67421f36e5` (4.8.0-beta) |
+
+The `4.7.2` full-source branch is kept on GitHub for history only (no local
+branch, not maintained).
+
+## Documentation
+
+| doc | what it is |
+|---|---|
+| `WEBGPU_HANDOFF.md` | **primary handoff** — current state, build/export flow, MSAA fix, encryption, open work |
+| `docs/PATCH_STACK.md` | what every patch layer contains and how to apply/regenerate |
+| `WEBGPU_DRIVER_MIGRATION.md` | archived history of the komm64 WebGPU driver adoption (4.7) |
