@@ -18,8 +18,12 @@ editor/editor_node.cpp
 editor/export/editor_export.cpp
 editor/export/editor_export.h
 editor/export/editor_export_platform.h
+editor/export/editor_export_platform_pc.cpp
 editor/export/editor_export_plugin.h
+editor/export/project_export.cpp
 editor/export/project_export.h
+editor/export/shader_baker/shader_baker_export_plugin.cpp
+editor/export/shader_baker/shader_baker_export_plugin.h
 editor/icons/DefaultProjectIcon.svg
 editor/project_manager/project_dialog.cpp
 editor/settings/editor_build_profile.h

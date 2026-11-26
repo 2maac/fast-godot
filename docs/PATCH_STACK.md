@@ -27,6 +27,7 @@ Ported from the `4.7.2` stack — same layers, adapted to 4.8:
 | `0001-modules-grit` | Fast/Grit module (adapted to 4.8 GDScript internals: GDType member maps, const MethodBind codegen, parser resolved_type/type_constraint) |
 | `0002-modules-cffi` | CFFI module |
 | `0003-web-html5-fast-export` | "HTML5 Fast" export platform + web platform hooks |
+| `0005` (continued) | modified export window (`project_export.cpp/.h`: Grit banner, toolchain download state, platform hooks), PC template legacy handling, WGSL shader baker plugin, `DefaultProjectIcon.svg` icon, editor build profile hook |
 | `0004-webgpu-driver` | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: base RenderingDeviceDriver gained `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion hooks, layered copy/initialize, and the shader container format now returns the SPIR-V version per stage |
 | `0005-engine-renderer-patches` | engine/renderer patches the driver needs (batching with `batch_instance_index`, shader container format override, driver traits, GDScript native-call hooks, frame profiler) |
 | `0006-thirdparty-vendored` | vendored Tint + SPIRV-Tools for the export-time WGSL bake |
