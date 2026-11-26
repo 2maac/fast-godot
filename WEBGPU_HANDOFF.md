@@ -1,10 +1,10 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~20:05 (facts re-verified on the live
-machine; the toolchain bootstrap now builds the engine source from Godot's
-repository plus the `4.8-beta5` patch tag with git instead of downloading a
-source release; worktree HEAD is `130ed7f48d`, with the ring fix `a495fc3e93` and
-the pack-key port `834c3d4fc2` as ancestors). The push-constant ring flush path
+Resume doc. Last updated 2026-11-26 ~20:45 (facts re-verified on the live
+machine; the toolchain bootstrap builds the engine source from Godot's
+repository plus the `4.8-beta5` patch tag with git, and the obsolete source
+release + its tag were deleted; worktree HEAD is `130ed7f48d`, with the ring fix
+`a495fc3e93` and the pack-key port `834c3d4fc2` as ancestors). The push-constant ring flush path
 is still only mitigated, not structurally hardened — it stays open (open issue 2).
 
 ## Where to start (docs map)
@@ -40,16 +40,17 @@ The repo is a **patch stack**, not a Godot fork checkout:
 | `origin/patches/4.8-beta5` (local branch `4.8-beta5`) | see `git log --oneline -1` | the stack; only the remote ref carries the `patches/` prefix |
 | tag `4.8-beta5` | `305312690f` | last release point; docs/tools commits sit on the branch above it |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
-| tag `4.8-beta5-source` | `35e42f7df2` | single parentless commit holding the 4.8-beta5 source tree; **re-cut 2026-11-26** from `d8cb1fd77c` (the 4.7.2 tree). The release asset `fast-godot-4.8-beta5-src.zip` (96,229,476 B, sha256 `25bb6f17…`) is byte-verified to this tree. **Legacy**: only editors built before 2026-11-26 download it |
+| ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
 
 **Toolchain bootstrap (2026-11-26) no longer uses a source release.** New editor
 builds download the patch stack tag archive (~8 MB), read `godot_commit` from its
 `upstream.lock`, download Godot's own source at that commit from
 `godotengine/godot` (~76 MB), apply the stack's layers with `git apply`, and move
 the result into `<toolchain>/engine/source` — see the Toolchain bootstrap
-subsection under Build / toolchain. The old release asset
-(`fast-godot-4.8-beta5-src.zip`, byte-verified against the `834c3d4fc2` tree) is
-only needed by editors built **before** 2026-11-26.
+subsection under Build / toolchain. The old release asset and its tag were
+**removed 2026-11-26**: editors built before that date hardcoded the asset URL
+and can no longer provision a fresh toolchain (exports from machines that
+already have a toolchain are unaffected).
 
 ## Environment snapshot (verified on this machine, 2026-11-26 ~19:15)
 
@@ -57,14 +58,14 @@ only needed by editors built **before** 2026-11-26.
 |---|---|
 | patch stack repo | branch `4.8-beta5`, pushed to `origin/patches/4.8-beta5`; tag `4.8-beta5` = `305312690f` is the last release point, docs/tools commits sit on top |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `upstream.lock`; still an ancestor of the worktree HEAD |
-| object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` and `4.8-beta5-source` are) |
+| object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `130ed7f48d` (bootstrap commit; ring fix `a495fc3e93` and pack-key port `834c3d4fc2` are ancestors), clean, not pushed (volatile) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
 | staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.130ed7f48`, staged 2026-11-26 19:59 (bootstrap change); `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
-| source release | tag `4.8-beta5-source` = `35e42f7df2` (parentless snapshot, 16,064 files, tree = `834c3d4fc2`; re-cut and force-pushed 2026-11-26, old ref `d8cb1fd77c`). Asset `fast-godot-4.8-beta5-src.zip`, sha256 `25bb6f17…`, byte-verified. **Legacy**: new builds bootstrap from Godot's repo + the patch tag; only editors built before 2026-11-26 download this asset |
+| source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before the removal can no longer provision a fresh toolchain |
 
 ## 4.8 layer map
 
@@ -129,8 +130,8 @@ Consequences:
 
 - **git is required** on a machine that installs build tools (clear error
   otherwise); first-use downloads total ~84 MB;
-- the source-release asset is legacy: keep it published for older editors and
-  retire it once those are superseded;
+- the source-release asset/tag were **removed 2026-11-26**; editors built before
+  that date lose fresh-toolchain provisioning (existing toolchains keep working);
 - **the `4.8-beta5` tag must move with the stack**: fresh installs fetch that tag,
   so an engine-side patch (e.g. ring hardening) only reaches new toolchains after
   the tag is re-cut; editor-only changes don't matter for template builds;
@@ -335,16 +336,13 @@ the working option.
 7. `~/notarize-work/Fast_Godot.app` is an old 4.7.2 Developer-ID build with the
    stock icon; a Dock tile pinned to it shows the old icon. Either re-pin
    `~/Applications/Fast_Godot_4.8.app` or re-sign a refreshed copy.
-8. ~~**Release/tag consistency**~~ — **FIXED 2026-11-26.** The 4.8 source asset
-   was correct but the tag pointed at `d8cb1fd77c` (the 4.7.2 tree) and the
-   release's `targetCommitish` said `4.7.2`. Re-cut the tag to a parentless
-   snapshot of the `834c3d4fc2` tree (`35e42f7df2`, 26 MB pack; old value
-   `d8cb1fd77c` for reversal) and force-pushed it; `git ls-remote` and the
-   GitHub tag object both return `35e42f7df2`. GitHub keeps
-   `targetCommitish: 4.7.2` as creation metadata (the API rejects updating it)
-   but the release resolves through the tag, so it shows the correct commit.
-   After the move the asset URL still returns the 96,229,476-byte zip, so
-   installed editors' toolchain bootstrap is unaffected.
+8. ~~**Release/tag consistency**~~ — **FIXED, then RETIRED 2026-11-26.** The
+   source asset was correct but the tag pointed at `d8cb1fd77c` (the 4.7.2
+   tree); it was re-cut to a parentless snapshot of the `834c3d4fc2` tree
+   (`35e42f7d`). Once the bootstrap stopped using it, the whole release was
+   deleted (`gh release delete 4.8-beta5-source --cleanup-tag`), so neither
+   ref nor asset exists on `origin` anymore. Only editors built before the new
+   bootstrap used it.
 9. **Toolchain bootstrap integrity**: the source step pins its inputs by commit
    and tag (`upstream.lock`'s `godot_commit`, patch tag `4.8-beta5`) and applies
    them with system git, but nothing verifies the downloaded tarballs beyond
@@ -363,12 +361,12 @@ the working option.
 - Tag pushes on `patches/*` were force-pushed historically (branch renamed
   from `4.7.2`/`4.8-beta5`); `.gitignore` on those branches must exclude `out/`
   or a 100 MB app binary gets committed and GitHub rejects the push.
-- Release tags can be force-updated too: `4.8-beta5-source` was re-cut
-  2026-11-26 (`d8cb1fd77c` → `35e42f7df2`). Verify with
-  `git ls-remote origin refs/tags/<tag>` after any move.
-- The `4.8-beta5-source` release/asset is **legacy**: new builds bootstrap from
-  Godot's repo + the `4.8-beta5` patch tag. Keep the asset published until
-  editors built before 2026-11-26 are superseded, then it can be retired.
+- Release tags can be force-updated (one was re-cut and then removed on
+  2026-11-26). Verify with `git ls-remote origin refs/tags/<tag>` after any move.
+- The `4.8-beta5-source` release/asset was **removed 2026-11-26**. New builds
+  bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before
+  the removal can no longer provision a fresh toolchain, so keep their existing
+  toolchains or reinstall from a current build.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
   installs download it. Moving it changes what new installs build; engine-side
   fixes only reach new toolchains after the move. First-use provisioning also
