@@ -1,6 +1,6 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-26 ~20:10 (facts re-verified on the live
+Resume doc. Last updated 2026-11-26 ~20:05 (facts re-verified on the live
 machine; the toolchain bootstrap now builds the engine source from Godot's
 repository plus the `4.8-beta5` patch tag with git instead of downloading a
 source release; worktree HEAD is `130ed7f48d`, with the ring fix `a495fc3e93` and
@@ -62,7 +62,7 @@ only needed by editors built **before** 2026-11-26.
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.130ed7f48`, staged 2026-11-26 20:20 (bootstrap change); `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.130ed7f48`, staged 2026-11-26 19:59 (bootstrap change); `~/Applications/Fast_Godot_4.8.app` is the same build (launchable) |
 | export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — currently holds the TPS demo export (title "Godot Third-Person Shooter Demo"), written 2026-11-26 17:46 |
 | source release | tag `4.8-beta5-source` = `35e42f7df2` (parentless snapshot, 16,064 files, tree = `834c3d4fc2`; re-cut and force-pushed 2026-11-26, old ref `d8cb1fd77c`). Asset `fast-godot-4.8-beta5-src.zip`, sha256 `25bb6f17…`, byte-verified. **Legacy**: new builds bootstrap from Godot's repo + the patch tag; only editors built before 2026-11-26 download this asset |
 
@@ -157,7 +157,7 @@ rebuild by applying `patches/4.8-beta5` to a fresh Godot checkout.
 
 Staged build (gitignored): `out/editor-staging/`
 - `Fast_Godot_4.8.app` (`4.8.beta.custom_build.130ed7f48`, Fast Godot icon,
-  ad-hoc signed, staged 2026-11-26 20:20) and `Fast_Godot_4.8-macos.zip`
+  ad-hoc signed, staged 2026-11-26 19:59) and `Fast_Godot_4.8-macos.zip`
 - `godot.web.template_release.wasm32.nothreads.zip` (built 18:22; the bootstrap
   change is editor-only, so templates were not rebuilt)
 - `Fast_Godot_4.8_BUILD.txt` (version/time/flags; refreshed with this build)
