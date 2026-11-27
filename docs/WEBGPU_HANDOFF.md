@@ -14,6 +14,19 @@ deleted. `patches/` is a self-contained portable bundle (patch files +
 `4.8.beta.custom_build.582d61902`, and this file lives in `docs/` together with
 `PATCH_STACK.md` and the migration history.
 
+**2026-11-27 (later) — browser-reported validation error fixed.** A real-Chrome
+report showed `Filtering sampler ... is incompatible with non-filtering sampler
+binding` (ResolveShaderRD, thousands of cascaded errors) after enabling MSAA in
+the demo settings. Root cause: combined sampler+texture layout entries stored only
+the texture half in `bind_group_infos`, so the NonFiltering substitution for
+MSAA/depth samplers never fired. The driver now records the required sampler type
+per binding (`WGShader::sampler_binding_types`) and applies it at bind-group
+creation and in the cross-shader rebind path. MSAA 4x and TAA are now
+browser-verified with zero validation errors. TAA also needed its
+previous-velocity buffer changed from RG16F to RGBA16F (WebGPU has no RG16F
+storage format). The patch stack, staged editor and the Godot Web Server site
+export were regenerated.
+
 **2026-11-27 — Forward+ is working.** Forward+
 (`rendering/renderer/rendering_method.web="forward_plus"`) now boots and renders
 the TPS demo on the WebGPU device: zero WebGPU validation errors, zero
@@ -331,7 +344,12 @@ from a tree that contains them):
   attachment. The cluster builder gets a real colour attachment (the
   `USE_ATTACHMENT` shader variant) and SDFGI's geometry injection is disabled
   (its SDF depth pass has no attachment-capable variant).
-- **Driver (0004).** Fragment-stage `read_write` storage buffers are preserved
+- **Driver (0004).** Combined sampler+texture layout entries record the required
+  sampler binding type separately (`sampler_binding_types`); MSAA/depth samplers
+  need `NonFiltering`, and Godot always supplies a filtering sampler RID, so the
+  driver substitutes its dedicated non-filtering dummy. This also applies when a
+  uniform set created for one shader variant is rebound to another
+  (`_get_compatible_bind_group`). Fragment-stage `read_write` storage buffers are preserved
   (only the vertex stage is demoted); unused colour targets emit
   `WGPUTextureFormat_Undefined`; sampler LOD clamps are non-negative; WGSL
   component types drive sampled-texture `sampleType` (Uint/Sint); the storage
@@ -346,6 +364,12 @@ from a tree that contains them):
   Forward+ needs (`maxStorageBuffersPerShaderStage`, storage textures, compute
   workgroup limits, inter-stage variables, ...) plus `depth32float-stencil8`.
 
+Forward+ **MSAA (2x/4x) and TAA are browser-verified** (0 validation errors,
+full level renders). TAA on WebGPU uses an RGBA16F previous-velocity buffer and
+an RGBA16F TAA-shader binding, because RG16F is not a WebGPU storage texture
+format (the device would otherwise promote it to RG32F and break the copy-shader
+write binding).
+
 Remaining Forward+ limitations (documented, intentional):
 
 - **SDFGI is disabled** on WebGPU (its geometry injection needs attachment-less
@@ -356,8 +380,6 @@ Remaining Forward+ limitations (documented, intentional):
 - **Bake cost**: Forward+ bakes ~1524 shader-stage variants (mostly clustered
   scene variants), ~3-6 min on the dev machine, versus ~200 for Mobile. Skipped
   stages are harmless (the device never compiles them).
-- **Forward+ MSAA has not been browser-verified** (Mobile MSAA is verified; the
-  TPS export ran with MSAA off).
 
 Historical note: the studio-foundation 4.7.1 stack (patches 0001-0033) was built
 locally on 2026-11-26 for comparison and could not run TPS in Forward+ (Tint
@@ -413,10 +435,10 @@ this file's history.
    silently, and keep the provisioner validating the resulting tree.
 
 10. **Forward+ on WebGPU — WORKING, with limits (2026-11-27).** TPS boots and
-    renders the full level at 60 fps with zero validation errors. Remaining
-    limitations: SDFGI is disabled (needs attachment-less passes); FSR2 is
-    unavailable so 3D scaling falls back to FSR 1 / off; Forward+ MSAA is not
-    browser-verified yet. Forward+ bake is ~1524 stages (~3-6 min).
+    renders the full level at 60 fps with zero validation errors; MSAA 4x and TAA
+    were verified too (see the 2026-11-27 (later) note). Remaining limitations:
+    SDFGI is disabled (needs attachment-less passes); FSR2 is unavailable so 3D
+    scaling falls back to FSR 1 / off. Forward+ bake is ~1524 stages (~3-6 min).
 11. The Forward+ export was verified with the editor/template built from
     `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
     captured in the regenerated patch stack; the editor version string is

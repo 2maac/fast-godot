@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..66dae50216
+index 0000000000..71bc97f317
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10539 @@
+@@ -0,0 +1,10549 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -7172,6 +7172,7 @@ index 0000000000..66dae50216
 +					// FLATTEN-BA pass removes all binding_array<T,N> from WGSL,
 +					// so layout entries are always non-array (no bindingArraySize).
 +					entry.sampler.type = resolve_sampler_type(k);
++					shader->sampler_binding_types[k] = entry.sampler.type;
 +					bge.layout_entry = entry;
 +					bge.array_length = 1;
 +				} break;
@@ -7237,6 +7238,10 @@ index 0000000000..66dae50216
 +						  samp_entry.sampler.type = WGPUSamplerBindingType_NonFiltering;
 +					  }
 +					}
++					// Record the sampler half of the combined binding separately: the
++					// texture entry below is stored as the primary one, so bind-group
++					// creation cannot otherwise know the sampler must be NonFiltering.
++					shader->sampler_binding_types[((uint32_t)set << 16) | (u.binding * 2 + 0)] = samp_entry.sampler.type;
 +
 +					bge.layout_entry = tex_entry; // Store texture entry as the primary.
 +				} break;
@@ -7804,19 +7809,21 @@ index 0000000000..66dae50216
 +					entry.sampler = (WGPUSampler)(uniform.ids[0].id);
 +
 +					// If this shader's own BGL determined the binding is used statically
-+					// with a depth texture via non-comparison sampling, it requires
++					// with a depth/unfilterable texture, it requires
 +					// WGPUSamplerBindingType_NonFiltering (see Task 8.8/8.9). Godot has no
 +					// NonFiltering concept at the material level and just passes whatever
 +					// (usually linear-filtering) sampler RID the uniform set was given for
 +					// this slot -- substitute the dedicated nearest dummy sampler instead,
 +					// unconditionally, since any filtering sampler here fails validation.
-+					if (p_set_index < (uint32_t)shader->bind_group_infos.size() && dummy_nonfiltering_sampler) {
-+						for (const auto &bge : shader->bind_group_infos[p_set_index].entries) {
-+							if (bge.layout_entry.binding == entry.binding &&
-+									bge.layout_entry.sampler.type == WGPUSamplerBindingType_NonFiltering) {
-+								entry.sampler = dummy_nonfiltering_sampler;
-+								break;
-+							}
++					{
++						const uint32_t samp_key = ((uint32_t)p_set_index << 16) | entry.binding;
++						const WGPUSamplerBindingType req = shader->sampler_binding_types.has(samp_key)
++								? shader->sampler_binding_types[samp_key]
++								: WGPUSamplerBindingType_BindingNotUsed;
++						if (req == WGPUSamplerBindingType_NonFiltering && dummy_nonfiltering_sampler) {
++							entry.sampler = dummy_nonfiltering_sampler;
++						} else if (req == WGPUSamplerBindingType_Comparison && dummy_comparison_sampler && entry.sampler != dummy_comparison_sampler) {
++							entry.sampler = dummy_comparison_sampler;
 +						}
 +					}
 +
@@ -7920,18 +7927,21 @@ index 0000000000..66dae50216
 +				// Look up expected texture dimension and sample type from the shader layout.
 +				WGPUTextureViewDimension swt_expected_dim = WGPUTextureViewDimension_Undefined;
 +				bool swt_expected_ms = false;
-+				bool swt_expected_nonfiltering = false;
++				WGPUSamplerBindingType swt_expected_sampler = WGPUSamplerBindingType_BindingNotUsed;
 +				if (p_set_index < (uint32_t)shader->bind_group_infos.size()) {
 +					uint32_t tex_binding = uniform.binding * 2 + 1;
-+					uint32_t samp_binding = uniform.binding * 2 + 0;
 +					for (const auto &bge : shader->bind_group_infos[p_set_index].entries) {
 +						if (bge.layout_entry.binding == tex_binding) {
 +							swt_expected_dim = bge.layout_entry.texture.viewDimension;
 +							swt_expected_ms = (bool)bge.layout_entry.texture.multisampled;
-+						} else if (bge.layout_entry.binding == samp_binding &&
-+								bge.layout_entry.sampler.type == WGPUSamplerBindingType_NonFiltering) {
-+							swt_expected_nonfiltering = true;
++							break;
 +						}
++					}
++				}
++				{
++					const uint32_t samp_key = ((uint32_t)p_set_index << 16) | (uniform.binding * 2 + 0);
++					if (shader->sampler_binding_types.has(samp_key)) {
++						swt_expected_sampler = shader->sampler_binding_types[samp_key];
 +					}
 +				}
 +				for (uint32_t j = 0; j < uniform.ids.size() / 2; j++) {
@@ -7943,7 +7953,13 @@ index 0000000000..66dae50216
 +						// See the analogous substitution in the standalone UNIFORM_TYPE_SAMPLER
 +						// case above (Task 8.8/8.9) — Godot has no NonFiltering concept and just
 +						// passes whatever sampler RID it has for this slot.
-+						se.sampler = (swt_expected_nonfiltering && dummy_nonfiltering_sampler) ? dummy_nonfiltering_sampler : sampler;
++						if (swt_expected_sampler == WGPUSamplerBindingType_NonFiltering && dummy_nonfiltering_sampler) {
++							se.sampler = dummy_nonfiltering_sampler;
++						} else if (swt_expected_sampler == WGPUSamplerBindingType_Comparison && dummy_comparison_sampler && sampler != dummy_comparison_sampler) {
++							se.sampler = dummy_comparison_sampler;
++						} else {
++							se.sampler = sampler;
++						}
 +						entries.push_back(se);
 +					}
 +					if (tex && tex->default_view) {
@@ -8318,47 +8334,41 @@ index 0000000000..66dae50216
 +
 +	// Check sampler and texture entries for type mismatches between source and target BGLs.
 +	if (p_set_idx < (uint32_t)p_target_shader->bind_group_infos.size()) {
++		auto sampler_type_of = [](WGShader *p_sh, uint32_t p_set, uint32_t p_binding) -> WGPUSamplerBindingType {
++			if (!p_sh) {
++				return WGPUSamplerBindingType_BindingNotUsed;
++			}
++			const uint32_t key = (p_set << 16) | p_binding;
++			if (p_sh->sampler_binding_types.has(key)) {
++				return p_sh->sampler_binding_types[key];
++			}
++			// Fallback for samplers not recorded in the map: plain sampler entries.
++			if (p_set < (uint32_t)p_sh->bind_group_infos.size()) {
++				for (const auto &bge : p_sh->bind_group_infos[p_set].entries) {
++					if (bge.layout_entry.binding == p_binding &&
++							bge.layout_entry.sampler.type != WGPUSamplerBindingType_BindingNotUsed) {
++						return bge.layout_entry.sampler.type;
++					}
++				}
++			}
++			return WGPUSamplerBindingType_BindingNotUsed;
++		};
 +		for (auto &entry : adapted) {
 +			// --- Sampler adaptation ---
 +			if (entry.sampler != nullptr) {
-+				WGPUSamplerBindingType target_samp_type = WGPUSamplerBindingType_BindingNotUsed;
-+				for (const auto &bge : p_target_shader->bind_group_infos[p_set_idx].entries) {
-+					if (bge.layout_entry.binding == entry.binding &&
-+							bge.layout_entry.sampler.type != WGPUSamplerBindingType_BindingNotUsed) {
-+						target_samp_type = bge.layout_entry.sampler.type;
-+						break;
-+					}
-+				}
-+				// Fallback: check source shader for SWT sampler info.
-+				if (target_samp_type == WGPUSamplerBindingType_BindingNotUsed &&
-+						p_us->source_shader && p_set_idx < (uint32_t)p_us->source_shader->bind_group_infos.size()) {
-+					for (const auto &bge : p_us->source_shader->bind_group_infos[p_set_idx].entries) {
-+						if (bge.layout_entry.binding == entry.binding &&
-+								bge.layout_entry.sampler.type != WGPUSamplerBindingType_BindingNotUsed) {
-+							target_samp_type = bge.layout_entry.sampler.type;
-+							break;
-+						}
-+					}
-+				}
-+
-+				WGPUSamplerBindingType source_samp_type = WGPUSamplerBindingType_BindingNotUsed;
-+				if (p_us->source_shader && p_set_idx < (uint32_t)p_us->source_shader->bind_group_infos.size()) {
-+					for (const auto &bge : p_us->source_shader->bind_group_infos[p_set_idx].entries) {
-+						if (bge.layout_entry.binding == entry.binding &&
-+								bge.layout_entry.sampler.type != WGPUSamplerBindingType_BindingNotUsed) {
-+							source_samp_type = bge.layout_entry.sampler.type;
-+							break;
-+						}
-+					}
-+				}
-+
-+				if ((target_samp_type == WGPUSamplerBindingType_Filtering ||
-+						target_samp_type == WGPUSamplerBindingType_NonFiltering) &&
-+						source_samp_type == WGPUSamplerBindingType_Comparison && dummy_filtering_sampler) {
-+					entry.sampler = dummy_filtering_sampler;
++				const WGPUSamplerBindingType target_samp_type = sampler_type_of(p_target_shader, p_set_idx, entry.binding);
++				const WGPUSamplerBindingType source_samp_type = sampler_type_of(p_us->source_shader, p_set_idx, entry.binding);
++				if (target_samp_type == WGPUSamplerBindingType_NonFiltering &&
++						source_samp_type != WGPUSamplerBindingType_NonFiltering && dummy_nonfiltering_sampler) {
++					// Depth/unfilterable texture sampling: a filtering sampler is invalid here.
++					entry.sampler = dummy_nonfiltering_sampler;
 +				} else if (target_samp_type == WGPUSamplerBindingType_Comparison &&
 +						source_samp_type != WGPUSamplerBindingType_Comparison && dummy_comparison_sampler) {
 +					entry.sampler = dummy_comparison_sampler;
++				} else if ((target_samp_type == WGPUSamplerBindingType_Filtering ||
++							   target_samp_type == WGPUSamplerBindingType_NonFiltering) &&
++						source_samp_type == WGPUSamplerBindingType_Comparison && dummy_filtering_sampler) {
++					entry.sampler = dummy_filtering_sampler;
 +				}
 +			}
 +
@@ -18850,10 +18860,10 @@ index 0000000000..05f35d7bc4
 +#endif // TINT_WRAPPER_H
 diff --git a/drivers/webgpu/webgpu_objects.h b/drivers/webgpu/webgpu_objects.h
 new file mode 100644
-index 0000000000..0f4b0a029c
+index 0000000000..1be34ab5d8
 --- /dev/null
 +++ b/drivers/webgpu/webgpu_objects.h
-@@ -0,0 +1,557 @@
+@@ -0,0 +1,562 @@
 +/**************************************************************************/
 +/*  webgpu_objects.h                                                      */
 +/**************************************************************************/
@@ -19013,6 +19023,11 @@ index 0000000000..0f4b0a029c
 +
 +	WGPUPipelineLayout pipeline_layout = nullptr;
 +	LocalVector<WGPUBindGroupLayout> bind_group_layouts; // One per descriptor set.
++	// Required WGPUSamplerBindingType per ((set << 16) | binding). Needed because a
++	// combined sampler+texture binding stores only its texture layout entry in
++	// bind_group_infos, so the sampler type (NonFiltering for depth/MSAA pairings)
++	// cannot be recovered from there when building the bind group.
++	HashMap<uint32_t, WGPUSamplerBindingType> sampler_binding_types;
 +
 +	// Push constant emulation.
 +	uint32_t push_constant_size = 0;

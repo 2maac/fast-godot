@@ -85269,6 +85269,22 @@ index 5c1d1fc434..3684b429ec 100644
  	struct {
  		Fsr2DepthClipPassShaderRD depth_clip;
  		Fsr2ReconstructPreviousDepthPassShaderRD reconstruct_previous_depth;
+diff --git a/servers/rendering/renderer_rd/effects/taa.cpp b/servers/rendering/renderer_rd/effects/taa.cpp
+index 9125301c43..d553569cec 100644
+--- a/servers/rendering/renderer_rd/effects/taa.cpp
++++ b/servers/rendering/renderer_rd/effects/taa.cpp
+@@ -101,7 +101,10 @@ void TAA::process(Ref<RenderSceneBuffersRD> p_render_buffers, RD::DataFormat p_f
+ 		p_render_buffers->create_texture(SNAME("taa"), SNAME("history"), p_format, usage_bits);
+ 		p_render_buffers->create_texture(SNAME("taa"), SNAME("temp"), p_format, usage_bits);
+ 
+-		p_render_buffers->create_texture(SNAME("taa"), SNAME("prev_velocity"), RD::DATA_FORMAT_R16G16_SFLOAT, usage_bits);
++		// RGBA16F instead of RG16F: WebGPU has no RG16F storage texture format, and the
++		// previous-velocity buffer is both a copy-shader write target and an image in the
++		// TAA shader. Only .rg is used.
++		p_render_buffers->create_texture(SNAME("taa"), SNAME("prev_velocity"), RD::DATA_FORMAT_R16G16B16A16_SFLOAT, usage_bits);
+ 
+ 		just_allocated = true;
+ 	}
 diff --git a/servers/rendering/renderer_rd/effects/tone_mapper.cpp b/servers/rendering/renderer_rd/effects/tone_mapper.cpp
 index 3ee5b78aa9..9b11c00b33 100644
 --- a/servers/rendering/renderer_rd/effects/tone_mapper.cpp
@@ -86336,6 +86352,19 @@ index b92ea29402..c84a490a53 100644
  		d.y = coords.z;
  
  		d = abs(round(fma(params.size.yy, d, -pix_coord.yy)));
+diff --git a/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl b/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
+index 94bc126d91..0887503f51 100644
+--- a/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
++++ b/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
+@@ -46,7 +46,7 @@ layout(local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE, local_size_z = 1) i
+ layout(rgba16f, set = 0, binding = 0) uniform restrict readonly image2D color_buffer;
+ layout(set = 0, binding = 1) uniform sampler2D depth_buffer;
+ layout(rg16f, set = 0, binding = 2) uniform restrict readonly image2D velocity_buffer;
+-layout(rg16f, set = 0, binding = 3) uniform restrict readonly image2D last_velocity_buffer;
++layout(rgba16f, set = 0, binding = 3) uniform restrict readonly image2D last_velocity_buffer;
+ layout(set = 0, binding = 4) uniform sampler2D history_buffer;
+ layout(rgba16f, set = 0, binding = 5) uniform restrict writeonly image2D output_buffer;
+ 
 diff --git a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl b/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
 index ea32726132..79be7cec79 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl

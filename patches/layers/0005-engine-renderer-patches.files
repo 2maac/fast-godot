@@ -139,3 +139,5 @@ servers/rendering/renderer_rd/shaders/cluster_render.glsl
 servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
 servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
 servers/rendering/renderer_viewport.cpp
+servers/rendering/renderer_rd/effects/taa.cpp
+servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
