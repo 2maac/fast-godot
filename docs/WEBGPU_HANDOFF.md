@@ -551,12 +551,17 @@ this file's history.
     Remaining limitation: SDFGI is disabled because its packed UINT storage
     textures need float sample views that WebGPU does not allow (the
     attachment-less-pass blocker itself is fixed). An experimental WebGPU path
-    (RGBA16F light/probe textures, dummy occlusion binding) reached the
-    direct-light bind group; the static direct-light variant's Tint WGSL drops
-    its unused 3D storage-image declarations, so the driver builds those BGL
-    entries as 2D and the bind group fails. Next step: keep those declarations
-    referenced in the static variant (or derive the BGL dimension from the
-    SPIR-V reflection) and then re-enable SDFGI. Forward+ bake is ~1524 stages
+    (RGBA16F light/probe textures, dummy occlusion binding) now gets past the
+    direct-light and SDF pass setup: the static direct-light variant's unused
+    3D storage images must be kept referenced so Tint does not drop their
+    declarations, and the SDF pipeline must be precompiled against a colour
+    framebuffer format with an explicit colour pass (the default empty-pass
+    format has no pass samples). The remaining blocker is the GI process
+    MODE_SDFGI variant: its bind group layout expects a float at
+    `voxel_gi_buffer` (doubled binding 28) while the shared uniform set binds
+    the integer default, i.e. the variant's Tint WGSL still loses the uint
+    declaration. Next step: keep/re-add that binding in the MODE_SDFGI WGSL or
+    split the GI uniform set per mode. Forward+ bake is ~1524 stages
     (~3-6 min).
 11. **MSAA/depth sampler bindings + TAA (2026-11-27, later) — FIXED.** A
     real-Chrome run with MSAA enabled failed bind-group creation on
