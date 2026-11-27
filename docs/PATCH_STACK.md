@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; branch tip `4c28382482`, tag `529407b9fc`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; pmndrs milestone-1 stack commit `d8b3d583ae` + docs refreshes on the branch, tag `529407b9fc` — the tag has not been moved to the pmndrs stack yet) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -46,8 +46,10 @@ cleanly to a fresh checkout of the pinned commit (`git worktree add --detach
 `layers/*.files` list reproduces **all 8 `patches/*.patch` files
 byte-identically** (`/tmp/applytest` holds the applied tree). Patch line deltas
 for the pmndrs work: `0004` `+247/−21`, `0005` `+1288/−32`. The regenerated
-patch files are **not committed on the branch yet** — branch tip at the time of
-writing is `4c28382482`, tag `529407b9fc`.
+patch files are committed on the (local, not yet pushed) branch as
+`d8b3d583ae` with docs refreshes above it; tag `529407b9fc` still points at the
+SDFGI/FSR stack and must be moved — and the branch pushed — to ship the pmndrs
+milestone-1 driver/template to fresh toolchain installs.
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,

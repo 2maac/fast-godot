@@ -5,9 +5,9 @@ run on the WebGPU device, SDFGI is enabled on the WebGPU device, and
 pmndrs/upscaler milestone 1 (the spatial EASU+RCAS upscaler over a raw-WGSL
 compute path) is implemented and browser-verified.** The last committed engine
 tip is tag `4.8-beta5` = `529407b9fc` (FSR 1/FSR 2 + SDFGI RGBA16F); the
-pmndrs milestone-1 stack was regenerated from `/tmp/godot48` into `patches/` on
-2026-11-27 20:50 and is **not committed on the branch yet** — the branch tip is
-still `4c28382482` (the pmndrs/upscaler plan docs commit). Branch and tag share
+pmndrs milestone-1 stack is committed on branch `4.8-beta5` as `d8b3d583ae`
+(2026-11-27), with this docs refresh on top of it — local commits, **not pushed
+yet** (`origin/4.8-beta5` is still at `4c28382482` until they are). Branch and tag share
 the simple name but are different commits — use `refs/heads/4.8-beta5` /
 `refs/tags/4.8-beta5` when the distinction matters. Fresh toolchain installs
 fetch the tag, i.e. the last committed driver/template. Verify with
@@ -114,7 +114,7 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` = `origin/4.8-beta5` | `4c28382482` | branch tip (one docs commit above the tag: the pmndrs/upscaler port plan); branch and tag share the simple name now (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| branch `4.8-beta5` | `d8b3d583ae` | pmndrs milestone-1 stack commit (raw-WGSL path + pmndrs spatial upscaler + docs), with docs-refresh commits above it; **local only — not pushed**, `origin/4.8-beta5` is still at `4c28382482`. Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
 | tag `4.8-beta5` | `529407b9fc` | engine/patch-stack tip: FSR 1/FSR 2 on WebGPU + **SDFGI enabled**, **moved 2026-11-27** so fresh toolchain installs fetch the current driver/template. Lightweight tag (`git cat-file -t refs/tags/4.8-beta5` → `commit`); verify with `git ls-remote origin refs/tags/4.8-beta5` |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
@@ -133,7 +133,7 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` = `4c28382482` (docs tip; **repository default branch**), tag `4.8-beta5` = `529407b9fc` (last committed engine tip: FSR 1/FSR 2 + SDFGI enabled). Branch and tag share the simple name but are different commits — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate; the bootstrap downloads the tag (lightweight, so `git ls-remote` shows the commit directly). The current `patches/` working set (pmndrs milestone 1) is **not committed yet**: `git status` shows modified `patches/0004`, `patches/0005`, `patches/layers/0005…files` and `tools/make-patches.sh` on top of `4c28382482` |
+| patch stack repo | local branch `4.8-beta5` (**repository default branch**; `origin/4.8-beta5` is still `4c28382482` because the new commits are not pushed yet): pmndrs milestone-1 stack commit `d8b3d583ae` (patches + tools + docs) with docs-refresh commits above it; tag `4.8-beta5` = `529407b9fc` (last **tagged** engine tip: FSR 1/FSR 2 + SDFGI enabled — the tag has not been moved to the pmndrs stack yet, so fresh toolchain installs still bootstrap the SDFGI/FSR driver/template). Branch and tag share the simple name but are different commits — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate; the bootstrap downloads the tag (lightweight, so `git ls-remote` shows the commit directly) |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes (46 modified files + 3 new `effects/pmndrs_upscaler*` files)**. Volatile and not pushed; the changes are captured in `patches/` (regenerated 2026-11-27 20:50: `0004` `+247/−21` lines, `0005` `+1288/−32` lines, 3 new files listed in `patches/layers/0005-engine-renderer-patches.files`), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
@@ -244,7 +244,8 @@ Consequences:
   (`git cat-file -t refs/tags/4.8-beta5` → `commit`) last moved on 2026-11-27 to
   `529407b9fc`, the SDFGI-enabling engine tip (the FSR/SDFGI fixes at
   `f799881f28` and the Forward+/MSAA/TAA fix at `b81f3de2c1` are ancestors); the
-  branch is one docs commit above it at `4c28382482`. So new toolchains build
+  branch is above it (`d8b3d583ae` is the pmndrs milestone-1 stack commit, plus
+  docs-refresh commits). So new toolchains build
   the SDFGI/FSR/Forward+ driver/template and read the self-contained `patches/`
   bundle. Move the tag again when engine-side fixes land; docs commits after a
   move sit on the branch above it, and editor-only changes don't matter for
@@ -266,11 +267,10 @@ scons platform=macos arch=arm64 target=editor \
 The current 4.8 build tree is a **volatile linked git worktree of this repo at
 `/tmp/godot48`** (`git worktree list` shows it; branch `port48`, HEAD
 `582d619026` **plus uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes** — not
-pushed). Up to the SDFGI work those changes were regenerated into
-`patches/*.patch` and committed on the repo branch (`b81f3de2c1` MSAA/TAA,
-`f799881f28` FSR/SDFGI injection, `529407b9fc` SDFGI enabled); the pmndrs
-milestone-1 stack is regenerated locally (2026-11-27 20:50) and **not committed
-yet**, so the patch stack is the source of truth. Ancestors:
+pushed). Those changes were regenerated into `patches/*.patch` and committed on
+the repo branch (`b81f3de2c1` MSAA/TAA, `f799881f28` FSR/SDFGI injection,
+`529407b9fc` SDFGI enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1), so
+the patch stack is the source of truth. Ancestors:
 bundle-lock bootstrap `582d619026`, patches/ layout `cdc0907bf6`, ring hardening
 `9267990dcd`, source bootstrap `130ed7f48d`, MSAA mitigation `a495fc3e93`,
 pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
@@ -893,10 +893,10 @@ this file's history.
     format) was changed to RGBA16F. Both re-verified with 0 validation errors.
 12. The Forward+ export was verified with the editor/template built from
     `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
-    captured in the regenerated patch stack (last committed engine tip: tag
-    `529407b9fc`; branch tip `4c28382482`; the tag is what fresh installs
-    bootstrap from; the pmndrs milestone-1 patch files are regenerated locally
-    and not committed yet). The staged editor reports
+    captured in the regenerated patch stack (tag `529407b9fc` is still the last
+    tagged engine tip and what fresh installs bootstrap from; the pmndrs
+    milestone-1 stack is committed on the branch as `d8b3d583ae`, but the tag
+    has not been moved to it yet). The staged editor reports
     `4.8.beta.custom_build.582d61902` (built 2026-11-27 20:49); the web template
     was rebuilt 20:47, and both A/B site exports written 20:47 run that
     template's wasm byte-for-byte. If a distinct version stamp is wanted,
@@ -928,9 +928,10 @@ this file's history.
   toolchains or reinstall from a current build.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
   installs download it. It was moved on 2026-11-27 to `529407b9fc` (SDFGI
-  enabled; the branch is one docs commit above at `4c28382482`; the tag is
-  lightweight);
-  move it again for later engine-side fixes.
+  enabled); the branch is above it (`d8b3d583ae` = raw-WGSL path + pmndrs
+  milestone 1, plus docs commits). The tag is lightweight. It has **not** been
+  moved to the pmndrs stack yet: move it before relying on fresh installs for
+  the pmndrs spatial upscaler (`rendering/scaling_3d/pmndrs_spatial`).
   First-use provisioning also needs system `git` on the machine.
 - Layout (2026-11-26): the patch stack became a **self-contained portable
   bundle in `patches/`** (patch files + `layers/` + `upstream.lock`, no version
