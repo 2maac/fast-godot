@@ -25,7 +25,8 @@ state, build/export flow, MSAA/ring status, encryption and open work.
 Both renderers run on the WebGPU device: **Forward Mobile** and, since
 2026-11-27, **Forward+** — the TPS demo exported through HTML5 Fast renders the
 full 3D level with 0 WebGPU validation errors, 0 SPIR-V→WGSL failures and 60 fps
-in Chrome/Dawn ([screenshot](docs/webgpu_forward_plus_tps.png)).
+in Chrome/Dawn, with MSAA 4x and TAA also verified
+([screenshot](docs/webgpu_forward_plus_tps.png)).
 
 ## Quick start
 
