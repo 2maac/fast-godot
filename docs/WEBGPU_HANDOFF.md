@@ -550,7 +550,13 @@ this file's history.
     FSR 1 and FSR 2 were verified too (see the Forward+ and FSR sections).
     Remaining limitation: SDFGI is disabled because its packed UINT storage
     textures need float sample views that WebGPU does not allow (the
-    attachment-less-pass blocker itself is fixed). Forward+ bake is ~1524 stages
+    attachment-less-pass blocker itself is fixed). An experimental WebGPU path
+    (RGBA16F light/probe textures, dummy occlusion binding) reached the
+    direct-light bind group; the static direct-light variant's Tint WGSL drops
+    its unused 3D storage-image declarations, so the driver builds those BGL
+    entries as 2D and the bind group fails. Next step: keep those declarations
+    referenced in the static variant (or derive the BGL dimension from the
+    SPIR-V reflection) and then re-enable SDFGI. Forward+ bake is ~1524 stages
     (~3-6 min).
 11. **MSAA/depth sampler bindings + TAA (2026-11-27, later) — FIXED.** A
     real-Chrome run with MSAA enabled failed bind-group creation on
