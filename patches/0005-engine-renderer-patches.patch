@@ -12402,10 +12402,10 @@ index 92b2b82ee7..d7bfbcdb0a 100644
  					statusProgress.max = total;
 diff --git a/misc/dist/html/webgpu-full-size.html b/misc/dist/html/webgpu-full-size.html
 new file mode 100644
-index 0000000000..156f194e5e
+index 0000000000..6938260fe0
 --- /dev/null
 +++ b/misc/dist/html/webgpu-full-size.html
-@@ -0,0 +1,319 @@
+@@ -0,0 +1,336 @@
 +<!DOCTYPE html>
 +<html lang="en">
 +	<head>
@@ -12561,6 +12561,9 @@ index 0000000000..156f194e5e
 +		'rg11b10ufloat-renderable',
 +		'bgra8unorm-storage',
 +		'float32-filterable',
++		'float32-blendable',
++		'texture-formats-tier1',
++		'texture-formats-tier2',
 +	];
 +	const requiredFeatures = wantedFeatures.filter((f) => adapter.features.has(f));
 +
@@ -12588,6 +12591,20 @@ index 0000000000..156f194e5e
 +		// limits, so ask for the adapter maximum.
 +		maxInterStageShaderVariables: 28,
 +		maxInterStageShaderComponents: 128,
++		// Limits needed by Forward+. The adapter maximum is used (clamped below), so
++		// asking for more than a given browser allows is harmless.
++		maxComputeWorkgroupSizeX: 1024,
++		maxComputeWorkgroupSizeY: 1024,
++		maxComputeWorkgroupSizeZ: 64,
++		maxComputeWorkgroupsPerDimension: 65535,
++		maxComputeInvocationsPerWorkgroup: 1024,
++		maxComputeWorkgroupStorageSize: 32768,
++		maxStorageBuffersPerShaderStage: 10,
++		maxStorageTexturesPerShaderStage: 8,
++		maxSampledTexturesPerShaderStage: 48,
++		maxBindingsPerBindGroup: 1000,
++		maxDynamicUniformBuffersPerPipelineLayout: 10,
++		maxDynamicStorageBuffersPerPipelineLayout: 8,
 +	};
 +	for (const [limit, value] of Object.entries(wantedLimits)) {
 +		if (limit in adapter.limits) {
@@ -84914,6 +84931,73 @@ index d363550e2b..43aa8c8173 100644
  
  	if (rcd != nullptr) {
  		err = rcd->initialize();
+diff --git a/servers/rendering/renderer_rd/cluster_builder_rd.cpp b/servers/rendering/renderer_rd/cluster_builder_rd.cpp
+index 1df4b6054d..911de46da1 100644
+--- a/servers/rendering/renderer_rd/cluster_builder_rd.cpp
++++ b/servers/rendering/renderer_rd/cluster_builder_rd.cpp
+@@ -55,6 +55,12 @@ ClusterBuilderSharedDataRD::ClusterBuilderSharedDataRD() {
+ 		rasterization_state.enable_depth_clamp = true;
+ 		ms.sample_count = RD::TEXTURE_SAMPLES_4;
+ 
++		// The cluster builder's fragment shader writes plain atomics instead of the
++		// historical subgroup-election path. The election only cuts atomic traffic
++		// (all invocations the ballot groups share the same word and bit, and
++		// atomicOr is idempotent), and it costs two things this fork cannot afford:
++		// WebGPU has no subgroup ops, and Tint's SPIR-V reader aborts outright on
++		// gl_HelperInvocation (a wasm trap in the browser, not a graceful fallback).
+ 		Vector<String> variants;
+ 		variants.push_back("");
+ 		variants.push_back("\n#define USE_ATTACHMENT\n");
+@@ -273,6 +279,10 @@ void ClusterBuilderRD::_clear() {
+ 
+ 	RD::get_singleton()->free_rid(framebuffer);
+ 	framebuffer = RID();
++	if (attachment_texture.is_valid()) {
++		RD::get_singleton()->free_rid(attachment_texture);
++		attachment_texture = RID();
++	}
+ 
+ 	cluster_render_uniform_set = RID();
+ 	cluster_store_uniform_set = RID();
+@@ -313,7 +323,22 @@ void ClusterBuilderRD::setup(Size2i p_screen_size, uint32_t p_max_elements, RID
+ 	element_buffer = RD::get_singleton()->storage_buffer_create(sizeof(RenderElementData) * render_element_max);
+ 
+ 	uint32_t div_value = 1 << divisor;
+-	if (use_msaa) {
++	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++		// WebGPU requires at least one attachment, and this fork's cluster builder
++		// always runs the USE_ATTACHMENT shader variant on such drivers. Allocate a
++		// throwaway colour target of the render size and attach it.
++		const RD::TextureSamples samples = use_msaa ? RD::TEXTURE_SAMPLES_4 : RD::TEXTURE_SAMPLES_1;
++		if (attachment_texture.is_null()) {
++			RD::TextureFormat tf;
++			tf.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
++			tf.width = p_screen_size.width / div_value;
++			tf.height = p_screen_size.height / div_value;
++			tf.samples = samples;
++			tf.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RD::TEXTURE_USAGE_CAN_COPY_FROM_BIT;
++			attachment_texture = RD::get_singleton()->texture_create(tf, RD::TextureView());
++		}
++		framebuffer = RD::get_singleton()->framebuffer_create({ attachment_texture });
++	} else if (use_msaa) {
+ 		framebuffer = RD::get_singleton()->framebuffer_create_empty(p_screen_size / div_value, RD::TEXTURE_SAMPLES_4);
+ 	} else {
+ 		framebuffer = RD::get_singleton()->framebuffer_create_empty(p_screen_size / div_value);
+diff --git a/servers/rendering/renderer_rd/cluster_builder_rd.h b/servers/rendering/renderer_rd/cluster_builder_rd.h
+index 49b039a997..93f9f00206 100644
+--- a/servers/rendering/renderer_rd/cluster_builder_rd.h
++++ b/servers/rendering/renderer_rd/cluster_builder_rd.h
+@@ -198,6 +198,10 @@ private:
+ 	Size2i cluster_screen_size;
+ 
+ 	RID framebuffer;
++	// When the driver cannot render without attachments (WebGPU), the cluster
++	// builder's USE_ATTACHMENT variant needs a real colour attachment of the
++	// render-size. This is the dummy target it clears and discards.
++	RID attachment_texture;
+ 	RID cluster_render_buffer; // Used for creating.
+ 	RID cluster_buffer; // Used for rendering.
+ 	RID element_buffer; // Used for storing, to hint element touches far plane or near plane.
 diff --git a/servers/rendering/renderer_rd/effects/copy_effects.cpp b/servers/rendering/renderer_rd/effects/copy_effects.cpp
 index 8882b12bf5..993a7ecc94 100644
 --- a/servers/rendering/renderer_rd/effects/copy_effects.cpp
@@ -85003,6 +85087,188 @@ index c1077d61a8..ecf83c4442 100644
  	void copy_to_fb_rect(RID p_source_rd_texture, RID p_dest_framebuffer, const Rect2i &p_rect, bool p_flip_y = false, bool p_force_luminance = false, bool p_alpha_to_zero = false, bool p_srgb = false, RID p_secondary = RID(), bool p_multiview = false, bool alpha_to_one = false, bool p_linear = false, bool p_normal = false, const Rect2 &p_src_rect = Rect2(), float p_linear_luminance_multiplier = 1.0, bool p_bilinear_filtering = true);
  	void copy_to_atlas_fb(RID p_source_rd_texture, RID p_dest_framebuffer, const Rect2 &p_uv_rect, RD::DrawListID p_draw_list, bool p_flip_y = false, bool p_panorama = false);
  	void copy_to_drawlist(RD::DrawListID p_draw_list, RD::FramebufferFormatID p_fb_format, RID p_source_rd_texture, bool p_linear = false, float p_linear_luminance_multiplier = 1.0);
+diff --git a/servers/rendering/renderer_rd/effects/fsr.cpp b/servers/rendering/renderer_rd/effects/fsr.cpp
+index 10796cad67..825ac485c5 100644
+--- a/servers/rendering/renderer_rd/effects/fsr.cpp
++++ b/servers/rendering/renderer_rd/effects/fsr.cpp
+@@ -41,11 +41,16 @@ FSR::FSR() {
+ 	fsr_upscale_modes.push_back("\n#define MODE_FSR_UPSCALE_FALLBACK\n");
+ 	fsr_shader.initialize(fsr_upscale_modes);
+ 
+-	FSRShaderVariant variant;
++	// ShaderRD compiles EVERY enabled variant of a version, not just the selected
++	// one. FSR's NORMAL path uses 16-bit arithmetic (A_HALF), and Tint's SPIR-V
++	// reader cannot lower 16-bit integer types -- under WebGPU that abort is a wasm
++	// trap. Selecting FALLBACK was never enough because NORMAL was still compiled,
++	// so disable it on drivers without half float before version_create().
+ 	if (RD::get_singleton()->has_feature(RD::SUPPORTS_HALF_FLOAT)) {
+ 		variant = FSR_SHADER_VARIANT_NORMAL;
+ 	} else {
+ 		variant = FSR_SHADER_VARIANT_FALLBACK;
++		fsr_shader.set_variant_enabled(FSR_SHADER_VARIANT_NORMAL, false);
+ 	}
+ 
+ 	shader_version = fsr_shader.version_create();
+@@ -92,7 +97,7 @@ void FSR::process(Ref<RenderSceneBuffersRD> p_render_buffers, RID p_source_rd_te
+ 	push_constant.upscaled_height = target_size.height;
+ 	push_constant.sharpness = fsr_upscale_sharpness;
+ 
+-	RID shader = fsr_shader.version_get_shader(shader_version, 0);
++	RID shader = fsr_shader.version_get_shader(shader_version, variant);
+ 	ERR_FAIL_COND(shader.is_null());
+ 
+ 	RID default_sampler = material_storage->sampler_rd_get_default(RSE::CANVAS_ITEM_TEXTURE_FILTER_LINEAR, RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED);
+diff --git a/servers/rendering/renderer_rd/effects/fsr.h b/servers/rendering/renderer_rd/effects/fsr.h
+index e1766cb136..92e04ece2b 100644
+--- a/servers/rendering/renderer_rd/effects/fsr.h
++++ b/servers/rendering/renderer_rd/effects/fsr.h
+@@ -68,6 +68,7 @@ private:
+ 	};
+ 
+ 	FsrUpscaleShaderRD fsr_shader;
++	FSRShaderVariant variant = FSR_SHADER_VARIANT_FALLBACK;
+ 	RID shader_version;
+ 	PipelineDeferredRD pipeline;
+ };
+diff --git a/servers/rendering/renderer_rd/effects/fsr2.cpp b/servers/rendering/renderer_rd/effects/fsr2.cpp
+index 207bb29a12..17d34d0e3f 100644
+--- a/servers/rendering/renderer_rd/effects/fsr2.cpp
++++ b/servers/rendering/renderer_rd/effects/fsr2.cpp
+@@ -514,6 +514,18 @@ FSR2Context::~FSR2Context() {
+ }
+ 
+ FSR2Effect::FSR2Effect() {
++	// FSR2 allocates its internal upscaled colour as B10G11R11 storage images, which
++	// WebGPU does not support (the format is not in the storage texel format table).
++	// Without this guard the context creation fails and, worse, every FSR2 shader
++	// variant is compiled anyway -- including the FP16/image-atomic ones that Tint
++	// aborts on. Skip the whole effect on such devices; the renderer falls back to a
++	// supported upscaler.
++	supported = RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_B10G11R11_UFLOAT_PACK32, RD::TEXTURE_USAGE_STORAGE_BIT);
++	if (!supported) {
++		WARN_PRINT_ONCE("FSR2 is not supported by this rendering device (no B10G11R11 storage image support); FSR2 shaders will not be initialized.");
++		return;
++	}
++
+ 	FfxDeviceCapabilities &capabilities = device.capabilities;
+ 	capabilities.minimumSupportedShaderModel = FFX_SHADER_MODEL_5_1;
+ 	capabilities.waveLaneCountMin = 32;
+@@ -549,6 +561,13 @@ FSR2Effect::FSR2Effect() {
+ 		Pass &pass = device.passes[FFX_FSR2_PASS_DEPTH_CLIP];
+ 		pass.shader = &shaders.depth_clip;
+ 		pass.shader->initialize(modes_with_fp16, general_defines);
++		if (!capabilities.fp16Supported) {
++			// ShaderRD compiles EVERY enabled variant, and FSR2's fp16 path (variant 1)
++			// uses 16-bit arithmetic and image atomics, which Tint cannot lower to
++			// WGSL; listing it would be fatal on WebGPU even though variant 0 is the
++			// one selected. Disable it before version_create(), like FSR 1.0.
++			pass.shader->set_variant_enabled(1, false);
++		}
+ 		pass.shader_version = pass.shader->version_create();
+ 		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
+ 
+@@ -580,6 +599,13 @@ FSR2Effect::FSR2Effect() {
+ 		Pass &pass = device.passes[FFX_FSR2_PASS_RECONSTRUCT_PREVIOUS_DEPTH];
+ 		pass.shader = &shaders.reconstruct_previous_depth;
+ 		pass.shader->initialize(modes_with_fp16, general_defines);
++		if (!capabilities.fp16Supported) {
++			// ShaderRD compiles EVERY enabled variant, and FSR2's fp16 path (variant 1)
++			// uses 16-bit arithmetic and image atomics, which Tint cannot lower to
++			// WGSL; listing it would be fatal on WebGPU even though variant 0 is the
++			// one selected. Disable it before version_create(), like FSR 1.0.
++			pass.shader->set_variant_enabled(1, false);
++		}
+ 		pass.shader_version = pass.shader->version_create();
+ 		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
+ 
+@@ -610,6 +636,13 @@ FSR2Effect::FSR2Effect() {
+ 		Pass &pass = device.passes[FFX_FSR2_PASS_LOCK];
+ 		pass.shader = &shaders.lock;
+ 		pass.shader->initialize(modes_with_fp16, general_defines);
++		if (!capabilities.fp16Supported) {
++			// ShaderRD compiles EVERY enabled variant, and FSR2's fp16 path (variant 1)
++			// uses 16-bit arithmetic and image atomics, which Tint cannot lower to
++			// WGSL; listing it would be fatal on WebGPU even though variant 0 is the
++			// one selected. Disable it before version_create(), like FSR 1.0.
++			pass.shader->set_variant_enabled(1, false);
++		}
+ 		pass.shader_version = pass.shader->version_create();
+ 		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
+ 
+@@ -639,6 +672,13 @@ FSR2Effect::FSR2Effect() {
+ 		Pass &pass = device.passes[FFX_FSR2_PASS_ACCUMULATE];
+ 		pass.shader = &shaders.accumulate;
+ 		pass.shader->initialize(accumulate_modes_with_fp16, general_defines);
++		if (!capabilities.fp16Supported) {
++			// Variants 2 and 3 are the FFX_HALF (fp16) paths; see the note in the
++			// DEPTH_CLIP pass above. Variants 0 and 1 stay enabled (fp32, optionally
++			// sharpened).
++			pass.shader->set_variant_enabled(2, false);
++			pass.shader->set_variant_enabled(3, false);
++		}
+ 		pass.shader_version = pass.shader->version_create();
+ 		pass.shader_variant = capabilities.fp16Supported && fp16_path_supported ? 2 : 0;
+ 
+@@ -724,6 +764,13 @@ FSR2Effect::FSR2Effect() {
+ 		Pass &pass = device.passes[FFX_FSR2_PASS_GENERATE_REACTIVE];
+ 		pass.shader = &shaders.autogen_reactive;
+ 		pass.shader->initialize(modes_with_fp16, general_defines);
++		if (!capabilities.fp16Supported) {
++			// ShaderRD compiles EVERY enabled variant, and FSR2's fp16 path (variant 1)
++			// uses 16-bit arithmetic and image atomics, which Tint cannot lower to
++			// WGSL; listing it would be fatal on WebGPU even though variant 0 is the
++			// one selected. Disable it before version_create(), like FSR 1.0.
++			pass.shader->set_variant_enabled(1, false);
++		}
+ 		pass.shader_version = pass.shader->version_create();
+ 		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
+ 
+@@ -746,6 +793,13 @@ FSR2Effect::FSR2Effect() {
+ 		Pass &pass = device.passes[FFX_FSR2_PASS_TCR_AUTOGENERATE];
+ 		pass.shader = &shaders.tcr_autogen;
+ 		pass.shader->initialize(modes_with_fp16, general_defines);
++		if (!capabilities.fp16Supported) {
++			// ShaderRD compiles EVERY enabled variant, and FSR2's fp16 path (variant 1)
++			// uses 16-bit arithmetic and image atomics, which Tint cannot lower to
++			// WGSL; listing it would be fatal on WebGPU even though variant 0 is the
++			// one selected. Disable it before version_create(), like FSR 1.0.
++			pass.shader->set_variant_enabled(1, false);
++		}
+ 		pass.shader_version = pass.shader->version_create();
+ 		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
+ 
+@@ -792,6 +846,9 @@ FSR2Effect::FSR2Effect() {
+ }
+ 
+ FSR2Effect::~FSR2Effect() {
++	if (!supported) {
++		return;
++	}
+ 	RD::get_singleton()->free_rid(device.point_clamp_sampler);
+ 	RD::get_singleton()->free_rid(device.linear_clamp_sampler);
+ 
+diff --git a/servers/rendering/renderer_rd/effects/fsr2.h b/servers/rendering/renderer_rd/effects/fsr2.h
+index 5c1d1fc434..3684b429ec 100644
+--- a/servers/rendering/renderer_rd/effects/fsr2.h
++++ b/servers/rendering/renderer_rd/effects/fsr2.h
+@@ -174,10 +174,17 @@ public:
+ 
+ 	FSR2Effect();
+ 	~FSR2Effect();
++
++	// FSR2 needs B10G11R11 storage images, which WebGPU does not support. When the
++	// device cannot run it, the constructor skips all shader initialization so the
++	// half-float / image-atomic shader variants are never compiled (Tint aborts on
++	// them), and the renderer keeps its previous upscaler.
++	bool is_supported() const { return supported; }
+ 	FSR2Context *create_context(Size2i p_internal_size, Size2i p_target_size);
+ 	void upscale(const Parameters &p_params);
+ 
+ private:
++	bool supported = true;
+ 	struct {
+ 		Fsr2DepthClipPassShaderRD depth_clip;
+ 		Fsr2ReconstructPreviousDepthPassShaderRD reconstruct_previous_depth;
 diff --git a/servers/rendering/renderer_rd/effects/tone_mapper.cpp b/servers/rendering/renderer_rd/effects/tone_mapper.cpp
 index 3ee5b78aa9..9b11c00b33 100644
 --- a/servers/rendering/renderer_rd/effects/tone_mapper.cpp
@@ -85022,6 +85288,93 @@ index 3ee5b78aa9..9b11c00b33 100644
  		tonemap_mobile.shader_version = tonemap_mobile.shader.version_create();
  
  		for (int i = 0; i < TONEMAP_MODE_MAX; i++) {
+diff --git a/servers/rendering/renderer_rd/environment/fog.cpp b/servers/rendering/renderer_rd/environment/fog.cpp
+index d55f5c4085..b3ea306ea0 100644
+--- a/servers/rendering/renderer_rd/environment/fog.cpp
++++ b/servers/rendering/renderer_rd/environment/fog.cpp
+@@ -908,15 +908,6 @@ void Fog::volumetric_fog_update(const VolumetricFogSettings &p_settings, const P
+ 			copy_uniforms.push_back(u);
+ 		}
+ 
+-		{
+-			RD::Uniform u;
+-			u.uniform_type = RD::UNIFORM_TYPE_SAMPLER;
+-			u.binding = 11;
+-			u.append_id(p_settings.shadow_sampler);
+-			uniforms.push_back(u);
+-			copy_uniforms.push_back(u);
+-		}
+-
+ 		{
+ 			RD::Uniform u;
+ 			u.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
+diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
+index d8a0620034..26e34e1964 100644
+--- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
++++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
+@@ -1867,7 +1867,14 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+ 
+ 	switch (rb->get_scaling_3d_mode()) {
+ 		case RSE::VIEWPORT_SCALING_3D_MODE_FSR2:
+-			scale_type = SCALE_FSR2;
++			// FSR2 requires B10G11R11 storage images (unsupported on WebGPU); the
++			// viewport layer normally falls back already, this is the last line of
++			// defence so a null FSR2 context can never reach upscale().
++			if (fsr2_effect && fsr2_effect->is_supported()) {
++				scale_type = SCALE_FSR2;
++			} else {
++				WARN_PRINT_ONCE("FSR2 is not supported by the current rendering device. Falling back to no 3D upscaling.");
++			}
+ 			break;
+ 		case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+@@ -1955,7 +1962,13 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+ 
+ 		if (p_render_data->environment.is_valid()) {
+ 			if (environment_get_sdfgi_enabled(p_render_data->environment) && get_debug_draw_mode() != RSE::VIEWPORT_DEBUG_DRAW_UNSHADED) {
+-				using_sdfgi = true;
++				if (RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++					using_sdfgi = true;
++				} else {
++					// SDFGI's geometry injection renders into storage images only and
++					// relies on attachment-less render passes, which WebGPU forbids.
++					WARN_PRINT_ONCE("SDFGI requires attachment-less render passes, which this rendering device does not support. Disabling SDFGI.");
++				}
+ 			}
+ 			if (environment_get_ssr_enabled(p_render_data->environment)) {
+ 				if (!p_render_data->transparent_bg) {
+@@ -3201,6 +3214,13 @@ void RenderForwardClustered::_render_uv2(const PagedArray<RenderGeometryInstance
+ }
+ 
+ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_buffers, const Vector3i &p_from, const Vector3i &p_size, const AABB &p_bounds, const PagedArray<RenderGeometryInstance *> &p_instances, const RID &p_albedo_texture, const RID &p_emission_texture, const RID &p_emission_aniso_texture, const RID &p_geom_facing_texture, float p_exposure_normalization) {
++	// Geometry injection renders into storage images with an attachment-less render
++	// pass; WebGPU requires at least one attachment, and there is no equivalent shader
++	// variant for the SDF depth pass. Skip the injection (SDFGI cascades stay as they
++	// are) rather than emitting invalid passes every frame.
++	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++		return;
++	}
+ 	RENDER_TIMESTAMP("Render SDFGI");
+ 
+ 	RD::get_singleton()->draw_command_begin_label("Render SDFGI Voxel");
+@@ -5299,6 +5319,17 @@ RenderForwardClustered::RenderForwardClustered() {
+ 		}
+ #endif
+ 
++		{
++			// WebGPU has no image atomics. The scene shader's SDF depth variant is the
++			// only variant that uses one (imageAtomicOr on geom_facing_grid); the
++			// shader already carries a non-atomic fallback behind NO_IMAGE_ATOMICS
++			// (imageLoad + imageStore), and Tint aborts outright on
++			// OpImageTexelPointer, so select it whenever the device lacks the feature.
++			if (!RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
++				defines += "\n#define NO_IMAGE_ATOMICS\n";
++			}
++		}
++
+ 		scene_shader.init(defines);
+ 	}
+ 
 diff --git a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp b/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
 index 870bdbd5d2..1cc8675b98 100644
 --- a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
@@ -85658,6 +86011,68 @@ index 8d8e07c228..2971a52fcf 100644
 +layout(set = 3, binding = 2) uniform texture2D normal_texture;
 +layout(set = 3, binding = 3) uniform texture2D specular_texture;
 +layout(set = 3, binding = 4) uniform sampler texture_sampler;
+diff --git a/servers/rendering/renderer_rd/shaders/cluster_render.glsl b/servers/rendering/renderer_rd/shaders/cluster_render.glsl
+index 80d7a0b6a2..72171e46f1 100644
+--- a/servers/rendering/renderer_rd/shaders/cluster_render.glsl
++++ b/servers/rendering/renderer_rd/shaders/cluster_render.glsl
+@@ -65,9 +65,6 @@ void main() {
+ 
+ #VERSION_DEFINES
+ 
+-#extension GL_KHR_shader_subgroup_ballot : enable
+-#extension GL_KHR_shader_subgroup_arithmetic : enable
+-#extension GL_KHR_shader_subgroup_vote : enable
+ 
+ // On Apple platforms, gl_HelperInvocation (simd_is_helper_thread()) is unreliable with MSAA, causing rendering artifacts.
+ // Setting this to false will disable the helper invocation check.
+@@ -125,37 +122,16 @@ void main() {
+ 	uint z_write_offset = cluster_offset + state.cluster_depth_offset + element_index;
+ 	uint z_write_bit = 1 << z_bit;
+ 
+-	if (sc_use_helper_check) {
+-		//https://advances.realtimerendering.com/s2017/2017_Sig_Improved_Culling_final.pdf
+-		if (!gl_HelperInvocation) {
+-			uvec4 mask;
+-
+-			while (true) {
+-				// find the cluster offset of the first active thread
+-				// threads that did break; go inactive and no longer count
+-				uint first = subgroupBroadcastFirst(cluster_offset);
+-				// update the mask for thread that match this cluster
+-				mask = subgroupBallot(first == cluster_offset);
+-				if (first == cluster_offset) {
+-					// This thread belongs to the group of threads that match this offset,
+-					// so exit the loop.
+-					break;
+-				}
+-			}
+-
+-			uint cluster_thread_group_index = subgroupBallotExclusiveBitCount(mask);
+-
+-			z_write_bit = subgroupOr(z_write_bit); //merge all Zs
+-
+-			if (cluster_thread_group_index == 0) {
+-				aux = atomicOr(cluster_render.data[usage_write_offset], usage_write_bit);
+-				aux = atomicOr(cluster_render.data[z_write_offset], z_write_bit);
+-			}
+-		}
+-	} else {
+-		aux = atomicOr(cluster_render.data[usage_write_offset], usage_write_bit);
+-		aux = atomicOr(cluster_render.data[z_write_offset], z_write_bit);
+-	}
++	// Every invocation writes its own bit. This is bit-identical to the historical
++	// subgroup-election path: all invocations the ballot would have grouped share
++	// the same cluster_offset and element_index, so they all atomicOr the same word
++	// and bit, and atomicOr is idempotent. The election only cut atomic traffic.
++	// It is gone because WebGPU has no subgroup ops, and because Tint's SPIR-V
++	// reader aborts on gl_HelperInvocation (a wasm trap in the browser). Letting
++	// helper invocations write is conservative: a cluster may list an element that
++	// barely misses it, never dropping one.
++	aux = atomicOr(cluster_render.data[usage_write_offset], usage_write_bit);
++	aux = atomicOr(cluster_render.data[z_write_offset], z_write_bit);
+ 
+ #ifdef USE_ATTACHMENT
+ 	frag_color = vec4(float(aux));
 diff --git a/servers/rendering/renderer_rd/shaders/effects/copy.glsl b/servers/rendering/renderer_rd/shaders/effects/copy.glsl
 index 292e8cea59..cfbd1a579c 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/copy.glsl
@@ -85934,6 +86349,19 @@ index ea32726132..79be7cec79 100644
  		vec3 texture_color = vec3(1.0);
  
  		switch (lights.data[i].type) {
+diff --git a/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl b/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
+index f102bce9a8..94f6dc6d46 100644
+--- a/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
++++ b/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
+@@ -73,8 +73,6 @@ layout(rgba16f, set = 0, binding = 9) uniform restrict readonly image3D source_m
+ layout(rgba16f, set = 0, binding = 10) uniform restrict writeonly image3D dest_map;
+ #endif
+ 
+-layout(set = 0, binding = 11) uniform sampler shadow_sampler;
+-
+ #define MAX_VOXEL_GI_INSTANCES 8
+ 
+ struct VoxelGIData {
 diff --git a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
 index de1cb92e51..5db7902436 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
@@ -85977,6 +86405,35 @@ index de1cb92e51..5db7902436 100644
  
  		for (uint i = 0; i < 6; i++) {
  			float d = dot(cam_normal, aniso_dir[i]);
+diff --git a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
+index 807b2fb971..540db2c95f 100644
+--- a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
++++ b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
+@@ -5,8 +5,22 @@
+ #define MAX_VOXEL_GI_INSTANCES 8
+ #define MAX_VIEWS 2
+ 
+-#extension GL_KHR_shader_subgroup_ballot : enable
+-#extension GL_KHR_shader_subgroup_arithmetic : enable
++// The clustered scene shader historically used subgroup reductions to make every
++// lane in a subgroup walk the SAME cluster item range, so the loop branches
++// coherently. That is a divergence optimisation, not a correctness requirement:
++// each lane already holds its own correct item_from/item_to and its own mask.
++//
++// WebGPU exposes subgroups only as an optional feature, and Tint rejects the
++// unguarded calls ("subgroupOr must only be called from subgroup uniform control
++// flow") -- which fails the whole scene shader, leaves the cluster builder
++// uncreated, and makes Forward+ draw nothing. Defining the reductions as identity
++// lets each lane use its own value: the same lights, decals and reflections are
++// gathered, just with less coherent branching. Correct everywhere.
++#define subgroupBroadcastFirst(m_value) (m_value)
++#define subgroupMin(m_value) (m_value)
++#define subgroupMax(m_value) (m_value)
++#define subgroupOr(m_value) (m_value)
++#define subgroupElect() (true)
+ 
+ #include "../cluster_data_inc.glsl"
+ #include "../decal_data_inc.glsl"
 diff --git a/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl b/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl
 index 3b05e999a9..09c8fccd56 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl
@@ -86800,6 +87257,39 @@ index a5157cbe50..41cdab933c 100644
  	}
  }
  
+diff --git a/servers/rendering/renderer_viewport.cpp b/servers/rendering/renderer_viewport.cpp
+index 60374910e2..5515fc7ebf 100644
+--- a/servers/rendering/renderer_viewport.cpp
++++ b/servers/rendering/renderer_viewport.cpp
+@@ -168,6 +168,28 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
+ 			RenderingServerEnums::ViewportMSAA msaa_3d = p_viewport->msaa_3d;
+ 
+ #ifdef RD_ENABLED
++			// FSR2 allocates B10G11R11 storage images, which WebGPU (and any device
++			// without that storage format) cannot provide. Probe the device and fall
++			// back to FSR 1 (16F storage, supported everywhere RD is) or bilinear,
++			// instead of failing deep inside the FSR2 effect.
++			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR2 &&
++					!RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_B10G11R11_UFLOAT_PACK32, RD::TEXTURE_USAGE_STORAGE_BIT)) {
++				const bool fsr_available = RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R16G16B16A16_SFLOAT, RD::TEXTURE_USAGE_STORAGE_BIT);
++				// FSR 1 is a *spatial* upscaler: with a 1.0 scale factor it would be a
++				// no-op pass, and the source and destination would be the same texture
++				// (read+write of one subresource in a single compute dispatch, which
++				// WebGPU forbids). Mirror the spatial-scale shortcut above.
++				if (fsr_available && (scaling_3d_scale < 1.0f - EPSILON || scaling_3d_scale > 1.0f + EPSILON)) {
++					scaling_3d_mode = RSE::VIEWPORT_SCALING_3D_MODE_FSR;
++					WARN_PRINT_ONCE("FSR2 requires B10G11R11 storage images, which this rendering device does not support. Falling back to FSR 1 3D scaling.");
++				} else {
++					scaling_3d_mode = RSE::VIEWPORT_SCALING_3D_MODE_OFF;
++					scaling_3d_scale = 1.0;
++					WARN_PRINT_ONCE("FSR2 requires B10G11R11 storage images, which this rendering device does not support. Disabling 3D scaling.");
++				}
++				scaling_type = RSE::scaling_3d_mode_type(scaling_3d_mode);
++			}
++
+ 			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL && !RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_TEMPORAL)) {
+ 				if (RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_SPATIAL)) {
+ 					// Prefer MetalFX spatial if it is supported, which will be much more efficient than FSR2,
 diff --git a/servers/rendering/rendering_device.cpp b/servers/rendering/rendering_device.cpp
 index eceb8b7ab6..e8f4586609 100644
 --- a/servers/rendering/rendering_device.cpp

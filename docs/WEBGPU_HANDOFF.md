@@ -14,6 +14,15 @@ deleted. `patches/` is a self-contained portable bundle (patch files +
 `4.8.beta.custom_build.582d61902`, and this file lives in `docs/` together with
 `PATCH_STACK.md` and the migration history.
 
+**2026-11-27 — Forward+ is working.** Forward+
+(`rendering/renderer/rendering_method.web="forward_plus"`) now boots and renders
+the TPS demo on the WebGPU device: zero WebGPU validation errors, zero
+SPIR-V→WGSL failures, 60 fps (VSync) in Chrome for Testing/Dawn, full 3D level
+(see `docs/webgpu_forward_plus_tps.png`). The patch stack was regenerated from
+the same base commit plus working-tree changes, so the editor version stays
+`4.8.beta.custom_build.582d61902`; see "Forward+ on WebGPU (2026-11-27)" below
+for what changed and the remaining limitations.
+
 ## Where to start (docs map)
 
 | doc | status |
@@ -288,26 +297,74 @@ pass/draw/resolve/ring counters (including `passFlush`) to the browser console;
 `rendering/webgpu/disable_batching` disables the batch/firstInstance traits and
 was used to rule the batching path out.
 
-## Forward+ status (studio-foundation comparison, 2026-11-26)
+## Forward+ on WebGPU (2026-11-27)
 
-The studio-foundation 4.7.1 stack (patches 0001-0033) was built locally and used
-to export TPS in Forward+ for comparison. It does **not** run TPS:
+Forward+ is the second rendering method running on the WebGPU device (after
+Forward Mobile). Verified with the TPS demo exported through HTML5 Fast in a
+browser (Chrome for Testing/Dawn, headless + WebGPU): the level renders fully
+(player, environment, shadows, reflections, HUD), the console shows **0 WebGPU
+validation errors** and **0 SPIR-V→WGSL failures**, and the build holds 60 fps
+(VSync) at ~5.8k draws/frame in-game.
 
-- Tint crashes with `TINT_UNIMPLEMENTED unhandled SPIR-V instruction:
-  OpImageTexelPointer` (image atomics) and the wasm traps.
-- Forward+ scene pipelines exceed WebGPU limits: "number of storage buffers
-  (12) in the Vertex stage exceeds the maximum per-stage limit (10)",
-  so `SceneForwardClusteredShaderRD` layout/pipelines are invalid.
-- MSAA resolve bindings mismatch: `sampler2DMS` texture-vs-sampler in
-  `ResolveShaderRD`/`SsEffectsDownsample`, and a sample-count-4 texture bound to
-  a `multisampled: 0` layout entry.
-- Their mobile export boots (60 fps) but renders only the orange environment,
-  because their shader bake does not cover TPS's scene-embedded materials.
+What had to change (all landed in the `0004`/`0005` layers; regenerate the stack
+from a tree that contains them):
 
-Conclusion: Forward+ on their stack needs engine work (reduce vertex storage
-bindings below 10, image-atomic lowering/fallbacks, resolve layout fixes) and a
-different bake path before it can host TPS; our 4.8 mobile+Grit stack remains
-the working option.
+- **Bake safety.** Tint's SPIR-V reader aborts (editor crash / browser wasm trap)
+  on `gl_HelperInvocation`, `OpImageTexelPointer` (image atomics), 16-bit integer
+  types, unknown decorations and width-changing integer converts.
+  `spirv_preprocess::scan_tint_risks()` now pre-scans every baked stage and skips
+  translation for such stages instead of killing the bake; the preprocessor also
+  rewrites same-width `Op[US]Convert` to `OpBitcast` and strips the `Volatile`
+  decoration. The eight stages that are still skipped are FSR2/FSR1 fp16
+  variants which the WebGPU device never compiles.
+- **Forward+ shaders.** The cluster builder uses plain atomics (no subgroup
+  election and no `gl_HelperInvocation`); the clustered scene shader uses
+  identity subgroup-reduction macros plus `NO_IMAGE_ATOMICS`; the volumetric fog
+  shader lost a dead `shadow_sampler` binding.
+- **Feature-variant gating.** `ShaderRD` compiles every *enabled* variant, and
+  Tint aborts on fp16 arithmetic, so FSR1/FSR2 disable their fp16 variants when
+  `SUPPORTS_HALF_FLOAT` is false. FSR2 is skipped entirely when B10G11R11 storage
+  images are unsupported (WebGPU); the viewport falls back to FSR 1 when the 3D
+  scale differs from 1.0, otherwise to no scaling (a no-op FSR 1 pass would read
+  and write the same texture subresource, which WebGPU forbids).
+- **Attachment-less passes.** WebGPU requires at least one color or depth
+  attachment. The cluster builder gets a real colour attachment (the
+  `USE_ATTACHMENT` shader variant) and SDFGI's geometry injection is disabled
+  (its SDF depth pass has no attachment-capable variant).
+- **Driver (0004).** Fragment-stage `read_write` storage buffers are preserved
+  (only the vertex stage is demoted); unused colour targets emit
+  `WGPUTextureFormat_Undefined`; sampler LOD clamps are non-negative; WGSL
+  component types drive sampled-texture `sampleType` (Uint/Sint); the storage
+  texture format table covers `rgb10a2unorm`/`rgb10a2uint`; texture views inherit
+  the physical (promoted) format; `D32_SFLOAT_S8_UINT` is gated on the
+  `depth32float-stencil8` feature; 8-bit integer storage formats are accepted;
+  dimension/sample-type-correct fallback textures replace invalid 3D↔2D views;
+  and **compute passes are split when the next dispatch would use one texture
+  subresource with conflicting writable+read usages** (WebGPU validates this per
+  compute pass).
+- **Shell.** `platform/web/js/engine/engine.js` requests the adapter limits
+  Forward+ needs (`maxStorageBuffersPerShaderStage`, storage textures, compute
+  workgroup limits, inter-stage variables, ...) plus `depth32float-stencil8`.
+
+Remaining Forward+ limitations (documented, intentional):
+
+- **SDFGI is disabled** on WebGPU (its geometry injection needs attachment-less
+  render passes). Volumetric fog, SSAO/SSIL/SSR, VoxelGI and SSR work as far as
+  this TPS run exercised them.
+- **FSR2 is unavailable** (B10G11R11 storage images are not a WebGPU storage
+  texel format); 3D scaling falls back to FSR 1 / off as described above.
+- **Bake cost**: Forward+ bakes ~1524 shader-stage variants (mostly clustered
+  scene variants), ~3-6 min on the dev machine, versus ~200 for Mobile. Skipped
+  stages are harmless (the device never compiles them).
+- **Forward+ MSAA has not been browser-verified** (Mobile MSAA is verified; the
+  TPS export ran with MSAA off).
+
+Historical note: the studio-foundation 4.7.1 stack (patches 0001-0033) was built
+locally on 2026-11-26 for comparison and could not run TPS in Forward+ (Tint
+traps on image atomics, vertex-stage storage-buffer limits, resolve layout
+mismatches, and their bake missed scene materials). Those four classes are each
+addressed in our stack as described above; the comparison document is kept in
+this file's history.
 
 ## Open issues / next steps
 
@@ -354,6 +411,17 @@ the working option.
    editor build is awkward (the commit containing the provisioner only exists
    after the build), so the practical guard is: never move the patch tag
    silently, and keep the provisioner validating the resulting tree.
+
+10. **Forward+ on WebGPU — WORKING, with limits (2026-11-27).** TPS boots and
+    renders the full level at 60 fps with zero validation errors. Remaining
+    limitations: SDFGI is disabled (needs attachment-less passes); FSR2 is
+    unavailable so 3D scaling falls back to FSR 1 / off; Forward+ MSAA is not
+    browser-verified yet. Forward+ bake is ~1524 stages (~3-6 min).
+11. The Forward+ export was verified with the editor/template built from
+    `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
+    captured in the regenerated patch stack; the editor version string is
+    unchanged (`4.8.beta.custom_build.582d61902`). If a distinct version stamp
+    is wanted, commit the stack changes in the build tree and rebuild.
 
 ## Practical notes
 

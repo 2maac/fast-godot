@@ -337,7 +337,7 @@ index 11782c6d0b..c0261ac436 100644
  	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug = false) const override;
 diff --git a/platform/web/export/export_plugin_fast.h b/platform/web/export/export_plugin_fast.h
 new file mode 100644
-index 0000000000..4a346cac68
+index 0000000000..9982d73de1
 --- /dev/null
 +++ b/platform/web/export/export_plugin_fast.h
 @@ -0,0 +1,94 @@
@@ -389,13 +389,13 @@ index 0000000000..4a346cac68
 +	// pre-WebGPU Fast platform.)
 +	virtual bool has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const override {
 +		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
-+		const bool webgpu_method = rendering_method == "mobile";
++		const bool webgpu_method = rendering_method == "mobile" || rendering_method == "forward_plus";
 +		String message;
 +		bool missing = false;
 +		const bool base_valid = EditorExportPlatformWeb::has_valid_export_configuration(p_preset, message, missing, p_debug);
 +		if (base_valid) {
 +			if (!webgpu_method) {
-+				r_error = vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method);
++				r_error = vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile and Forward+ renderers; set rendering/renderer/rendering_method.web to \"mobile\" or \"forward_plus\" (currently \"%s\").", rendering_method);
 +				r_missing_templates = false;
 +				return false;
 +			}
@@ -416,7 +416,7 @@ index 0000000000..4a346cac68
 +			}
 +		}
 +		if (!webgpu_method) {
-+			kept.push_back(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
++			kept.push_back(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile and Forward+ renderers; set rendering/renderer/rendering_method.web to \"mobile\" or \"forward_plus\" (currently \"%s\").", rendering_method));
 +		}
 +		r_error = String("\n").join(kept).strip_edges();
 +		r_missing_templates = false;
@@ -428,8 +428,8 @@ index 0000000000..4a346cac68
 +	// export_project, so enforce the renderer check here as well.
 +	virtual Error export_project(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags = 0, bool p_notify = true) override {
 +		const String rendering_method = String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
-+		if (rendering_method != "mobile") {
-+			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
++		if (rendering_method != "mobile" && rendering_method != "forward_plus") {
++			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile and Forward+ renderers; set rendering/renderer/rendering_method.web to \"mobile\" or \"forward_plus\" (currently \"%s\").", rendering_method));
 +			return ERR_UNCONFIGURED;
 +		}
 +		return EditorExportPlatformWeb::export_project(p_preset, p_debug, p_path, p_flags, p_notify);
@@ -561,7 +561,7 @@ index d78f1e61fc..b8cd0624e1 100644
  			'debugPort': this.debugPort,
  			'onExecute': this.onExecute,
 diff --git a/platform/web/js/engine/engine.js b/platform/web/js/engine/engine.js
-index 592a97f9e9..e67cc5b96e 100644
+index 592a97f9e9..a56fa0237e 100644
 --- a/platform/web/js/engine/engine.js
 +++ b/platform/web/js/engine/engine.js
 @@ -207,11 +207,26 @@ const Engine = (function () {
@@ -596,7 +596,7 @@ index 592a97f9e9..e67cc5b96e 100644
  				});
  			},
  
-@@ -293,9 +308,123 @@ const Engine = (function () {
+@@ -293,9 +308,140 @@ const Engine = (function () {
  		return new Engine(initConfig);
  	}
  
@@ -656,6 +656,11 @@ index 592a97f9e9..e67cc5b96e 100644
 +				// sliced-3d features on top of the base ones.
 +				'texture-compression-bc-sliced-3d',
 +				'texture-compression-astc-sliced-3d',
++				// Forward+ allocates its depth-stencil target as D32_SFLOAT_S8_UINT,
++				// which WebGPU exposes only behind this optional feature. Without it
++				// the driver reports the format unsupported and the renderer falls
++				// back to D24_UNORM_S8_UINT.
++				'depth32float-stencil8',
 +			];
 +			for (var i = 0; i < optionalFeatures.length; i++) {
 +				if (adapter.features.has(optionalFeatures[i])) {
@@ -677,14 +682,26 @@ index 592a97f9e9..e67cc5b96e 100644
 +				'maxColorAttachments',
 +				'maxColorAttachmentBytesPerSample',
 +				'maxBindGroups',
++				'maxBindingsPerBindGroup',
 +				// Shaders with more than the default 16 varyings (e.g. 3D materials
 +				// on the Mobile renderer) fail to compile without this.
 +				'maxInterStageShaderVariables',
 +				'maxInterStageShaderComponents',
 +				'maxVertexAttributes',
 +				'maxStorageTexturesPerShaderStage',
++				// Dynamic offset counts: Forward+ binds more of these than the spec
++				// defaults (8 uniform / 4 storage) allow.
++				'maxDynamicUniformBuffersPerPipelineLayout',
++				'maxDynamicStorageBuffersPerPipelineLayout',
++				// Forward+ compute passes (cluster build, SDFGI, SSAO/SSIL, volumetric
++				// fog, GI) use larger workgroups than the spec defaults permit; the
++				// adapter is happy to allow them.
 +				'maxComputeWorkgroupStorageSize',
 +				'maxComputeInvocationsPerWorkgroup',
++				'maxComputeWorkgroupSizeX',
++				'maxComputeWorkgroupSizeY',
++				'maxComputeWorkgroupSizeZ',
++				'maxComputeWorkgroupsPerDimension',
 +			];
 +			for (var li = 0; li < limitsToMax.length; li++) {
 +				var key = limitsToMax[li];

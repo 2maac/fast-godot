@@ -6134,10 +6134,10 @@ index 0000000000..e87f760a74
 +    ]
 diff --git a/modules/grit/editor/grit_export_plugin.cpp b/modules/grit/editor/grit_export_plugin.cpp
 new file mode 100644
-index 0000000000..9bb843981d
+index 0000000000..b568536870
 --- /dev/null
 +++ b/modules/grit/editor/grit_export_plugin.cpp
-@@ -0,0 +1,1187 @@
+@@ -0,0 +1,1188 @@
 +#include "grit_export_plugin.h"
 +
 +#include "grit_project_compiler.h"
@@ -7152,11 +7152,12 @@ index 0000000000..9bb843981d
 +	const bool web_target = platform_preset.is_valid() && platform_preset->get_platform().is_valid() && platform_preset->get_platform()->get_name() == "HTML5 Fast";
 +	if (web_target) {
 +		// The HTML5 Fast template is built with webgpu=yes opengl3=no and this
-+		// backend only implements the Forward Mobile renderer. Reject anything else
-+		// before the template build, which is the expensive part of the export.
++		// backend implements the Forward Mobile and Forward+ renderers. Reject
++		// anything else (gl_compatibility) before the template build, which is the
++		// expensive part of the export.
 +		const String rendering_method = ProjectSettings::get_singleton()->get("rendering/renderer/rendering_method.web");
-+		if (rendering_method != "mobile") {
-+			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile renderer; set rendering/renderer/rendering_method.web to \"mobile\" (currently \"%s\").", rendering_method));
++		if (rendering_method != "mobile" && rendering_method != "forward_plus") {
++			ERR_PRINT(vformat("The HTML5 Fast template only contains the WebGPU Forward Mobile and Forward+ renderers; set rendering/renderer/rendering_method.web to \"mobile\" or \"forward_plus\" (currently \"%s\").", rendering_method));
 +			return ERR_UNCONFIGURED;
 +		}
 +	}
