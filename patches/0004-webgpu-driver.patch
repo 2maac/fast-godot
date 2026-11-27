@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..41e3bce024
+index 0000000000..0360a4152f
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10731 @@
+@@ -0,0 +1,10615 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -4149,9 +4149,6 @@ index 0000000000..41e3bce024
 +
 +	WGTexture *tex = new WGTexture();
 +	*tex = *orig; // Copy base properties.
-+	// The lazily-created depth-only view is owned by the original WGTexture; this
-+	// view object must not share it (each WGTexture releases its own in texture_free).
-+	tex->depth_view = nullptr;
 +
 +	// Create a new view with potentially different format.
 +	//
@@ -4211,8 +4208,6 @@ index 0000000000..41e3bce024
 +
 +	WGTexture *tex = new WGTexture();
 +	*tex = *orig;
-+	// Same as texture_create_shared(): don't share the origin's cached depth-only view.
-+	tex->depth_view = nullptr;
 +
 +	WGPUTextureViewDescriptor view_desc = {};
 +	// Same invariant as texture_create_shared(): a view of the same logical
@@ -4426,52 +4421,6 @@ index 0000000000..41e3bce024
 +	return copy.view;
 +}
 +
-+WGPUTextureView RenderingDeviceDriverWebGPU::_depth_only_view(WGTexture *p_tex) {
-+	if (p_tex == nullptr || p_tex->view_source == nullptr || !_is_depth_format(p_tex->format)) {
-+		return nullptr;
-+	}
-+	// A depth sample type requires a single-aspect (depth-only) view. That is
-+	// mandatory for combined depth-stencil formats (the default view's aspect is
-+	// All and covers the stencil plane too), and is harmless for depth-only
-+	// formats -- the existing depth-copy / MSAA-depth paths create their views the
-+	// same way. Only formats that are not depth formats at all are skipped.
-+	if (p_tex->depth_view != nullptr) {
-+		return p_tex->depth_view;
-+	}
-+	// Keep exactly the subresource the default view covers (same dimension, mips
-+	// and layers) so the bind-group entry is valid where the default view would
-+	// have been, only with the depth aspect selected.
-+	// A combined depth-stencil format's DepthOnly aspect is only viewable through
-+	// the depth-only format (WebGPU spec): D32S8 -> D32Float,
-+	// D24PlusS8 -> D24Plus. Pure depth formats use their own format.
-+	WGPUTextureFormat depth_view_format = p_tex->format;
-+	switch (p_tex->format) {
-+		case WGPUTextureFormat_Depth32FloatStencil8:
-+			depth_view_format = WGPUTextureFormat_Depth32Float;
-+			break;
-+		case WGPUTextureFormat_Depth24PlusStencil8:
-+			depth_view_format = WGPUTextureFormat_Depth24Plus;
-+			break;
-+		default:
-+			break;
-+	}
-+	WGPUTextureViewDescriptor vd = {};
-+	vd.format = depth_view_format;
-+	vd.dimension = p_tex->view_dimension;
-+	vd.baseMipLevel = p_tex->base_mipmap;
-+	vd.mipLevelCount = p_tex->mipmaps;
-+	vd.baseArrayLayer = p_tex->base_layer;
-+	vd.arrayLayerCount = (p_tex->view_dimension == WGPUTextureViewDimension_2D) ? 1u : p_tex->layers;
-+	vd.aspect = WGPUTextureAspect_DepthOnly;
-+	p_tex->depth_view = wgpuTextureCreateView(p_tex->view_source, &vd);
-+	if (p_tex->depth_view == nullptr) {
-+		WARN_PRINT_ONCE("WebGPU: failed to create a depth-only view of a depth texture for a Depth-sample-type binding.");
-+	} else {
-+		print_verbose("WebGPU: created a depth-only view of a depth texture for a Depth-sample-type binding.");
-+	}
-+	return p_tex->depth_view;
-+}
-+
 +void RenderingDeviceDriverWebGPU::_mark_depth_float_copies_dirty(WGCommandBuffer *p_cmd) {
 +	// Only a subpass that cleared or drew into its depth attachment changes it;
 +	// one that just tests against it leaves the copy valid.
@@ -4583,11 +4532,6 @@ index 0000000000..41e3bce024
 +
 +	if (tex->default_view) {
 +		wgpuTextureViewRelease(tex->default_view);
-+	}
-+	if (tex->depth_view) {
-+		// Lazily-created depth-only view of a combined depth-stencil texture
-+		// (raw-WGSL Depth sample type bindings); owned by this WGTexture.
-+		wgpuTextureViewRelease(tex->depth_view);
 +	}
 +	if (tex->handle && !tex->is_from_swap_chain) {
 +		// Destroy eagerly: wgpuTextureRelease only drops the JS-side reference,
@@ -6128,17 +6072,6 @@ index 0000000000..41e3bce024
 +	// be described as Float.
 +	HashMap<uint32_t, uint32_t> wgsl_tex_component;
 +
-+	// Maps (set_index << 16 | binding) → true if an f32 sampled texture is statically
-+	// used together with a sampler (textureSample* / textureGather call site).
-+	// WebGPU's auto-layout rule derives a sampled texture binding's sample type from
-+	// its static usage: used with a sampler → `float`; only textureLoad /
-+	// textureDimensions → `unfilterable-float`. The raw-WGSL temporal passes bind
-+	// r32float history/depth textures via textureLoad only (Gap A,
-+	// docs/PMNDRS_TEMPORAL_PORT.md §12.3), which needs the unfilterable-float entry.
-+	// Populated by the call-site scan below and consumed only for raw-WGSL shaders
-+	// (see raw_wgsl_shader) so SPIR-V/Tint stages keep their verified BGL entries.
-+	HashMap<uint32_t, bool> wgsl_tex_sampled_with_sampler;
-+
 +	// Maps (set_index << 16 | binding) → true if Tint output has var<uniform> (e.g. for texture buffers).
 +	HashMap<uint32_t, bool> wgsl_is_uniform;
 +
@@ -6207,10 +6140,6 @@ index 0000000000..41e3bce024
 +
 +	// --- Create one WGPUShaderModule per stage ---
 +	bool detected_override_declarations = false;
-+	// True when this container carries hand-written raw WGSL (single-stage compute,
-+	// see RenderingDevice::shader_create_from_wgsl). Gates the raw-only sample-type
-+	// inference below; SPIR-V/Tint stages must keep byte-identical BGL entries.
-+	bool raw_wgsl_shader = false;
 +	Vector<RenderingShaderContainer::Shader> &stage_shaders = p_shader_container->shaders;
 +	for (int i = 0; i < stage_shaders.size(); i++) {
 +		const RenderingShaderContainer::Shader &s = stage_shaders[i];
@@ -6224,9 +6153,6 @@ index 0000000000..41e3bce024
 +		// There is no SPIR-V to store for specialization-constant re-conversion, and
 +		// the Tint-output-specific WGSL rewrites below must be skipped for it.
 +		const bool raw_wgsl = !baked_wgsl.is_empty() && spv_bytes.is_empty();
-+		if (raw_wgsl) {
-+			raw_wgsl_shader = true;
-+		}
 +		if (!raw_wgsl) {
 +			if (spv_bytes.is_empty()) {
 +				error_text = "WebGPU: empty SPIR-V for shader stage.";
@@ -6977,12 +6903,6 @@ index 0000000000..41e3bce024
 +						continue;
 +					}
 +					uint32_t tex_key = wgsl_var_binding_key[tex_name];
-+					// The texture is statically paired with a sampler: on the raw-WGSL
-+					// path this makes its BGL sample type `float` instead of
-+					// `unfilterable-float` (WebGPU auto-layout rule; see
-+					// wgsl_tex_sampled_with_sampler). Recorded for every stage, but only
-+					// consumed for raw stages.
-+					wgsl_tex_sampled_with_sampler[tex_key] = true;
 +					if (wgsl_is_depth_texture.has(tex_key) && wgsl_is_depth_texture[tex_key]) {
 +						wgsl_sampler_needs_nonfiltering[wgsl_var_binding_key[samp_name]] = true;
 +					}
@@ -7331,14 +7251,6 @@ index 0000000000..41e3bce024
 +					bool is_ms = wgsl_is_multisampled_texture.has(k) && wgsl_is_multisampled_texture[k];
 +					bool is_depth = wgsl_is_depth_texture.has(k) && wgsl_is_depth_texture[k];
 +					uint32_t comp = wgsl_tex_component.has(k) ? wgsl_tex_component[k] : 0;
-+					// Gap A (docs/PMNDRS_TEMPORAL_PORT.md §12.3): raw-WGSL shaders get
-+					// WebGPU's auto-layout sample type. An f32 texture that is only
-+					// textureLoad()/textureDimensions()'d (no static use with a sampler)
-+					// must be described as UnfilterableFloat; one sampled with a sampler
-+					// must stay Float. Scoped to raw stages: the SPIR-V/Tint stages of the
-+					// verified Forward+ stack keep the exact BGL entries they had.
-+					const bool sampled_with_sampler = wgsl_tex_sampled_with_sampler.has(k) && wgsl_tex_sampled_with_sampler[k];
-+					const bool raw_unfilterable_float = raw_wgsl_shader && !sampled_with_sampler;
 +					// Integer component types are Uint/Sint, never Float, even for a
 +					// multisampled integer texture (Forward+ resolves integer targets).
 +					// Multisampled float textures must use UnfilterableFloat, not Float
@@ -7347,15 +7259,9 @@ index 0000000000..41e3bce024
 +						? WGPUTextureSampleType_Depth
 +						: (comp == 2 ? WGPUTextureSampleType_Uint
 +								: (comp == 3 ? WGPUTextureSampleType_Sint
-+										: ((is_ms || raw_unfilterable_float) ? WGPUTextureSampleType_UnfilterableFloat : WGPUTextureSampleType_Float)));
++										: (is_ms ? WGPUTextureSampleType_UnfilterableFloat : WGPUTextureSampleType_Float)));
 +					entry.texture.viewDimension = wgsl_tex_dims.has(k) ? wgsl_tex_dims[k] : WGPUTextureViewDimension_2D;
 +					entry.texture.multisampled = is_ms;
-+					if (raw_wgsl_shader && !is_depth && comp != 2 && comp != 3) {
-+						// One line per sampled binding so a black frame / bind-group
-+						// validation error can be traced to the inferred sample type.
-+						print_verbose(vformat("WebGPU raw WGSL '%s': set %d binding %d f32 sampled texture -> %s.",
-+								shader->name, (int)set, u.binding, raw_unfilterable_float ? "unfilterable-float" : "float"));
-+					}
 +					bge.layout_entry = entry;
 +					bge.array_length = 1;
 +				} break;
@@ -8008,16 +7914,6 @@ index 0000000000..41e3bce024
 +						WGPUBindGroupEntry entry = {};
 +						entry.binding = uniform.binding * 2;
 +
-+						// Gap B (docs/PMNDRS_TEMPORAL_PORT.md §12.3): a Depth sample type
-+						// (raw-WGSL texture_depth_2d binding, e.g. the temporal reconstruct
-+						// pass reading the engine's scene depth) needs a single-aspect
-+						// view. Scene depth uses a combined depth-stencil format whose
-+						// default view is aspect All, which WebGPU rejects for a depth
-+						// binding; use the lazily-created, cached depth-only view instead.
-+						if (expected_sample == WGPUTextureSampleType_Depth) {
-+							WGPUTextureView depth_only = _depth_only_view(tex);
-+							entry.textureView = depth_only ? depth_only : tex->default_view;
-+						} else {
 +						// Fix depth/float mismatch: if layout expects Float but
 +						// texture has a depth format (common with Godot's depth
 +						// fallback textures), substitute a float fallback texture.
@@ -8080,7 +7976,6 @@ index 0000000000..41e3bce024
 +						} else {
 +							entry.textureView = tex->default_view;
 +						}
-+						} // !Depth sample type (Gap B)
 +						us->bound_textures[entry.binding] = tex;
 +						entries.push_back(entry);
 +					}
@@ -8589,17 +8484,6 @@ index 0000000000..41e3bce024
 +						entry.textureView = depth_copy;
 +					} else if (fallback_float_texture_view != nullptr) {
 +						entry.textureView = fallback_float_texture_view;
-+					}
-+				}
-+				// Target expects Depth but the cached entry was built for a different
-+				// sample type (e.g. Float) → swap in the depth-only view of the bound
-+				// combined depth-stencil texture (Gap B, mirrors the case above).
-+				if (target_tex_sample == WGPUTextureSampleType_Depth &&
-+						source_tex_sample != WGPUTextureSampleType_Depth &&
-+						p_us->bound_textures.has(entry.binding)) {
-+					WGPUTextureView depth_only = _depth_only_view(p_us->bound_textures[entry.binding]);
-+					if (depth_only) {
-+						entry.textureView = depth_only;
 +					}
 +				}
 +
@@ -12785,10 +12669,10 @@ index 0000000000..41e3bce024
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.h b/drivers/webgpu/rendering_device_driver_webgpu.h
 new file mode 100644
-index 0000000000..485750dcc4
+index 0000000000..8dd3098d65
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.h
-@@ -0,0 +1,778 @@
+@@ -0,0 +1,772 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.h                                      */
 +/**************************************************************************/
@@ -12916,12 +12800,6 @@ index 0000000000..485750dcc4
 +	WGPUBindGroupLayout depth_copy_bgl = nullptr;
 +	WGPURenderPipeline depth_copy_pipeline = nullptr;
 +	WGPUTextureView _depth_float_copy_view(WGTexture *p_tex);
-+	// Lazily-created, cached depth-only aspect view of a depth texture (released
-+	// with the WGTexture). A Depth sample type / texture_depth_* binding requires a
-+	// single-aspect view; combined depth-stencil formats need it because their
-+	// default view's aspect is All. Returns nullptr when the texture is not a depth
-+	// format (the caller then keeps its existing fallback path).
-+	WGPUTextureView _depth_only_view(WGTexture *p_tex);
 +	void _mark_depth_float_copies_dirty(WGCommandBuffer *p_cmd);
 +	void _refresh_depth_float_copies(WGCommandBuffer *p_cmd);
 +	void _free_depth_float_copy(WGPUTexture p_handle);
@@ -19242,10 +19120,10 @@ index 0000000000..05f35d7bc4
 +#endif // TINT_WRAPPER_H
 diff --git a/drivers/webgpu/webgpu_objects.h b/drivers/webgpu/webgpu_objects.h
 new file mode 100644
-index 0000000000..5f86574882
+index 0000000000..1be34ab5d8
 --- /dev/null
 +++ b/drivers/webgpu/webgpu_objects.h
-@@ -0,0 +1,568 @@
+@@ -0,0 +1,562 @@
 +/**************************************************************************/
 +/*  webgpu_objects.h                                                      */
 +/**************************************************************************/
@@ -19328,12 +19206,6 @@ index 0000000000..5f86574882
 +	WGPUTexture handle = nullptr; // null for shared/sliced views (they don't own the GPU texture)
 +	WGPUTexture view_source = nullptr; // always the owning WGPUTexture; inherited by shared/sliced textures
 +	WGPUTextureView default_view = nullptr;
-+	// Cached single-aspect (depth-only) view of a combined depth-stencil texture.
-+	// Created lazily by _depth_only_view() the first time this texture is bound
-+	// where a Depth sample type is required (raw-WGSL texture_depth_2d bindings of
-+	// the engine's scene depth), and released with this WGTexture. Shared/sliced
-+	// copies null it out so every view is owned by exactly one WGTexture.
-+	WGPUTextureView depth_view = nullptr;
 +
 +	// Returns the underlying WGPUTexture for any GPU op that needs the actual
 +	// resource (copies, debug labels). Shared / sliced views have handle==nullptr
