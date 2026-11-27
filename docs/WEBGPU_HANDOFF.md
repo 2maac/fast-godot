@@ -409,6 +409,120 @@ WebGPU shaders are compiled at runtime (the offline bake uses the host's feature
 set, so the WebGPU-gated defines do not match the baked cache) and are then
 cached for the session; this affects startup, not the frame rate.
 
+## WebGPU-native upscaler port (pmndrs/upscaler) — TODO (2026-11-27)
+
+**Goal:** replace/offer an alternative to the AMD FSR2 WebGPU path with
+[`@pmndrs/upscaler`](https://github.com/pmndrs/upscaler), whose **engine-free core is
+hand-written WGSL compute** and is designed around WebGPU's limits. This is a C++/Dawn
+port, not an npm dependency: the package is TypeScript and our renderer is C++.
+
+Why it is promising (from the repo's README, engine contract and architecture docs):
+
+- `@pmndrs/upscaler/core` (`UpscalerCore`) takes a bare `GPUDevice`, plain inputs and a
+  `FrameCamera`; no Three.js in the shaders. MIT licenced (AMD FSR EASU/RCAS derived,
+  AMD notice included).
+- It avoids exactly the features WebGPU lacks: **no storage-texture atomics**
+  (reconstructed previous depth uses `atomicMin` on a storage *buffer*), **no
+  subgroups**, **no f16 requirement**, and no B10G11R11 storage. Passes use 8×8
+  workgroups. This sidesteps our current FSR2 fallbacks (`SPD_NO_WAVE_OPERATIONS`,
+  `SPD_NO_IMAGE_ATOMICS`, reconstruct-depth load/store, B10G11R11→RGBA16F history
+  promotion), which are the expensive part of the WebGPU FSR2 path.
+- Its temporal pass graph is a fused FSR 2/3-style chain (reconstruct+dilate,
+  exposure, shading-change, accumulate, RCAS) measured leaner than a literal FSR
+  3.1.5 graph; the spatial path is a faithful EASU/RCAS WGSL port.
+- It deliberately omits perf-only micro-optimizations (f16, tap packing, bind-group
+  caching). We measured `shader-f16`/`subgroups` enabling on our current FSR2 and saw
+  no gain, so expect the wins from the pass graph/shader structure, not from fp16.
+
+### Integration shape
+
+1. **Vendor the core shaders and constants layout.** Shaders are in
+   `packages/core/src/shaders/` (one WGSL module per pass, assembled without
+   `#include`); all passes share one 96-byte-payload `FsrConstants` UBO in a 256-byte
+   buffer at `@group(0) @binding(0)`. The CPU writer
+   (`packages/core/src/internal/ConstantsBuffer.ts`) must stay byte-identical to the
+   WGSL layout. Copy these as `.wgsl` files and a C++ constants writer.
+2. **Add a raw-WGSL compute path to the WebGPU driver.** The current RD shader path is
+   GLSL→SPIR-V→Tint→WGSL; the point of this library is that the WGSL is already
+   hand-written, so bypassing Tint for the upscaler is required to keep its
+   performance. Recommended: a self-contained driver-level/Dawn compute-pipeline API
+   used only by this effect (create `GPUShaderModule` from WGSL, bind-group layouts
+   from a small descriptor, compute pipeline, dispatch), rather than converting the
+   WGSL to GLSL (which would reintroduce Tint codegen). This is the main new
+   infrastructure and should be the first milestone; keep it private to the effect
+   rather than widening the public `RD` API if possible.
+3. **Port `UpscalerCore` orchestration to C++.** Pass graph, ping-pong history,
+   exposure (1×1 log-average with eye adaptation), shading-change/reactive passes,
+   `prepare()`/pipeline compilation, `configure()` reallocation, `beginFrame()`
+   jitter advance, `encode()` into our command encoder. The
+   [engine contract](https://github.com/pmndrs/upscaler/blob/main/docs/engine-contract.md)
+   is the spec; `examples/webgpu/hello` is the executable reference.
+4. **Wire into the renderer.** Current placement/inputs are in
+   `renderer_scene_render_rd.cpp` (spatial upscaler selection, FSR/FSR2 effect calls),
+   `effects/fsr2.cpp` (FSR2 dispatch), and `effects/fsr.cpp` (FSR1). The port can be an
+   alternative `FSR2`-class effect (keep the existing AMD path as a fallback) or a new
+   upscaler selected on `SUPPORTS_IMAGE_ATOMIC_32_BIT == false`.
+5. **Make the core the single jitter source.** `core.beginFrame()` returns this
+   frame's offset (Halton sequence, render-pixel units, x right/y down; apply as
+   `clip.x += (-2x/renderWidth)*clip.w`, `clip.y += (2y/renderHeight)*clip.w`). The
+   history reconciles against exactly that sequence, so the renderer's existing
+   FSR2/TAA jitter must be replaced for this path, not layered. Restore the camera
+   projection after the scene render; keep motion vectors on the unjittered
+   projection.
+6. **Inputs/outputs.** Inputs: `color` rgba16f, linear/HDR, pre-tonemap; `depth`
+   hardware depth (or `r32float` linear view distance with `depthMode: 'linear'`);
+   `velocity` NDC current−previous, y up (use `motionScale` if our velocity convention
+   differs); optional `reactive`, `reactiveOpaqueColor`, `exposureTexture`,
+   `preExposureTexture`, `resetTexture`. `configure({displayWidth, displayHeight,
+   qualityMode, path})` sets `renderWidth`/`renderHeight`; map our
+   `resolution_scale`/FSR quality. Output is display-sized rgba16f, linear/HDR,
+   alpha carried through; allocate it (and the guides) through a texture allocator
+   returning our RD textures (require `TEXTURE_BINDING|STORAGE_BINDING`, one mip,
+   one sample; r32float is not filterable). Submit the upscale after the scene pass
+   and before presentation; the core can encode into our command encoder (queue
+   order, one frame in flight).
+7. **Camera facts.** `FrameCamera { near, far, perspective, projection,
+   reversedDepth }`; `near`/`far` must be positive finite (no infinite far plane).
+   Depth is hardware `[0,1]` near 0 → far 1 (or reversed when `reversedDepth`) or
+   linear view distance in `r32float`; a mismatched input is an explicit dispatch
+   error. Check our projection's depth convention and reversed-Z state when filling
+   this.
+
+### Milestones
+
+1. **Spatial path first** (`upscaleSpatial`, EASU/RCAS WGSL): swap it into the
+   existing FSR1 slot behind a setting, verify 0 validation errors and visual parity
+   with the current FSR1. This validates the raw-WGSL pipeline path with the smallest
+   pass graph and no jitter/history integration.
+2. **Temporal path**: reconstructed-depth/dilate, exposure, shading-change,
+   accumulate, RCAS, guides; wire the core jitter and velocity; A/B against the
+   current FSR2 for ghosting/smearing on the TPS level.
+3. **Quality/perf A/B**: fixed camera and frozen level rotation (the TPS level
+   rotates every 30 s — timing-based comparisons are invalid otherwise), equal
+   `resolution_scale`/quality, measure FSR2 vs new upscaler vs FSR1 and check
+   `GPUValidationError`/shader logs. The current WebGPU FSR2 measured ~103 fps on
+   our fixed-camera harness (uncapped) vs the editor's 120; use that as the baseline
+   to beat, not a 2x expectation.
+4. Keep the AMD FSR2 path as fallback for devices where the core reports
+   unsupported (`UpscalerCore.isSupported`) or where B10G11R11 storage is available
+   (native/other RD drivers).
+
+### Risks
+
+- New raw-WGSL pipeline infrastructure in the driver; keep it isolated and tested
+  against WebGPU validation.
+- Jitter/history integration is the subtle part (wrong sign/phase doubles edges or
+  smears history); use the core as the single source and check
+  `DebugView.MotionVectors`/disocclusion first.
+- The core is newer than the stable Three.js adapter; start with the spatial path.
+- MIT licence is compatible; keep the AMD FSR copyright notice in the vendored
+  shaders.
+
+References: [README](https://github.com/pmndrs/upscaler),
+[engine contract](https://github.com/pmndrs/upscaler/blob/main/docs/engine-contract.md),
+[architecture](https://github.com/pmndrs/upscaler/blob/main/docs/architecture.md),
+[inputs and contracts](https://github.com/pmndrs/upscaler/blob/main/docs/inputs-and-contracts.md).
+
 ## Forward+ on WebGPU (2026-11-27)
 
 Forward+ is the second rendering method running on the WebGPU device (after
@@ -576,6 +690,14 @@ this file's history.
     (`4.8.beta.custom_build.582d61902`). If a distinct version stamp is wanted,
     commit the stack changes in the build tree and rebuild (see the
     `GODOT_VERSION_HASH_OVERRIDE`/`version_hash` note at the end).
+
+13. **WebGPU-native upscaler (pmndrs/upscaler) — TODO.** Port the engine-free
+    `@pmndrs/upscaler/core` WGSL compute upscaler as an alternative to the AMD
+    FSR2 WebGPU fallbacks: spatial EASU/RCAS first, then the temporal path.
+    Plan, integration points, contracts and acceptance criteria are in the
+    section above ("WebGPU-native upscaler port (pmndrs/upscaler) — TODO").
+    Main infrastructure gap: a raw-WGSL compute-pipeline path in the WebGPU
+    driver (the current RD path is GLSL→SPIR-V→Tint→WGSL).
 
 ## Practical notes
 
