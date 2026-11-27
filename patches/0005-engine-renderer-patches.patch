@@ -1755,6 +1755,40 @@ index 65f9e9772c..9920994d55 100644
  		}
  	}
  };
+diff --git a/doc/classes/RenderingServer.xml b/doc/classes/RenderingServer.xml
+index f373a64a7a..93ce7a3e0d 100644
+--- a/doc/classes/RenderingServer.xml
++++ b/doc/classes/RenderingServer.xml
+@@ -5435,7 +5435,11 @@
+ 			Use nearest-neighbor filtering for the viewport's 3D buffer. This looks crisper than [constant VIEWPORT_SCALING_3D_MODE_BILINEAR] and has no additional rendering cost. The amount of scaling can be set using [member Viewport.scaling_3d_scale]. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
+ 			[b]Note:[/b] When using the [b]Nearest[/b] scaling mode, to avoid uneven pixel scaling, it's highly recommended to use a value equal to an integer divisor with a dividend of [code]1[/code]. For example, it's best to use a scale of [code]0.5[/code] (1/2), [code]0.3333[/code] (1/3), [code]0.25[/code] (1/4), [code]0.2[/code] (1/5), and so on.
+ 		</constant>
+-		<constant name="VIEWPORT_SCALING_3D_MODE_MAX" value="6" enum="ViewportScaling3DMode">
++		<constant name="VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL" value="6" enum="ViewportScaling3DMode">
++			Use the [url=https://github.com/pmndrs/upscaler]pmndrs spatial upscaler[/url] (EASU + RCAS) for the viewport's 3D buffer. The amount of scaling can be set using [member Viewport.scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using EASU and sharpened using RCAS. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
++			[b]Note:[/b] Only supported when using the Forward+ renderer with the WebGPU rendering driver. On other rendering drivers, FSR 1.0 is used instead.
++		</constant>
++		<constant name="VIEWPORT_SCALING_3D_MODE_MAX" value="7" enum="ViewportScaling3DMode">
+ 			Represents the size of the [enum ViewportScaling3DMode] enum.
+ 		</constant>
+ 		<constant name="VIEWPORT_UPDATE_DISABLED" value="0" enum="ViewportUpdateMode">
+diff --git a/doc/classes/Viewport.xml b/doc/classes/Viewport.xml
+index bafca16d64..c40084243a 100644
+--- a/doc/classes/Viewport.xml
++++ b/doc/classes/Viewport.xml
+@@ -579,7 +579,11 @@
+ 			Use nearest-neighbor filtering for the viewport's 3D buffer. This looks crisper than [constant SCALING_3D_MODE_BILINEAR] and has no additional rendering cost. The amount of scaling can be set using [member scaling_3d_scale]. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
+ 			[b]Note:[/b] When using the [b]Nearest[/b] scaling mode, to avoid uneven pixel scaling, it's highly recommended to use a value equal to an integer divisor with a dividend of [code]1[/code]. For example, it's best to use a scale of [code]0.5[/code] (1/2), [code]0.3333[/code] (1/3), [code]0.25[/code] (1/4), [code]0.2[/code] (1/5), and so on.
+ 		</constant>
+-		<constant name="SCALING_3D_MODE_MAX" value="6" enum="Scaling3DMode">
++		<constant name="SCALING_3D_MODE_PMNDRS_SPATIAL" value="6" enum="Scaling3DMode">
++			Use the [url=https://github.com/pmndrs/upscaler]pmndrs spatial upscaler[/url] (EASU + RCAS) for the viewport's 3D buffer. The amount of scaling can be set using [member scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using EASU and sharpened using RCAS. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
++			[b]Note:[/b] Only supported when using the Forward+ renderer with the WebGPU rendering driver. On other rendering drivers, FSR 1.0 is used instead.
++		</constant>
++		<constant name="SCALING_3D_MODE_MAX" value="7" enum="Scaling3DMode">
+ 			Represents the size of the [enum Scaling3DMode] enum.
+ 		</constant>
+ 		<constant name="MSAA_DISABLED" value="0" enum="MSAA">
 diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
 index 1b5471573d..e9f03bb536 100644
 --- a/editor/editor_node.cpp
@@ -84851,6 +84885,39 @@ index bb6b077157..ff763964e2 100644
  	void set_option_count(int p_count);
  	int get_option_count() const;
  
+diff --git a/scene/main/viewport.cpp b/scene/main/viewport.cpp
+index 12c75ecc6b..bce312ef4c 100644
+--- a/scene/main/viewport.cpp
++++ b/scene/main/viewport.cpp
+@@ -5420,7 +5420,7 @@ void Viewport::_bind_methods() {
+ 
+ #ifndef _3D_DISABLED
+ 	ADD_GROUP("Scaling 3D", "");
+-	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4"), "set_scaling_3d_mode", "get_scaling_3d_mode");
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,pmndrs (Spatial - Fast):6"), "set_scaling_3d_mode", "get_scaling_3d_mode");
+ 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "scaling_3d_scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), "set_scaling_3d_scale", "get_scaling_3d_scale");
+ 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), "set_texture_mipmap_bias", "get_texture_mipmap_bias");
+ 	ADD_PROPERTY(PropertyInfo(Variant::INT, "anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16x (Slow)")), "set_anisotropic_filtering_level", "get_anisotropic_filtering_level");
+@@ -5486,6 +5486,7 @@ void Viewport::_bind_methods() {
+ 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_METALFX_SPATIAL);
+ 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_METALFX_TEMPORAL);
+ 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_NEAREST);
++	BIND_ENUM_CONSTANT(SCALING_3D_MODE_PMNDRS_SPATIAL);
+ 	BIND_ENUM_CONSTANT(SCALING_3D_MODE_MAX);
+ 
+ 	BIND_ENUM_CONSTANT(MSAA_DISABLED);
+diff --git a/scene/main/viewport.h b/scene/main/viewport.h
+index 46d432daab..bc93d027ab 100644
+--- a/scene/main/viewport.h
++++ b/scene/main/viewport.h
+@@ -106,6 +106,7 @@ public:
+ 		SCALING_3D_MODE_METALFX_SPATIAL,
+ 		SCALING_3D_MODE_METALFX_TEMPORAL,
+ 		SCALING_3D_MODE_NEAREST,
++		SCALING_3D_MODE_PMNDRS_SPATIAL,
+ 		SCALING_3D_MODE_MAX
+ 	};
+ 
 diff --git a/scene/resources/compressed_texture.cpp b/scene/resources/compressed_texture.cpp
 index 5db54a3f33..407b40eedc 100644
 --- a/scene/resources/compressed_texture.cpp
@@ -85293,10 +85360,10 @@ index 5c1d1fc434..3684b429ec 100644
  		Fsr2ReconstructPreviousDepthPassShaderRD reconstruct_previous_depth;
 diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
 new file mode 100644
-index 0000000000..b838088b41
+index 0000000000..abb280bbc5
 --- /dev/null
 +++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
-@@ -0,0 +1,367 @@
+@@ -0,0 +1,368 @@
 +/**************************************************************************/
 +/*  pmndrs_upscaler.cpp                                                   */
 +/**************************************************************************/
@@ -85558,9 +85625,10 @@ index 0000000000..b838088b41
 +
 +	// Both shaders hard-code `rgba16float` for their storage output, and the
 +	// destination has to be writable through a storage image. The renderer's
-+	// FSR slot already substitutes a storage-capable RGBA16F intermediate when
-+	// the render target itself is not storage-capable (WebGPU), so a mismatch
-+	// here means this slot cannot host the effect; leave the frame untouched.
++	// spatial-upscaler slot already substitutes a storage-capable RGBA16F
++	// intermediate when the render target itself is not storage-capable
++	// (WebGPU), so a mismatch here means this slot cannot host the effect;
++	// leave the frame untouched.
 +	const RD::TextureFormat destination_format = rd->texture_get_format(p_destination_texture);
 +	if (destination_format.format != RD::DATA_FORMAT_R16G16B16A16_SFLOAT ||
 +			!(destination_format.usage_bits & RD::TEXTURE_USAGE_STORAGE_BIT)) {
@@ -85666,7 +85734,7 @@ index 0000000000..b838088b41
 +}
 diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
 new file mode 100644
-index 0000000000..1ae317ed2b
+index 0000000000..a2a2d8b540
 --- /dev/null
 +++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
 @@ -0,0 +1,118 @@
@@ -85712,11 +85780,11 @@ index 0000000000..1ae317ed2b
 +// (EASU -> RCAS) running as hand-written WGSL compute shaders on the raw-WGSL
 +// RenderingDevice path (WebGPU only).
 +//
-+// It is selected instead of FSR1 when the viewport scaling mode is FSR *and*
-+// the `rendering/scaling_3d/pmndrs_spatial` project setting is enabled *and*
-+// this class reports itself available. On every other driver (or when the
-+// raw-WGSL shaders cannot be created) it stays inert and the renderer falls
-+// back to RendererRD::FSR, which is the pre-existing behaviour.
++// It is selected instead of FSR1 when the viewport's 3D scaling mode is
++// VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL and this class reports itself
++// available. On every other driver (or when the raw-WGSL shaders cannot be
++// created) the renderer falls back to RendererRD::FSR, which is the
++// pre-existing behaviour.
 +//
 +// Contract references:
 +//   docs/PMNDRS_UPSCALER_SPATIAL.md  (WGSL provenance, constants layout,
@@ -87046,7 +87114,7 @@ index 623c24fef5..9a522f25bc 100644
  
  	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
-index 38540f4396..5ed82c29a2 100644
+index 38540f4396..badc760684 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 @@ -442,9 +442,20 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
@@ -87072,22 +87140,20 @@ index 38540f4396..5ed82c29a2 100644
  			}
  		}
  	}
-@@ -474,7 +485,19 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
- 	SpatialUpscaler *spatial_upscaler = nullptr;
+@@ -475,6 +486,18 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
  	if (can_use_effects) {
  		if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR) {
--			spatial_upscaler = fsr;
+ 			spatial_upscaler = fsr;
++		} else if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL) {
 +			// The pmndrs spatial upscaler (EASU + RCAS, hand-written WGSL compute)
-+			// reuses the FSR1 spatial slot. It is strictly opt-in and only
-+			// available on drivers exposing the raw-WGSL compute path (WebGPU);
-+			// otherwise, or when it disabled itself, FSR1 is used unchanged.
-+			const bool pmndrs_spatial_requested = GLOBAL_GET_CACHED(bool, "rendering/scaling_3d/pmndrs_spatial");
-+			if (pmndrs_spatial_requested && pmndrs_spatial != nullptr && pmndrs_spatial->is_available()) {
++			// is a first-class scaling mode. It is only instantiated on drivers
++			// exposing the raw-WGSL compute path (WebGPU); on every other driver,
++			// or if the effect disabled itself after failing to create its
++			// pipelines, fall back to FSR 1.0 (the same spatial upscale slot).
++			if (pmndrs_spatial != nullptr && pmndrs_spatial->is_available()) {
 +				spatial_upscaler = pmndrs_spatial;
 +			} else {
-+				if (pmndrs_spatial_requested) {
-+					WARN_PRINT_ONCE("rendering/scaling_3d/pmndrs_spatial is enabled but the pmndrs spatial upscaler is not available on this driver; falling back to FSR 1.0.");
-+				}
++				WARN_PRINT_ONCE("The pmndrs spatial 3D scaling mode is not available on this driver/hardware; falling back to FSR 1.0.");
 +				spatial_upscaler = fsr;
 +			}
  		} else if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
@@ -87164,7 +87230,7 @@ index 38540f4396..5ed82c29a2 100644
  	memdelete(mfx_spatial);
  #endif
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.h b/servers/rendering/renderer_rd/renderer_scene_render_rd.h
-index 5c13984313..507a151581 100644
+index 5c13984313..e154267bed 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.h
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.h
 @@ -36,6 +36,7 @@
@@ -87180,8 +87246,8 @@ index 5c13984313..507a151581 100644
  	RendererRD::ToneMapper *tone_mapper = nullptr;
  	RendererRD::FSR *fsr = nullptr;
 +	// pmndrs spatial upscaler (EASU + RCAS via raw WGSL compute). Only created
-+	// when the driver exposes the raw-WGSL compute path; selected instead of
-+	// FSR1 when the `rendering/scaling_3d/pmndrs_spatial` setting is enabled.
++	// when the driver exposes the raw-WGSL compute path; selected when the
++	// viewport's 3D scaling mode is VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL.
 +	RendererRD::PmndrsSpatial *pmndrs_spatial = nullptr;
  	RendererRD::VRS *vrs = nullptr;
  	RendererRD::Resolve *resolve_effects = nullptr;
@@ -88704,7 +88770,7 @@ index a5157cbe50..41cdab933c 100644
  }
  
 diff --git a/servers/rendering/renderer_viewport.cpp b/servers/rendering/renderer_viewport.cpp
-index 60374910e2..5515fc7ebf 100644
+index 60374910e2..1407f5b353 100644
 --- a/servers/rendering/renderer_viewport.cpp
 +++ b/servers/rendering/renderer_viewport.cpp
 @@ -168,6 +168,28 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
@@ -88736,6 +88802,25 @@ index 60374910e2..5515fc7ebf 100644
  			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL && !RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_TEMPORAL)) {
  				if (RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_SPATIAL)) {
  					// Prefer MetalFX spatial if it is supported, which will be much more efficient than FSR2,
+@@ -251,6 +273,7 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
+ 					break;
+ 				case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL:
+ 				case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
++				case RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL:
+ 				case RSE::VIEWPORT_SCALING_3D_MODE_FSR:
+ 				case RSE::VIEWPORT_SCALING_3D_MODE_FSR2:
+ 					target_width = p_viewport->size.width;
+@@ -1059,6 +1082,10 @@ void RendererViewport::viewport_set_scaling_3d_mode(RID p_viewport, RSE::Viewpor
+ 			WARN_PRINT_ONCE_ED("FSR2 3D scaling is only available when using the Forward+ renderer.");
+ 			return;
+ 		}
++		if (p_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL) {
++			WARN_PRINT_ONCE_ED("pmndrs spatial 3D scaling is only available when using the Forward+ renderer.");
++			return;
++		}
+ 		if (p_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) {
+ 			WARN_PRINT_ONCE_ED("MetalFX Temporal 3D scaling is only available when using the Forward+ renderer.");
+ 			return;
 diff --git a/servers/rendering/rendering_device.cpp b/servers/rendering/rendering_device.cpp
 index eceb8b7ab6..30b5c4e88b 100644
 --- a/servers/rendering/rendering_device.cpp
@@ -90318,10 +90403,18 @@ index 3c0215f14e..a587552186 100644
  	void add_draw_list_draw_indexed_indirect(RDD::BufferID p_buffer, uint32_t p_offset, uint32_t p_draw_count, uint32_t p_stride);
  	void add_draw_list_execute_commands(RDD::CommandBufferID p_command_buffer);
 diff --git a/servers/rendering/rendering_server.cpp b/servers/rendering/rendering_server.cpp
-index 319e83c72b..13fcf17a3f 100644
+index 319e83c72b..87e11ad176 100644
 --- a/servers/rendering/rendering_server.cpp
 +++ b/servers/rendering/rendering_server.cpp
-@@ -3675,7 +3675,13 @@ void RenderingServer::init() {
+@@ -2934,6 +2934,7 @@ void RenderingServer::_bind_methods() {
+ 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL);
+ 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL);
+ 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_NEAREST);
++	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL);
+ 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_MAX);
+ 
+ 	BIND_ENUM_CONSTANT(RSE::VIEWPORT_UPDATE_DISABLED);
+@@ -3675,7 +3676,13 @@ void RenderingServer::init() {
  	// import the texture formats that the host platform needs.
  	// See `const bool can_s3tc_bptc` in the resource importer.
  	GLOBAL_DEF_RST("rendering/textures/vram_compression/import_s3tc_bptc", false);
@@ -90335,18 +90428,21 @@ index 319e83c72b..13fcf17a3f 100644
  	GLOBAL_DEF("rendering/textures/vram_compression/compress_with_gpu", true);
  	GLOBAL_DEF("rendering/textures/vram_compression/cache_gpu_compressor", true);
  
-@@ -3792,6 +3798,11 @@ void RenderingServer::init() {
- 	}
- 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/scaling_3d/scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), 1.0);
- 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/scaling_3d/fsr_sharpness", PROPERTY_HINT_RANGE, "0,2,0.01"), 0.2f);
-+	// Opt-in: run the pmndrs/upscaler spatial upscaler (EASU + RCAS as raw WGSL
-+	// compute) in the FSR1 scaling slot instead of AMD FSR 1.0. Only takes
-+	// effect on drivers with the raw-WGSL compute path (WebGPU); elsewhere it
-+	// falls back to FSR1. Uses rendering/scaling_3d/fsr_sharpness for strength.
-+	GLOBAL_DEF(PropertyInfo(Variant::BOOL, "rendering/scaling_3d/pmndrs_spatial"), false);
+@@ -3778,11 +3785,11 @@ void RenderingServer::init() {
+ 		String mode_hints;
+ 		String mode_hints_metal;
+ 		{
+-			Vector<String> mode_hints_arr = { "Nearest (Fastest):5", "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2" };
++			Vector<String> mode_hints_arr = { "Nearest (Fastest):5", "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2", "pmndrs (Spatial - Fast):6" };
+ 			mode_hints = String(",").join(mode_hints_arr);
  
- 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/textures/default_filters/texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), 0.0f);
- 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/textures/decals/filter", PROPERTY_HINT_ENUM, "Nearest (Fast),Linear (Fast),Nearest Mipmap (Fast),Linear Mipmap (Fast),Nearest Mipmap Anisotropic (Average),Linear Mipmap Anisotropic (Average)"), RSE::DECAL_FILTER_LINEAR_MIPMAPS);
+-			mode_hints_arr.push_back("MetalFX (Spatial - Fast):3");
+-			mode_hints_arr.push_back("MetalFX (Temporal - Slow):4");
++			mode_hints_arr.insert(mode_hints_arr.size() - 1, "MetalFX (Spatial - Fast):3");
++			mode_hints_arr.insert(mode_hints_arr.size() - 1, "MetalFX (Temporal - Slow):4");
+ 			mode_hints_metal = String(",").join(mode_hints_arr);
+ 		}
+ 
 diff --git a/servers/rendering/rendering_server_default.cpp b/servers/rendering/rendering_server_default.cpp
 index 82eebf5e8d..3fb4e18bf9 100644
 --- a/servers/rendering/rendering_server_default.cpp
@@ -90390,6 +90486,43 @@ index 82eebf5e8d..3fb4e18bf9 100644
  
  #ifndef XR_DISABLED
  	if (xr_server != nullptr) {
+diff --git a/servers/rendering/rendering_server_enums.h b/servers/rendering/rendering_server_enums.h
+index eaa833a45b..3259b684d1 100644
+--- a/servers/rendering/rendering_server_enums.h
++++ b/servers/rendering/rendering_server_enums.h
+@@ -474,6 +474,10 @@ enum ViewportScaling3DMode {
+ 	VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL,
+ 	VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL,
+ 	VIEWPORT_SCALING_3D_MODE_NEAREST,
++	// Fast Godot: pmndrs EASU + RCAS spatial upscaler. Only available on drivers
++	// with the raw-WGSL compute path (WebGPU); elsewhere the renderer falls back
++	// to FSR 1.0. Appended after NEAREST so existing integer values stay stable.
++	VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL,
+ 	VIEWPORT_SCALING_3D_MODE_MAX,
+ 	VIEWPORT_SCALING_3D_MODE_OFF = 255, // for internal use only
+ };
+@@ -486,7 +490,7 @@ enum ViewportScaling3DType {
+ };
+ 
+ inline ViewportScaling3DType scaling_3d_mode_type(ViewportScaling3DMode p_mode) {
+-	if (p_mode == VIEWPORT_SCALING_3D_MODE_NEAREST || p_mode == VIEWPORT_SCALING_3D_MODE_BILINEAR || p_mode == VIEWPORT_SCALING_3D_MODE_FSR || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
++	if (p_mode == VIEWPORT_SCALING_3D_MODE_NEAREST || p_mode == VIEWPORT_SCALING_3D_MODE_BILINEAR || p_mode == VIEWPORT_SCALING_3D_MODE_FSR || p_mode == VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
+ 		return VIEWPORT_SCALING_3D_TYPE_SPATIAL;
+ 	} else if (p_mode == VIEWPORT_SCALING_3D_MODE_FSR2 || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) {
+ 		return VIEWPORT_SCALING_3D_TYPE_TEMPORAL;
+diff --git a/servers/rendering/storage/render_scene_buffers.cpp b/servers/rendering/storage/render_scene_buffers.cpp
+index 3736709859..fac7584e33 100644
+--- a/servers/rendering/storage/render_scene_buffers.cpp
++++ b/servers/rendering/storage/render_scene_buffers.cpp
+@@ -52,7 +52,7 @@ void RenderSceneBuffersConfiguration::_bind_methods() {
+ 
+ 	ClassDB::bind_method(D_METHOD("get_scaling_3d_mode"), &RenderSceneBuffersConfiguration::get_scaling_3d_mode);
+ 	ClassDB::bind_method(D_METHOD("set_scaling_3d_mode", "scaling_3d_mode"), &RenderSceneBuffersConfiguration::set_scaling_3d_mode);
+-	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4"), "set_scaling_3d_mode", "get_scaling_3d_mode"); // TODO VIEWPORT_SCALING_3D_MODE_OFF is possible here too, but we can't specify an enum string for it.
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,pmndrs (Spatial - Fast):6"), "set_scaling_3d_mode", "get_scaling_3d_mode"); // TODO VIEWPORT_SCALING_3D_MODE_OFF is possible here too, but we can't specify an enum string for it.
+ 
+ 	ClassDB::bind_method(D_METHOD("get_msaa_3d"), &RenderSceneBuffersConfiguration::get_msaa_3d);
+ 	ClassDB::bind_method(D_METHOD("set_msaa_3d", "msaa_3d"), &RenderSceneBuffersConfiguration::set_msaa_3d);
 diff --git a/thirdparty/spirv-headers/LICENSE b/thirdparty/spirv-headers/LICENSE
 index 111e0fc82d..b929b41789 100644
 --- a/thirdparty/spirv-headers/LICENSE

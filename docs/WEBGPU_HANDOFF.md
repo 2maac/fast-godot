@@ -1,23 +1,26 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-27 ~20:55. **Forward+ and Forward Mobile both
+Resume doc. Last updated 2026-11-27 ~22:00. **Forward+ and Forward Mobile both
 run on the WebGPU device, SDFGI is enabled on the WebGPU device, and
-pmndrs/upscaler milestone 1 (the spatial EASU+RCAS upscaler over a raw-WGSL
-compute path) is implemented and browser-verified.** The last committed engine
-tip is tag `4.8-beta5` = `529407b9fc` (FSR 1/FSR 2 + SDFGI RGBA16F); the
-pmndrs milestone-1 stack is committed on branch `4.8-beta5` as `d8b3d583ae`
-(2026-11-27), with this docs refresh on top of it — local commits, **not pushed
-yet** (`origin/4.8-beta5` is still at `4c28382482` until they are). Branch and tag share
-the simple name but are different commits — use `refs/heads/4.8-beta5` /
-`refs/tags/4.8-beta5` when the distinction matters. Fresh toolchain installs
-fetch the tag, i.e. the last committed driver/template. Verify with
-`git ls-remote origin refs/tags/4.8-beta5`. `patches/` is a self-contained
-portable bundle (patch files + `layers/` + `upstream.lock`); the volatile build
-worktree is `/tmp/godot48` (HEAD `582d619026`) **with the
-Forward+/MSAA/TAA/FSR/SDFGI/pmndrs working-tree changes, which are captured in
-the regenerated patch stack — the worktree itself is not committed**. Editor
-version stays `4.8.beta.custom_build.582d61902`. This file lives in `docs/`
-together with `PATCH_STACK.md`, the two pmndrs/raw-WGSL design docs
+pmndrs/upscaler milestone 1 is implemented, browser-verified, and now a
+first-class Viewport scaling mode.** The last committed engine tip is the tag
+`4.8-beta5` = `529407b9fc` (FSR 1/FSR 2 + SDFGI RGBA16F); the pmndrs milestone-1
+stack is committed on branch `4.8-beta5` as `d8b3d583ae` (2026-11-27), with docs
+refreshes above it (`70cc14782e` is the docs tip) — local commits, **not pushed
+yet** (`origin/4.8-beta5` is still at `4c28382482` until they are). The
+**first-class pmndrs scaling-mode change** (2026-11-27 ~21:43-21:54) is
+regenerated into `patches/` on top of that and is **not committed yet**. Branch
+and tag share the simple name but are different commits — use
+`refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the distinction matters.
+Fresh toolchain installs fetch the tag, i.e. the last committed
+driver/template. Verify with `git ls-remote origin refs/tags/4.8-beta5`.
+`patches/` is a self-contained portable bundle (patch files + `layers/` +
+`upstream.lock`); the volatile build worktree is `/tmp/godot48` (HEAD
+`582d619026`) **with the Forward+/MSAA/TAA/FSR/SDFGI/pmndrs working-tree changes
+and the first-class pmndrs scaling mode, which are captured in the regenerated
+patch stack — the worktree itself is not committed**. Editor version stays
+`4.8.beta.custom_build.582d61902`. This file lives in `docs/` together with
+`PATCH_STACK.md`, the two pmndrs/raw-WGSL design docs
 (`WGSL_COMPUTE_PATH.md`, `PMNDRS_UPSCALER_SPATIAL.md`) and the archived
 migration history.
 
@@ -43,17 +46,22 @@ Current state in one screen:
   the TPS Forward+ export with volumetric fog off: 60 fps, 0 GPU validation
   errors, 0 shader errors. Remaining differences: SDFGI occlusion is disabled,
   and the packed light path is not bit-identical. See the Forward+ section.
-- **pmndrs/upscaler milestone 1 works on WebGPU** (browser-verified 2026-11-27
-  20:48-20:49): the spatial EASU+RCAS pass runs as hand-written WGSL compute
-  through a new raw-WGSL RenderingDevice path (no SPIR-V, no Tint), selected by
-  the opt-in `rendering/scaling_3d/pmndrs_spatial` project setting in the FSR1
-  slot. TPS Forward+ at 960x540 with render scale 0.667: 640x360 -> 960x540,
-  `[PMNDRS] spatial upscaler running` logged, 59-60 fps, 0 validation/shader
-  errors; the same template with the setting off runs FSR1 unchanged with 0
-  errors. See the milestone-1 section below.
+- **pmndrs/upscaler milestone 1 works on WebGPU and is a first-class scaling
+  mode** (browser-verified 2026-11-27 21:54 through the TPS settings button; the
+  underlying effect was first verified 20:48-20:49): the spatial EASU+RCAS pass
+  runs as hand-written WGSL compute through the new raw-WGSL RenderingDevice path
+  (no SPIR-V, no Tint), selected as
+  `Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` = 6 (the
+  `rendering/scaling_3d/mode` "pmndrs (Spatial - Fast)" option). The TPS demo's
+  Settings → Resolution Scale Filter screen now has a dedicated **"pmndrs
+  Spatial"** button (shown only on the WebGPU driver, applied live). At render
+  scale 0.667, 960x540: 640x360 -> 960x540, `[PMNDRS] spatial upscaler running`
+  logged, 59-60 fps, 0 validation/shader errors; the default FSR1 selection on
+  the same build shows no running line and 0 errors. See the milestone-1
+  section below.
 - The Godot Web Server site export is regenerated after each build (last
-  written 2026-11-27 20:47:38 with `pmndrs_spatial=true`); browsers need a hard
-  reload to pick it up.
+  written 2026-11-27 21:53:27, the first-class-mode build); browsers need a
+  hard reload to pick it up.
 
 **2026-11-27 (later) — browser-reported validation error fixed.** A real-Chrome
 report showed `Filtering sampler ... is incompatible with non-filtering sampler
@@ -82,7 +90,7 @@ for what changed and the remaining limitations.
 | doc | status |
 |---|---|
 | `README.md` | repo mechanics (patch stack, tools, rules) |
-| **this file** | current state: toolchain, build/export, Forward+ (incl. MSAA/TAA/SDFGI), pmndrs upscaler milestone 1, browser verification, MSAA/ring fixes, encryption, open work |
+| **this file** | current state: toolchain, build/export, Forward+ (incl. MSAA/TAA/SDFGI), pmndrs upscaler milestone 1 + first-class scaling mode, browser verification, MSAA/ring fixes, encryption, open work |
 | `PATCH_STACK.md` (same folder) | what every patch layer contains; apply/regenerate commands |
 | `WGSL_COMPUTE_PATH.md` (same folder) | raw-WGSL compute path in the WebGPU driver/RD: API, binding convention, as-built notes and compile checks |
 | `PMNDRS_UPSCALER_SPATIAL.md` (same folder) | pmndrs/upscaler spatial-path port spec: vendored WGSL provenance, constants layout, per-pass bindings, integration plan |
@@ -114,7 +122,7 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` | `d8b3d583ae` | pmndrs milestone-1 stack commit (raw-WGSL path + pmndrs spatial upscaler + docs), with docs-refresh commits above it; **local only — not pushed**, `origin/4.8-beta5` is still at `4c28382482`. Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| branch `4.8-beta5` | `70cc14782e` | docs tip (HEAD): pmndrs milestone-1 stack commit `d8b3d583ae` (raw-WGSL path + pmndrs spatial upscaler + docs), with docs refreshes above it. **Local only — not pushed**, `origin/4.8-beta5` is still at `4c28382482`. The first-class pmndrs scaling-mode change is in the working `patches/` (uncommitted) on top of this. Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
 | tag `4.8-beta5` | `529407b9fc` | engine/patch-stack tip: FSR 1/FSR 2 on WebGPU + **SDFGI enabled**, **moved 2026-11-27** so fresh toolchain installs fetch the current driver/template. Lightweight tag (`git cat-file -t refs/tags/4.8-beta5` → `commit`); verify with `git ls-remote origin refs/tags/4.8-beta5` |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
@@ -129,23 +137,23 @@ subsection under Build / toolchain. The old release asset and its tag were
 and can no longer provision a fresh toolchain (exports from machines that
 already have a toolchain are unaffected).
 
-## Environment snapshot (verified on this machine, 2026-11-27 ~20:55)
+## Environment snapshot (verified on this machine, 2026-11-27 ~22:00)
 
 | item | actual value |
 |---|---|
-| patch stack repo | local branch `4.8-beta5` (**repository default branch**; `origin/4.8-beta5` is still `4c28382482` because the new commits are not pushed yet): pmndrs milestone-1 stack commit `d8b3d583ae` (patches + tools + docs) with docs-refresh commits above it; tag `4.8-beta5` = `529407b9fc` (last **tagged** engine tip: FSR 1/FSR 2 + SDFGI enabled — the tag has not been moved to the pmndrs stack yet, so fresh toolchain installs still bootstrap the SDFGI/FSR driver/template). Branch and tag share the simple name but are different commits — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate; the bootstrap downloads the tag (lightweight, so `git ls-remote` shows the commit directly) |
+| patch stack repo | local branch `4.8-beta5` (**repository default branch**; `origin/4.8-beta5` is still `4c28382482` because the new commits are not pushed yet): pmndrs milestone-1 stack commit `d8b3d583ae`, docs tips above it (`70cc14782e` is HEAD); tag `4.8-beta5` = `529407b9fc` (last **tagged** engine tip: FSR 1/FSR 2 + SDFGI enabled — the tag has not been moved to the pmndrs stack yet, so fresh toolchain installs still bootstrap the SDFGI/FSR driver/template). The **first-class pmndrs scaling-mode change** (2026-11-27 ~21:43-21:54) is regenerated into `patches/` and **not committed yet**: `patches/0005-engine-renderer-patches.patch` (`+174/−41`) and `patches/layers/0005-engine-renderer-patches.files` (`+6` paths → 156) are modified on top of `70cc14782e`. Branch and tag share the simple name but are different commits — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate; the bootstrap downloads the tag (lightweight, so `git ls-remote` shows the commit directly) |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
-| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes (46 modified files + 3 new `effects/pmndrs_upscaler*` files)**. Volatile and not pushed; the changes are captured in `patches/` (regenerated 2026-11-27 20:50: `0004` `+247/−21` lines, `0005` `+1288/−32` lines, 3 new files listed in `patches/layers/0005-engine-renderer-patches.files`), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
-| patch round-trip | 2026-11-27 20:50: applying the full regenerated stack to a pristine `67421f36e5` checkout (`/tmp/applytest`) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (`0001` 508,662 B, `0002` 203,592 B, `0003` 45,856 B, `0004` 891,250 B, `0005` 5,926,711 B, `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B) |
+| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes and the first-class pmndrs scaling mode (52 modified files + 3 new `effects/pmndrs_upscaler*` files)**. Volatile and not pushed; the pmndrs milestone-1 part is committed on the repo branch (`d8b3d583ae`) and the scaling-mode delta is captured in the working `patches/` (regenerated 2026-11-27 ~21:55), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
+| patch round-trip | 2026-11-27 ~21:55: applying the full regenerated stack (committed milestone 1 + the first-class scaling-mode delta) to a pristine `67421f36e5` checkout (`/tmp/applytest`, 1,784 staged paths) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (`0001` 508,662 B, `0002` 203,592 B, `0003` 45,856 B, `0004` 891,250 B, `0005` 5,936,829 B, `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B; the `0005` layer list is now 156 paths) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
-| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta + the current stack, **synced from `/tmp/godot48` before the 20:47 Grit template builds** (raw-WGSL/pmndrs files on disk 20:31-20:45; the 20:47 export log compiles `effects/pmndrs_upscaler.cpp` from it) |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.582d61902`, binary built 2026-11-27 20:49 and staged 20:50:47; `Contents/MacOS/Godot` is 110,945,360 B, sha256 `a0dfe562…`. `Fast_Godot_4.8-macos.zip` written 20:50. Native editor build log `/tmp/editor_build_final.log` ends with `scons: done building targets.` |
-| installed editor | `~/Applications/Fast_Godot_4.8.app` is **updated to the same binary** (mtime 20:50:47, sha256 `a0dfe562…`) — it now matches the staged build |
-| web template | rebuilt 2026-11-27 20:47 by the Grit export from the synced toolchain engine source: `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` (written 20:50; `godot.wasm` dated 20:47, 50,466,266 B). Template wasm sha256 `2ee766ad…`, zip sha256 `97219b4b…`; it contains the raw-WGSL path + pmndrs spatial effect (the `[PMNDRS] … running` log string) |
-| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — TPS demo HTML5 Fast **Forward+** export written 2026-11-27 20:47:38 with `rendering/scaling_3d/pmndrs_spatial=true` and render scale 0.667; `index.wasm` sha256 `2ee766ad…` matches the 20:47 template, `index.pck` sha256 `818700c6…`. A/B copies kept at `/tmp/site-pmndrs` (setting on, same pck) and `/tmp/site-fsr1` (setting off, pck `9e0ad85c…`, same wasm). Hard-reload browsers to pick it up |
-| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` was **refreshed 2026-11-27 20:51** for this build (editor sha256 `a0dfe562…`, template zip sha256 `97219b4b…`, raw-WGSL + pmndrs milestone-1 section) — it now matches the binaries |
+| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta + the current stack, **synced from `/tmp/godot48` before the 21:43 web build / 21:53 export** (the scaling-mode plumbing files are on disk 21:41:08-21:42:13) |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.582d61902`, binary built 2026-11-27 21:47 (`/tmp/mode_impl_macos_build.log`: `scons: done building targets.`, 3m11s), staged 21:49:34; `Contents/MacOS/Godot` is 110,961,808 B, sha256 `be477327…`. `Fast_Godot_4.8-macos.zip` written 21:49. |
+| installed editor | `~/Applications/Fast_Godot_4.8.app` is **updated to the same binary** (mtime 21:49:34, sha256 `be477327…`) — it now matches the staged build |
+| web template | rebuilt 2026-11-27 21:53 (web build 21:43: `/tmp/mode_impl_web_build.log` `scons: done building targets.`, 1m58.8s) and packaged by the 21:53 Grit export: `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` (written 21:56; `godot.wasm` dated 21:53, 50,470,376 B). Template wasm sha256 `3b25ba0b…`, zip sha256 `076dad47…`; it contains the raw-WGSL path, the pmndrs spatial effect and Viewport mode 6 (`[PMNDRS] … running` string) |
+| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — TPS demo HTML5 Fast **Forward+** export written 2026-11-27 21:53:27 from `/tmp/site-mode`: `index.wasm` 50,470,376 B sha256 `3b25ba0b…` (same as the template), `index.pck` 987,358,704 B. This is the first-class-mode build used for the live settings-button verification (default selection FSR1; the UI switches to pmndrs live). Hard-reload browsers to pick it up |
+| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` was **refreshed 2026-11-27 21:56:23** for this build (editor sha256 `be477327…`, template zip sha256 `076dad47…`, first-class pmndrs scaling-mode section) — it now matches the binaries |
 | source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before the removal can no longer provision a fresh toolchain |
 
 ## 4.8 layer map
@@ -184,8 +192,15 @@ already have a toolchain are unaffected).
    shared private `_shader_register()`, non-pure
    `RenderingDeviceDriver::shader_create_from_wgsl()` default-failing hook,
    `SUPPORTS_RAW_WGSL_COMPUTE` feature), the `RendererRD::PmndrsSpatial` effect
-   (new `effects/pmndrs_upscaler{,_wgsl}.{h,cpp}` files) and the opt-in
-   `rendering/scaling_3d/pmndrs_spatial` setting/selection in the FSR1 slot.
+   (new `effects/pmndrs_upscaler{,_wgsl}.{h,cpp}` files) and the **first-class
+   pmndrs scaling mode**: `Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` and
+   `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6 (appended after
+   `SCALING_3D_MODE_NEAREST`, so pre-existing values are unchanged and `*_MAX`
+   is 7), the `rendering/scaling_3d/mode` hint `pmndrs (Spatial - Fast):6`, the
+   `doc/classes/{Viewport,RenderingServer}.xml` enum docs, the Forward+-only
+   guard + spatial fallback semantics in `renderer_viewport.cpp`, and mode-6 →
+   PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`.
+   The old `rendering/scaling_3d/pmndrs_spatial` bool setting was removed.
 6. `0006-thirdparty-vendored` — Tint + SPIRV-Tools.
 7. `0007-tools-fixtures-docs` — tools/, toolchain, test_project, docs.
 8. `0099-misc`.
@@ -245,7 +260,8 @@ Consequences:
   `529407b9fc`, the SDFGI-enabling engine tip (the FSR/SDFGI fixes at
   `f799881f28` and the Forward+/MSAA/TAA fix at `b81f3de2c1` are ancestors); the
   branch is above it (`d8b3d583ae` is the pmndrs milestone-1 stack commit, plus
-  docs-refresh commits). So new toolchains build
+  docs-refresh commits, plus the uncommitted first-class scaling-mode patch
+  delta). So new toolchains build
   the SDFGI/FSR/Forward+ driver/template and read the self-contained `patches/`
   bundle. Move the tag again when engine-side fixes land; docs commits after a
   move sit on the branch above it, and editor-only changes don't matter for
@@ -266,11 +282,13 @@ scons platform=macos arch=arm64 target=editor \
 ```
 The current 4.8 build tree is a **volatile linked git worktree of this repo at
 `/tmp/godot48`** (`git worktree list` shows it; branch `port48`, HEAD
-`582d619026` **plus uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes** — not
-pushed). Those changes were regenerated into `patches/*.patch` and committed on
-the repo branch (`b81f3de2c1` MSAA/TAA, `f799881f28` FSR/SDFGI injection,
-`529407b9fc` SDFGI enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1), so
-the patch stack is the source of truth. Ancestors:
+`582d619026` **plus uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes and the
+first-class pmndrs scaling mode** — not pushed). Those engine changes were
+regenerated into `patches/*.patch` and committed on the repo branch
+(`b81f3de2c1` MSAA/TAA, `f799881f28` FSR/SDFGI injection, `529407b9fc` SDFGI
+enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1); the first-class
+scaling-mode delta is in the working `patches/` and **not committed yet**, so the
+patch stack is the source of truth. Ancestors:
 bundle-lock bootstrap `582d619026`, patches/ layout `cdc0907bf6`, ring hardening
 `9267990dcd`, source bootstrap `130ed7f48d`, MSAA mitigation `a495fc3e93`,
 pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
@@ -278,15 +296,16 @@ pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
 
 Staged build (gitignored): `out/editor-staging/`
 - `Fast_Godot_4.8.app` (`4.8.beta.custom_build.582d61902`, Fast Godot icon,
-  ad-hoc signed; binary built 2026-11-27 20:49, staged 20:50:47) and
-  `Fast_Godot_4.8-macos.zip` (written 20:50 from the same binary)
-- `godot.web.template_release.wasm32.nothreads.zip` (rebuilt 2026-11-27 20:47
-  from the synced toolchain engine source with the raw-WGSL + pmndrs stack;
-  written 20:50; its `godot.wasm` sha256 is the one both A/B site exports use)
-- `Fast_Godot_4.8_BUILD.txt` (refreshed 20:51 for this build; describes the
-  raw-WGSL path and pmndrs milestone 1 etc.)
+  ad-hoc signed; binary built 2026-11-27 21:47, staged 21:49:34) and
+  `Fast_Godot_4.8-macos.zip` (written 21:49 from the same binary)
+- `godot.web.template_release.wasm32.nothreads.zip` (rebuilt 2026-11-27 21:53
+  from the synced toolchain engine source with the raw-WGSL + pmndrs +
+  first-class-mode stack; written 21:56; its `godot.wasm` sha256 `3b25ba0b…` is
+  the one the site export runs)
+- `Fast_Godot_4.8_BUILD.txt` (refreshed 21:56 for this build; describes the
+  raw-WGSL path, pmndrs milestone 1 and the first-class scaling mode)
 The launchable install `~/Applications/Fast_Godot_4.8.app` is **updated to the
-same binary** (sha256 `a0dfe562…`).
+same binary** (sha256 `be477327…`).
 Note: the app folder's mtime can read like an old timestamp — use
 `Contents/MacOS/Godot` mtime/version.
 
@@ -311,10 +330,13 @@ it boots at 59-60 fps with 0 GPU validation errors. The SDFGI verification
 export (volumetric fog off) completed 2026-11-27 17:17 — its log bakes the
 `Sdfgi*ShaderRD` WebGPU caches — and its browser run at 17:19 reported 60 fps
 with 0 GPU validation errors and 0 shader errors (throwaway harness under
-`/tmp/node-test/`). The current site export is the pmndrs milestone-1 A/B pair:
-`/tmp/site-pmndrs` (setting on) and `/tmp/site-fsr1` (setting off), both written
-20:47 from the same Grit template; the Web Server site folder holds the
-setting-on export. See the pmndrs milestone-1 section for those runs.
+`/tmp/node-test/`). The current site export is the first-class pmndrs
+scaling-mode build: exported 2026-11-27 21:53 (`/tmp/export_mode.log`, 227 s)
+into `/tmp/site-mode` and copied to the Web Server site folder at 21:53:27 —
+wasm sha256 `3b25ba0b…`, pck 987,358,704 B. It is the build used for the live
+TPS settings-button verification (see the milestone-1 section). The earlier
+20:47 A/B (`/tmp/site-pmndrs` with the old bool setting on, `/tmp/site-fsr1`
+with it off) verified the effect itself before it became a scaling mode.
 
 ### Browser verification recipe (Forward+)
 
@@ -332,16 +354,20 @@ setting-on export. See the pmndrs milestone-1 section for those runs.
    volumetric fog off and the GI type set to SDFGI). Enabling a setting persists
    it in the browser's `user://` config, which is why a previously-saved MSAA or
    fog setting can change what a plain reload runs.
-6. To exercise the **pmndrs spatial upscaler**, export with
-   `rendering/scaling_3d/mode=fsr`, `rendering/scaling_3d/scale=0.667` and
-   `rendering/scaling_3d/pmndrs_spatial=true` in the project (it is a project
-   setting, not in the demo UI), then expect the one-time lines
-   `[PMNDRS] spatial upscaler active (EASU+RCAS, raw WGSL)` and
+6. To exercise the **pmndrs spatial upscaler**, use the TPS **Settings** screen:
+   **Resolution Scale Filter → "pmndrs Spatial" → Apply**, then PLAY. The
+   resolution scale must be below Native (a spatial upscaler at scale 1.0 is
+   internally switched to mode OFF, so nothing runs). Expect the one-time
+   `[PMNDRS] spatial upscaler active (EASU+RCAS, raw WGSL)` line and
    `[PMNDRS] spatial upscaler running (EASU+RCAS) 640x360 -> 960x540, 120x68
-   groups` at 960x540, plus the usual 0 errors (verified 2026-11-27
-   20:48-20:49; harness `/tmp/node-test/pmndrs_spatial_test.js`). With the
-   setting `false`, only the `active` line appears and the FSR1 path runs —
-   compare `/tmp/pmndrs2_console.log` with `/tmp/fsr1b_console.log`.
+   groups` at 960x540, plus the usual 0 validation errors. The default FSR1
+   selection on the same build shows only the `active` line (no `running` line).
+   Verified 2026-11-27 21:54 with `/tmp/node-test/tps_pmndrs_button.js`; logs
+   `/tmp/pmndrs_button_console.log` and `/tmp/mode_fsr1_baseline_console.log`,
+   screenshot of the screen `/tmp/pmndrs_button_settings.png`. The button is
+   demo-side code (not in the patch stack) and only appears when the web
+   rendering driver is `webgpu`. At project level the same mode is
+   `rendering/scaling_3d/mode=6` (`pmndrs (Spatial - Fast)`).
 
 Grit build performance/cancel fixes in the 4.8 stack:
 - host `tint_convert_cli` cached under `$toolchain/tint-cli-cache`
@@ -477,16 +503,17 @@ WebGPU shaders are compiled at runtime (the offline bake uses the host's feature
 set, so the WebGPU-gated defines do not match the baked cache) and are then
 cached for the session; this affects startup, not the frame rate.
 
-The FSR1 slot can instead run the **pmndrs spatial upscaler** (milestone 1) via
-the opt-in `rendering/scaling_3d/pmndrs_spatial` setting — see the pmndrs
-milestone-1 section below.
+The first-class **`pmndrs Spatial`** scaling mode (mode 6) runs the **pmndrs
+spatial upscaler** (milestone 1) in the same spatial-upscale slot; mode 1 is
+real AMD FSR 1 again — see the pmndrs milestone-1 section below.
 
 ## pmndrs/upscaler spatial upscaler on WebGPU (milestone 1, 2026-11-27)
 
 Milestone 1 is **implemented and browser-verified**: the pmndrs spatial path
 (EASU → RCAS) runs as hand-written WGSL compute on the WebGPU device through a
-new raw-WGSL RenderingDevice path (no SPIR-V, no Tint), selected by an opt-in
-project setting in the FSR1 slot. The design/spec docs are
+new raw-WGSL RenderingDevice path (no SPIR-V, no Tint), selected by the
+first-class `Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` scaling mode (6) in the
+spatial-upscaler slot. The design/spec docs are
 `WGSL_COMPUTE_PATH.md` (driver/RD API as built) and
 `PMNDRS_UPSCALER_SPATIAL.md` (vendored WGSL provenance, constants layout,
 per-pass bindings, integration plan).
@@ -523,67 +550,108 @@ per-pass bindings, integration plan).
   (EASU+RCAS, raw WGSL)` when the effect is available, and `[PMNDRS] spatial
   upscaler running (EASU+RCAS) WxH -> WxH, NxM groups` the first time it
   actually upscales.
-- **Setting + selection** (layer `0005`: `rendering_server.cpp`,
-  `renderer_scene_render_rd.{cpp,h}`): new opt-in project setting
-  `rendering/scaling_3d/pmndrs_spatial` (bool, default `false`, next to
-  `fsr_sharpness`). When the viewport scaling mode is FSR and the setting is on
-  and the effect reports itself available, the FSR1 slot runs PmndrsSpatial;
-  otherwise RendererRD::FSR1 runs unchanged (FSR2/TAA/bilinear untouched). The
-  effect object is only created when the device has storage textures and
-  `SUPPORTS_RAW_WGSL_COMPUTE`, so other/native drivers are inert; requesting it
-  there logs a one-time warning and falls back to FSR1. Sharpness reuses
-  `rendering/scaling_3d/fsr_sharpness` with pmndrs' `s = 1 - x/2` mapping, and
-  the destination must be a storage-capable RGBA16F texture (otherwise the
-  effect warns once and skips the frame).
-- **Patch bookkeeping**: patch-file line deltas `0004` +247/−21, `0005`
-  +1288/−32; the `0005` layer list gained the three new effect files and
-  `renderer_scene_render_rd.h`. `tools/make-patches.sh` now marks untracked
-  layer-listed files intent-to-add (`git add -N -f`) so new files (including
-  `*.gen.*`-ignored names) land in the patches.
+- **First-class scaling mode + selection** (layer `0005`):
+  `Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` = 6 and
+  `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6, appended after
+  `SCALING_3D_MODE_NEAREST` so all pre-existing integer values are unchanged
+  (`*_MAX` is now 7); the `RenderingServer` enum is bound, the `Viewport`
+  property hint shows `pmndrs (Spatial - Fast):6`, and both enums are documented
+  in `doc/classes/{Viewport,RenderingServer}.xml`. The old
+  `rendering/scaling_3d/pmndrs_spatial` bool setting was **removed** — no dual
+  control: mode 1 is real AMD FSR1 again, mode 6 is pmndrs.
+  `renderer_scene_render_rd.cpp` selects PmndrsSpatial for mode 6 when the
+  effect reports available, otherwise warns once and renders the slot through
+  FSR1; `renderer_viewport.cpp` enforces the Forward+-only guard in the
+  `Viewport` setter ("pmndrs spatial 3D scaling is only available when using
+  the Forward+ renderer"), and the existing spatial fallbacks apply in the
+  render-buffer config: render scale 1.0 → internally mode OFF (nothing runs),
+  scale > 1.0 → bilinear, `gl_compatibility` → bilinear (generic
+  compatibility fallback), upscaler unavailable → bilinear. The effect object
+  is only created when the device has storage textures and
+  `SUPPORTS_RAW_WGSL_COMPUTE`, so non-WebGPU RD drivers never instantiate it.
+  Sharpness reuses `rendering/scaling_3d/fsr_sharpness` with pmndrs'
+  `s = 1 - x/2` mapping; the destination must be a storage-capable RGBA16F
+  texture (otherwise the effect warns once and skips the frame).
+- **TPS settings-screen button** (external test project, not in this repo): the
+  Settings screen's "Resolution Scale Filter" row gained a **"pmndrs Spatial"**
+  button between "AMD FSR 1.0" and "AMD FSR 2.2" (the MetalFX buttons are hidden
+  on non-Metal platforms). It is hidden unless
+  `RenderingServer.get_current_rendering_driver_name() == "webgpu"`, restores
+  from the saved `user://` settings, and **Apply** switches
+  `window.scaling_3d_mode` live (no restart). Screenshot:
+  `/tmp/pmndrs_button_settings.png`; harness
+  `/tmp/node-test/tps_pmndrs_button.js`.
+- **Patch bookkeeping**: the committed milestone-1 stack (`d8b3d583ae`) was
+  `0004` +247/−21 and `0005` +1288/−32 patch-file lines (three new
+  `effects/pmndrs_upscaler*` files plus `renderer_scene_render_rd.h` in the
+  `0005` layer list). The uncommitted first-class-mode delta adds `0005`
+  +174/−41 and **six existing paths** to the `0005` layer list (150 → 156):
+  `scene/main/viewport.{h,cpp}`, `servers/rendering/rendering_server_enums.h`,
+  `servers/rendering/storage/render_scene_buffers.cpp`,
+  `doc/classes/{Viewport,RenderingServer}.xml`. `tools/make-patches.sh` marks
+  untracked layer-listed files intent-to-add (`git add -N -f`) so new files
+  (including `*.gen.*`-ignored names) land in the patches.
 
 ### Verification (2026-11-27)
 
-- **Builds**: web/Grit template rebuilt from the synced toolchain engine source
-  (`/tmp/export_pmndrs2.log` compiles `effects/pmndrs_upscaler.cpp` in the
-  template build); template `godot.wasm` 50,466,266 B, sha256 `2ee766ad…`.
-  Native editor build log `/tmp/editor_build_final.log` ends with
-  `scons: done building targets.`; staged/installed editor sha256 `a0dfe562…`.
-- **Exports** (both 2026-11-27 20:47, same template wasm): `/tmp/site-pmndrs`
-  (setting on; also the copy installed in the Godot Web Server site folder,
-  pck sha256 `818700c6…`) and `/tmp/site-fsr1` (setting off, pck sha256
-  `9e0ad85c…`).
-- **Browser harness**: `/tmp/node-test/pmndrs_spatial_test.js` (invoked as
-  `PORT=<port> OUT=/tmp/pmndrs2 node /tmp/node-test/pmndrs_spatial_test.js`,
-  and again with `OUT=/tmp/fsr1b` for the setting-off export) — Chrome for
-  Testing 158.0.8127.88/Dawn, headless, 960×540, TPS demo, Forward+, FSR mode,
-  render scale 0.667, volumetric fog off. Logs `/tmp/pmndrs2_console.log` and
-  `/tmp/fsr1b_console.log`; screenshots `/tmp/pmndrs2_game1.png` and
-  `/tmp/fsr1b_game1.png`.
-- **Setting on**: `[PMNDRS] spatial upscaler running (EASU+RCAS) 640x360 ->
-  960x540, 120x68 groups`; `[PERF] fps=59-60 draws/f≈5.5-5.7k RingOF=0`; **0**
-  `GPUValidationError`, **0** SPIR-V/Tint errors, no FSR fallback.
-- **Setting off** (same template): only the `[PMNDRS] … active` availability
-  line (the class exists), **no** `running` line, FSR1 path; same 0 errors,
-  59-60 fps.
-- The two gameplay screenshots are near-identical; the pmndrs output has
-  slightly different sharpening than AMD FSR1.
-- **Round-trip**: the regenerated stack applies to a pristine `67421f36e5`
-  checkout and re-diffs byte-identically per layer (all 8 layers; see the
-  Environment snapshot).
+**First-class scaling mode (latest build, 21:43-21:56):**
+
+- **Builds/exports**: web template rebuilt 21:43
+  (`/tmp/mode_impl_web_build.log` → `scons: done building targets.`,
+  1m58.8s) and native editor 21:47 (`/tmp/mode_impl_macos_build.log` → done,
+  3m11s) from the synced toolchain engine source; TPS export at 21:53
+  (`/tmp/export_mode.log`, 227 s) → `/tmp/site-mode` and the Web Server site
+  folder (21:53:27). Site/template `index.wasm`: 50,470,376 B, sha256
+  `3b25ba0b…`; pck 987,358,704 B. Staged editor sha256 `be477327…`; template
+  zip sha256 `076dad47…`.
+- **Live TPS button run**: `/tmp/node-test/tps_pmndrs_button.js` (Chrome for
+  Testing 158.0.8127.88/Dawn, headless, 960×540, TPS Forward+, render scale
+  0.667, volumetric fog off) — SETTINGS → Resolution Scale Filter →
+  "pmndrs Spatial" → Apply → PLAY:
+  `[PMNDRS] spatial upscaler running (EASU+RCAS) 640x360 -> 960x540, 120x68
+  groups`; `[PERF] fps=59-60 draws/f≈5.7-5.8k RingOF=0`; **0**
+  `GPUValidationError`, **0** shader/SPIR-V errors, 0 FSR-fallback lines.
+  Log `/tmp/pmndrs_button_console.log`; screenshots
+  `/tmp/pmndrs_button_settings.png` (button visible) and
+  `/tmp/pmndrs_button_game1.png`.
+- **Default FSR1 on the same build** (fresh profile): only the
+  `[PMNDRS] spatial upscaler active` availability line, **no** `running` line,
+  0 errors, 59-60 fps — `/tmp/mode_fsr1_baseline_console.log`.
+
+**Underlying effect A/B (first verification, 20:48-20:49, before the scaling
+mode; kept as history):** `/tmp/node-test/pmndrs_spatial_test.js` with the old
+bool setting on/off produced the same `[PMNDRS] … running 640x360 -> 960x540,
+120x68 groups` line, 59-60 fps and 0 errors, with near-identical gameplay
+screenshots (pmndrs slightly different sharpening than AMD FSR1); logs
+`/tmp/pmndrs2_console.log` and `/tmp/fsr1b_console.log`, screenshots
+`/tmp/pmndrs2_game1.png` and `/tmp/fsr1b_game1.png`.
+
+**Round-trip**: the regenerated stack (committed milestone 1 + the uncommitted
+scaling-mode delta) applies to a pristine `67421f36e5` checkout
+(`/tmp/applytest`) and re-diffs byte-identically per layer — all 8 layers,
+`0005` = 5,936,829 B, `0005` layer list 156 paths (see the Environment
+snapshot).
 
 ### Remaining limits / next steps
 
 - **Spatial only**: no temporal history, jitter, depth/velocity, exposure or
   shading-change; the temporal path is milestone 2 (see the plan section
   below).
-- **Post-tonemap placement**: the effect lives in the FSR1 slot (display-referred
-  RGBA16F, sRGB-encoded SDR) while upstream documents the spatial path for
-  pre-tonemap linear HDR; tone-mapping A/B is still to be done.
+- **Post-tonemap placement**: the effect lives in the spatial-upscaler slot
+  (display-referred RGBA16F, sRGB-encoded SDR) while upstream documents the
+  spatial path for pre-tonemap linear HDR; tone-mapping A/B is still to be done.
+- **Forward+ only**, and it needs a render scale below 1.0: at scale 1.0 the
+  viewport logic internally switches spatial modes OFF, so no upscale runs;
+  scale > 1.0 falls back to bilinear, `gl_compatibility` has the generic
+  bilinear fallback, setting mode 6 on another rendering method is rejected by
+  the `Viewport` setter with a warning (previous mode kept), and on non-WebGPU
+  RD drivers the renderer uses FSR1 in the same slot with one warning.
 - Sharpness reuses `fsr_sharpness` with `s = 1 - x/2`; upstream's
   `sharpness == 0` blit fallback is not implemented (RCAS always runs).
 - Alpha is filtered by EASU and passed through by RCAS (matches upstream);
   multiview/multi-viewport use is untested (the constants ring covers it, but
-  no test yet).
+  no test yet). The "pmndrs Spatial" button itself is TPS-demo code (external
+  test project), not part of the patch stack.
 - **Perf A/B against FSR1 on the fixed-camera harness has not been run yet**
   (milestone 3); fps figures above are VSync-capped gameplay numbers.
 - FSR1 remains the fallback everywhere the effect is unavailable; the AMD FSR2
@@ -643,9 +711,10 @@ Why it is promising (from the repo's README, engine contract and architecture do
    [engine contract](https://github.com/pmndrs/upscaler/blob/main/docs/engine-contract.md)
    is the spec; `examples/webgpu/hello` is the executable reference.
 4. **Wire into the renderer. — DONE (milestone 1).** The spatial effect is an
-   alternative `SpatialUpscaler` in the FSR1 slot
-   (`renderer_scene_render_rd.cpp`, setting `rendering/scaling_3d/pmndrs_spatial`);
-   the AMD FSR1 effect stays as the fallback. The FSR2 path is untouched.
+   alternative `SpatialUpscaler` selected by
+   `Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` (mode 6) in
+   `renderer_scene_render_rd.cpp`; the AMD FSR1 effect stays as the fallback.
+   The FSR2 path is untouched.
 5. **Make the core the single jitter source. — TODO (milestone 2.)** `core.beginFrame()`
    returns this frame's offset (Halton sequence, render-pixel units, x right/y down;
    apply as `clip.x += (-2x/renderWidth)*clip.w`, `clip.y +=
@@ -676,10 +745,11 @@ Why it is promising (from the repo's README, engine contract and architecture do
 ### Milestones
 
 1. **Spatial path first** (`upscaleSpatial`, EASU/RCAS WGSL) — **DONE
-   (2026-11-27)**: it runs in the FSR1 slot behind
-   `rendering/scaling_3d/pmndrs_spatial`, browser-verified with 0 validation
-   errors and near-identical output to FSR1 (see the milestone-1 section). This
-   also validated the raw-WGSL pipeline path with the smallest pass graph.
+   (2026-11-27)**: it runs as the first-class `pmndrs Spatial` scaling mode
+   (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` = 6), browser-verified live from
+   the TPS settings button at 21:54 with 0 validation errors and near-identical
+   output to FSR1 (see the milestone-1 section). This also validated the
+   raw-WGSL pipeline path with the smallest pass graph.
 2. **Temporal path — NEXT (milestone 2)**: reconstructed-depth/dilate, exposure,
    shading-change, accumulate, RCAS, guides; wire the core jitter and velocity;
    A/B against the current FSR2 for ghosting/smearing on the TPS level. The
@@ -891,22 +961,26 @@ this file's history.
     records `WGShader::sampler_binding_types` and enforces it at creation and in
     cross-shader rebinds. TAA's RG16F previous-velocity buffer (no WebGPU storage
     format) was changed to RGBA16F. Both re-verified with 0 validation errors.
-12. The Forward+ export was verified with the editor/template built from
-    `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
+12. The Forward+ / pmndrs export was verified with the editor/template built
+    from `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
     captured in the regenerated patch stack (tag `529407b9fc` is still the last
     tagged engine tip and what fresh installs bootstrap from; the pmndrs
-    milestone-1 stack is committed on the branch as `d8b3d583ae`, but the tag
-    has not been moved to it yet). The staged editor reports
-    `4.8.beta.custom_build.582d61902` (built 2026-11-27 20:49); the web template
-    was rebuilt 20:47, and both A/B site exports written 20:47 run that
-    template's wasm byte-for-byte. If a distinct version stamp is wanted,
-    commit the stack changes in the build tree and rebuild (see the
+    milestone-1 stack is committed on the branch as `d8b3d583ae` and the
+    first-class scaling mode is in the working `patches/`, uncommitted; the tag
+    has not been moved to either yet). The staged editor reports
+    `4.8.beta.custom_build.582d61902` (built 2026-11-27 21:47); the web template
+    was rebuilt 21:53, and the site export written 21:53:27 runs that
+    template's wasm byte-for-byte (`3b25ba0b…`). If a distinct version stamp is
+    wanted, commit the stack changes in the build tree and rebuild (see the
     `GODOT_VERSION_HASH_OVERRIDE`/`version_hash` note at the end).
 13. **WebGPU-native upscaler (pmndrs/upscaler) — milestone 1 DONE, milestone 2
     (temporal) TODO.** The spatial EASU+RCAS path runs on WebGPU through the new
-    raw-WGSL compute path, behind `rendering/scaling_3d/pmndrs_spatial`
-    (default off), and was browser-verified 2026-11-27 20:48-20:49 (0 errors,
-    59-60 fps) — see the milestone-1 section. Next: the temporal path
+    raw-WGSL compute path as the first-class `pmndrs Spatial` scaling mode
+    (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` = 6; the old bool setting is
+    gone), selectable live from the TPS settings screen. Browser-verified
+    2026-11-27 21:54 from the demo button (0 validation errors, 59-60 fps; the
+    underlying effect was first verified 20:48-20:49) — see the milestone-1
+    section. Next: the temporal path
     (reconstruct/dilate, exposure, history/accumulate, jitter + velocity) per
     the plan section and `PMNDRS_UPSCALER_SPATIAL.md` §10; then a fixed-camera
     perf A/B against FSR1/FSR2 (milestone 3).
@@ -929,9 +1003,11 @@ this file's history.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
   installs download it. It was moved on 2026-11-27 to `529407b9fc` (SDFGI
   enabled); the branch is above it (`d8b3d583ae` = raw-WGSL path + pmndrs
-  milestone 1, plus docs commits). The tag is lightweight. It has **not** been
-  moved to the pmndrs stack yet: move it before relying on fresh installs for
-  the pmndrs spatial upscaler (`rendering/scaling_3d/pmndrs_spatial`).
+  milestone 1, plus docs commits, plus the uncommitted first-class
+  scaling-mode delta). The tag is lightweight. It has **not** been moved to the
+  pmndrs stack yet: move it (and push the branch) before relying on fresh
+  installs for the pmndrs spatial upscaler scaling mode (`pmndrs (Spatial -
+  Fast)` / `rendering/scaling_3d/mode=6`).
   First-use provisioning also needs system `git` on the machine.
 - Layout (2026-11-26): the patch stack became a **self-contained portable
   bundle in `patches/`** (patch files + `layers/` + `upstream.lock`, no version
@@ -948,11 +1024,14 @@ this file's history.
   also covers names matched by `.gitignore` (`*.gen.*` etc.). The intent-to-add
   entries live only in the source tree's index, not in the working tree. The
   pmndrs milestone 1 used this for the three new `effects/pmndrs_upscaler*`
-  files (plus `renderer_scene_render_rd.h` added to the `0005` list).
+  files (plus `renderer_scene_render_rd.h` added to the `0005` list); the
+  first-class scaling-mode change only added six **existing** paths to the
+  `0005` list (150 → 156), so no new file needed the intent-to-add path.
 - **Round-trip check after regenerating**: apply the full `patches/` bundle to a
   pristine checkout of the pinned commit and re-diff each layer with its
-  `layers/*.files` list; the 2026-11-27 pmndrs milestone-1 round trip is
-  byte-identical for all 8 layers (see the Environment snapshot).
+  `layers/*.files` list; the 2026-11-27 first-class-mode round trip is
+  byte-identical for all 8 layers (`0005` 5,936,829 B; see the Environment
+  snapshot).
 
 Verified 2026-11-26: copying **only** `patches/` + `tools/apply.sh` and applying
 them to a fresh Godot `67421f36e5` checkout reproduced all 16,064 worktree files
@@ -967,8 +1046,9 @@ with zero mismatches, and the moved tag archive contains
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
 - The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
   the pass-boundary ring flush, the white-box pack-key port, the raw-WGSL
-  compute path and the pmndrs spatial effect; re-apply the repo's
-  `patches/*.patch` files to a fresh checkout to reproduce it.
+  compute path, the pmndrs spatial effect and the first-class pmndrs scaling
+  mode; re-apply the repo's `patches/*.patch` files to a fresh checkout to
+  reproduce it.
 - Ring diagnostics: `rendering/webgpu/debug_frames` prints `passFlush=` and
   `ringOF=` per frame; `passFlush` is normal on heavy frames, `ringOF` must stay
   0 (it now means a single pass exceeded the whole ring).
@@ -985,7 +1065,10 @@ with zero mismatches, and the moved tag archive contains
   captures console output, clicks PLAY, and counts `GPUValidationError` lines.
   The pmndrs A/B uses `/tmp/node-test/pmndrs_spatial_test.js`
   (`PORT=… OUT=/tmp/pmndrs2 node …`; logs/screenshots `<OUT>_console.log`,
-  `<OUT>_menu.png`, `<OUT>_game1.png`, `<OUT>_game2.png`).
+  `<OUT>_menu.png`, `<OUT>_game1.png`, `<OUT>_game2.png`), and the
+  first-class-mode button run uses `/tmp/node-test/tps_pmndrs_button.js`
+  (SETTINGS → "pmndrs Spatial" → Apply → PLAY; screenshots
+  `<OUT>_settings.png`, `<OUT>_menu_after_apply.png`, `<OUT>_game1.png`).
   Kill old `python3 -m http.server` instances before testing: a stale server on a
   reused port will happily serve an old wasm build and produce confusing results.
 - **Site reload:** the Godot Web Server site folder is updated in place on every
@@ -993,7 +1076,10 @@ with zero mismatches, and the moved tag archive contains
   (Cmd+Shift+R) or use a fresh profile before judging a new export.
 - Demo graphics settings (MSAA/TAA/FSR mode, etc.) are saved into the browser's
   `user://` config by the TPS settings screen and persist across reloads — reset
-  them from the demo menu when comparing runs. `rendering/scaling_3d/pmndrs_spatial`
-  is **not** in the demo UI: it is a project setting, so switching the pmndrs
-  spatial path on/off needs a re-export (the 2026-11-27 A/B used two site
-  folders, `/tmp/site-pmndrs` and `/tmp/site-fsr1`).
+  them from the demo menu when comparing runs. The scaling filter is part of
+  that saved config: the demo's Settings → Resolution Scale Filter row now has
+  the **"pmndrs Spatial"** button (WebGPU only) and **Apply** switches the mode
+  live, so A/B runs can toggle it in the browser without a re-export; the TPS
+  `scale_filter` is stored as the `Viewport.Scaling3DMode` value. The current
+  site build is the first-class-mode export, so a plain reload returns to
+  whatever filter was last applied.

@@ -2,7 +2,8 @@
 
 Research + vendoring record for **milestone 1** of the pmndrs/upscaler WebGPU port:
 run the **spatial** upscaler (`upscaleSpatial`: EASU → RCAS) from Godot C++ on
-Dawn/WebGPU as a hand-written-WGSL compute effect, selected behind a setting
+Dawn/WebGPU as a hand-written-WGSL compute effect, selected as a first-class
+Viewport scaling mode (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL`, mode 6)
 instead of FSR1. Implementation-ready: everything the C++ effect needs is in
 this file; the upstream TypeScript is reference-only.
 
@@ -19,19 +20,33 @@ Source of truth: upstream commit above, read on 2026-11-27. This doc was
 verified against that tree (fingerprints, line numbers). Engine-side facts were
 verified against `/tmp/godot48` (HEAD `582d619026` + working-tree changes).
 
-**Status (2026-11-27): milestone 1 implemented and browser-verified.** The
-effect lives in `servers/rendering/renderer_rd/effects/pmndrs_upscaler.{h,cpp}`
-+ `pmndrs_upscaler_wgsl.h` (both WGSL modules embedded verbatim), selected by
-the opt-in project setting `rendering/scaling_3d/pmndrs_spatial` in the FSR1
-slot, running through the raw-WGSL RenderingDevice path
-(`docs/WGSL_COMPUTE_PATH.md` §11). Verified on the TPS Forward+ WebGPU export:
+**Status (2026-11-27): milestone 1 implemented, browser-verified, and now a
+first-class Viewport scaling mode.** The effect lives in
+`servers/rendering/renderer_rd/effects/pmndrs_upscaler.{h,cpp}` +
+`pmndrs_upscaler_wgsl.h` (both WGSL modules embedded verbatim), running through
+the raw-WGSL RenderingDevice path (`docs/WGSL_COMPUTE_PATH.md` §11). Selection
+is `Viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` (value
+6; `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` is the RSE
+counterpart) — a first-class mode appended after `SCALING_3D_MODE_NEAREST` so
+pre-existing values are unchanged (`*_MAX` = 7). There is **no bool project
+setting**: the earlier `rendering/scaling_3d/pmndrs_spatial` setting was removed,
+mode 1 is real AMD FSR1 again, and mode 6 is exposed as
+`rendering/scaling_3d/mode = "pmndrs (Spatial - Fast)"`. The TPS demo (external
+test project) has a dedicated **"pmndrs Spatial"** button in Settings →
+Resolution Scale Filter (WebGPU only, restores from the saved `user://` config,
+switches the mode live on Apply; the resolution scale must be below Native
+because spatial modes at scale 1.0 are internally switched OFF). Verified on the
+TPS Forward+ WebGPU export 2026-11-27 21:54 via that button:
 `[PMNDRS] spatial upscaler running (EASU+RCAS) 640x360 -> 960x540, 120x68
-groups`, ~60 fps, 0 GPU validation errors; same template with the setting off
-runs FSR1 unchanged. The spec below is kept as the port contract; deviations
-are limited to: the constants UBO is a 64-slot ring (not a single buffer), the
-`sharpness == 0` blit fallback was not implemented (RCAS runs at s=0 instead),
-the temporal bindings are stubbed as described, and the vendored WGSL is
-embedded as C++ strings rather than shipped as `.wgsl` assets.
+groups`, 59-60 fps, 0 GPU validation errors; the same build with the default
+FSR1 selection shows only the availability line and runs FSR1 with 0 errors.
+The spec below is kept as the port contract; as-built deviations: selection is
+a first-class scaling mode rather than the `fsr1_implementation` setting
+proposed in §9.1/§12 Q3 (the mode-6 enum is the answer to Q3), the constants UBO
+is a 64-slot ring (not a single buffer), the `sharpness == 0` blit fallback was
+not implemented (RCAS runs at s=0 instead), the temporal bindings are stubbed as
+described, and the vendored WGSL is embedded as C++ strings rather than shipped
+as `.wgsl` assets.
 
 ---
 
@@ -61,8 +76,9 @@ embedded as C++ strings rather than shipped as `.wgsl` assets.
    conflicts from the *pipeline layout* entries, so the storage-image bindings
    must be declared write-only in the layout or WebGPU pass validation can fail.
 6. **Milestone-1 placement is the existing FSR1 spatial-upscaler slot** in
-   `renderer_scene_render_rd.cpp` (post-tonemap, per view), behind a new
-   project setting. That slot already routes WebGPU's non-storage-capable render
+   `renderer_scene_render_rd.cpp` (post-tonemap, per view), selected by the new
+   first-class `Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` mode (6) instead of
+   FSR1. That slot already routes WebGPU's non-storage-capable render
    targets through a storage-capable `rgba16f` intermediate + blit, so the
    effect can write straight into a storage image.
 

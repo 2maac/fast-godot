@@ -148,3 +148,9 @@ servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
 servers/rendering/renderer_rd/environment/gi.cpp
 servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
 servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
+scene/main/viewport.h
+scene/main/viewport.cpp
+servers/rendering/rendering_server_enums.h
+servers/rendering/storage/render_scene_buffers.cpp
+doc/classes/Viewport.xml
+doc/classes/RenderingServer.xml
