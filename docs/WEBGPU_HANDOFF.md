@@ -1,12 +1,9 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
 Resume doc. Last updated 2026-11-27 ~13:30. **Forward+ and Forward Mobile both
-run on the WebGPU device.** The engine-side stack tip is `b81f3de2c1` (Forward+
-support + MSAA/TAA validation fixes); this handoff and the other repo docs sit in
-commits above it on branch `4.8-beta5`. The annotated `4.8-beta5` tag currently
-points at the first docs tip (tag object `078985f394` → commit `0265a6bf2f`), so
-fresh toolchain installs build the current driver/template; later docs commits
-sit above the tag (as before). Verify with
+run on the WebGPU device.** The patch stack tip is `f799881f28` (FSR 1/FSR 2 on
+WebGPU + the SDFGI geometry-injection fix); branch and tag `4.8-beta5` both point
+at it, so fresh toolchain installs build the current driver/template. Verify with
 `git ls-remote origin refs/tags/4.8-beta5`. `patches/` is a self-contained
 portable bundle (patch files + `layers/` + `upstream.lock`); the volatile build
 worktree is `/tmp/godot48` (HEAD `582d619026`) **with the Forward+/MSAA/TAA
@@ -94,8 +91,8 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` = `origin/4.8-beta5` | docs tip above `b81f3de2c1` | engine-side stack at `b81f3de2c1` (Forward+ + MSAA/TAA fixes); docs commits sit above it. Branch and tag share the simple name now (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
-| tag `4.8-beta5` | tag object `078985f394` → commit `0265a6bf2f` | release point, **moved 2026-11-27** after the Forward+ MSAA/TAA fixes so fresh toolchain installs fetch the current driver/template; docs commits after the move sit on the branch above it. Verify with `git ls-remote origin refs/tags/4.8-beta5` |
+| branch `4.8-beta5` = `origin/4.8-beta5` | `f799881f28` | patch stack tip (FSR 1/FSR 2 on WebGPU, SDFGI geometry-injection fix); branch and tag share the simple name now (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| tag `4.8-beta5` | `f799881f28` | release point, **moved 2026-11-27** after the FSR/SDFGI fixes so fresh toolchain installs fetch the current driver/template. Verify with `git ls-remote origin refs/tags/4.8-beta5` |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
 
@@ -113,7 +110,7 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch** (simple name, same as the tag); engine-side fixes at `b81f3de2c1` with docs above it; tag `4.8-beta5` = tag object `078985f394` → `0265a6bf2f` — moved 2026-11-27 after the Forward+ MSAA/TAA fixes, which is what the bootstrap downloads |
+| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch** (simple name, same as the tag); patch stack at `f799881f28`; tag `4.8-beta5` = `f799881f28` — moved 2026-11-27 after the FSR/SDFGI fixes, which is what the bootstrap downloads |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA changes**. Volatile and not pushed; the changes are captured in `patches/` (regenerated 2026-11-27), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
@@ -564,8 +561,7 @@ this file's history.
     format) was changed to RGBA16F. Both re-verified with 0 validation errors.
 12. The Forward+ export was verified with the editor/template built from
     `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
-    captured in the regenerated patch stack (engine fixes `b81f3de2c1`; tag
-    currently tag object `078985f394` → `0265a6bf2f`); the editor version string
+    captured in the regenerated patch stack (`f799881f28`; tag `f799881f28`); the editor version string
     is unchanged
     (`4.8.beta.custom_build.582d61902`). If a distinct version stamp is wanted,
     commit the stack changes in the build tree and rebuild (see the
@@ -588,7 +584,7 @@ this file's history.
   toolchains or reinstall from a current build.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
   installs download it. It was moved on 2026-11-27 to the Forward+ MSAA/TAA tip
-  (tag object `078985f394` → commit `0265a6bf2f`; engine fixes `b81f3de2c1`);
+  (commit `f799881f28`);
   move it again for later engine-side fixes.
   First-use provisioning also needs system `git` on the machine.
 - Layout (2026-11-26): the patch stack became a **self-contained portable

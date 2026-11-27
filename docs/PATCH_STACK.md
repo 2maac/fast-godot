@@ -32,7 +32,7 @@ accepts linked worktrees (e.g. `/tmp/godot48`, whose `.git` is a file) and runs
 on macOS's bash 3.2. Verified 2026-11-27 after the Forward+ work (including the later MSAA/TAA
 fixes): the regenerated stack applies cleanly to a fresh checkout of the pinned
 commit (`git worktree add --detach 67421f36e5` + `tools/apply.sh`). Current stack
-tip: `b81f3de2c1`, tag `4.8-beta5` = `a3ca29b5d3`.
+tip: `f799881f28` (tag `4.8-beta5`).
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,
