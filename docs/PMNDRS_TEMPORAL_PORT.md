@@ -1,7 +1,14 @@
 # pmndrs/upscaler temporal path — raw-WGSL port contract (Godot 4.8 / WebGPU)
 
-Status: research + implementation contract for milestone 2 of the pmndrs/upscaler port
-(the `temporal` path). Companion documents:
+> **STATUS (2026-11-28): IMPLEMENTED, THEN REVERTED — NOT SHIPPED.** The temporal
+> port was built and briefly shipped as Viewport scaling mode 7, then fully
+> removed from the engine after the owner's browser test showed severe ghosting.
+> This document is **archived research + contract for a future retry (milestone
+> 2b)**; nothing described here is in the current engine stack. See the banner
+> below for what was missing and the required follow-ups.
+
+Status: archived research + implementation contract for milestone 2 of the
+pmndrs/upscaler port (the `temporal` path). Companion documents:
 
 - `docs/PMNDRS_UPSCALER_SPATIAL.md` — milestone 1 (shipped): EASU + RCAS spatial path,
   the C++/RD integration pattern this document builds on.
@@ -22,65 +29,110 @@ exposure-reduction modules are shape-checked against the test's pinned expectati
 
 ---
 
-## Status (2026-11-28): implemented + browser-verified — first working slice
+## STATUS (2026-11-28): IMPLEMENTED, THEN REVERTED — NOT SHIPPED
 
-Milestone 2 is shipped as the **first-class Viewport scaling mode 7**
+> **The pmndrs temporal path was implemented as Viewport scaling mode 7,
+> exported and browser-verified in automation (0 validation errors, ~60 fps,
+> clean capture series) — and then fully removed from the engine the same day
+> after the owner tested it in a real browser and reported severe ghosting
+> ("the ghosting is terrible"). This document is kept as ARCHIVED RESEARCH for
+> a future retry; do not assume any code described here exists.**
+
+**What was implemented, then removed:** Viewport scaling mode 7
+(`Viewport.SCALING_3D_MODE_PMNDRS_TEMPORAL`, `*_MAX` briefly 8),
+`RendererRD::PmndrsTemporal` running pre-tonemap in the FSR2 slot inside
+`RenderForwardClustered`, 5 vendored WGSL modules from pmndrs/upscaler v0.6.0
+(`f6e52098…`), the per-viewport `PmndrsTemporalContext` (history/locks/exposure
+ping-pong, dilated depth/motion/masks, atomic depth-scatter buffers), the
+raw-WGSL driver extensions it needed (sampled-texture sample-type auto-layout
+and depth-only aspect views), and a TPS settings-screen "pmndrs Temporal"
+button. All of it — mode 7, the effect, its WGSL and the driver extensions —
+was reverted; `SCALING_3D_MODE_MAX` is 7 again and the stack is spatial-only
+mode 6. The engine seam research remains in
+`GODOT_TEMPORAL_UPSCALER_INTEGRATION.md`.
+
+**Why it ghosted / what the first slice was missing:**
+
+- no **reactive mask** → transparent/particle ghosting;
+- no **shading-change detector** → animated-lighting ghosting;
+- **sky/background ghosting** under camera rotation (those pixels have zero
+  motion vectors);
+- no **camera-cut reset signal** (history was reset only on render-buffer
+  reconfigure/resize/mode switch);
+- verification was automated still/motion captures only — **no human
+  Subjective review** before it was called done;
+- there was **no temporal A/B reference on WebGPU**: FSR 2 is not usable there
+  (B10G11R11 storage requirement), so the comparison never had a ground truth.
+
+**Follow-ups a future retry (milestone 2b) must cover:**
+
+1. reactive mask (bind `reactive` instead of a null RID);
+2. shading-change detector pass (the deferred `shading_change` module);
+3. camera-cut reset signal (detect a cut and reset history);
+4. deterministic jitter/velocity sign-scale validation (do not rely on clean
+   captures alone);
+5. a ground-truth A/B harness — a captured temporal reference sequence, since
+   FSR2 is unavailable on WebGPU — plus human Subjective ghosting review before
+   shipping;
+6. the remaining deferred passes/limits recorded below (every-texel exposure,
+   moments, debug view, linear-depth mode, split-frame, `sharpness <= 0` blit
+   fallback) and multi-view/XR support.
+
+### Historical as-built notes (reverted implementation — no longer in the tree)
+
+These notes describe the slice as it existed immediately before the revert and
+are kept only because they save a retry work. **Do not treat them as current.**
+
+The implemented slice used the **first-class Viewport scaling mode 7**
 (`Viewport.SCALING_3D_MODE_PMNDRS_TEMPORAL` /
 `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL` = 7, appended after
-mode 6 so existing values are unchanged; `*_MAX` is now 8), classified
-`VIEWPORT_SCALING_3D_TYPE_TEMPORAL`, with the mode hint
-`pmndrs (Temporal - Slow):7`. It runs pre-tonemap in the FSR2 slot inside
-`RenderForwardClustered` through `RendererRD::PmndrsTemporal` and the engine
-seam documented in `GODOT_TEMPORAL_UPSCALER_INTEGRATION.md`. The effect and its
-5 vendored WGSL modules live in
-`servers/rendering/renderer_rd/effects/pmndrs_temporal{,_wgsl}.{h,cpp}`
-(pinned upstream `f6e52098edffb66e16298a30c53b4da37b4b7d7f`, MIT + AMD
-FidelityFX notices, per-file sha256).
+mode 6; `*_MAX` was 8), classified `VIEWPORT_SCALING_3D_TYPE_TEMPORAL`, hint
+`pmndrs (Temporal - Slow):7`. It ran pre-tonemap in the FSR2 slot inside
+`RenderForwardClustered` through `RendererRD::PmndrsTemporal` (seam in
+`GODOT_TEMPORAL_UPSCALER_INTEGRATION.md`) and the 5 vendored WGSL modules in
+`servers/rendering/renderer_rd/effects/pmndrs_temporal{,_wgsl}.{h,cpp}` (pinned
+upstream `f6e52098…`, MIT + AMD notices, per-file sha256).
 
-**Implemented passes:** `reconstruct_hardware` (3×3 depth dilate +
-`atomicMin` scatter), `depth_clip`, `exposure_taps` (internal 1×1 log-average
-eye adaptation), `accumulate` (jitter-aware Lanczos2 + Catmull-Rom history +
-YCoCg clamp + locks) and `rcas_temporal`.
+**Implemented passes:** `reconstruct_hardware` (3×3 depth dilate + `atomicMin`
+scatter), `depth_clip`, `exposure_taps` (internal 1×1 log-average eye
+adaptation), `accumulate` (jitter-aware Lanczos2 + Catmull-Rom history + YCoCg
+clamp + locks) and `rcas_temporal`.
 **Deferred with hooks:** `generate_reactive`, `shading_change`, every-texel
 exposure, debug view, linear-depth mode, moments, split-frame, and the
 `sharpness <= 0` blit fallback (RCAS always runs).
 
-**As-built deviations from this contract:**
+**As-built deviations from this contract (as they were):**
 
-- **Jitter ownership**: the effect does not own the jitter as §5.6/§2.6
-  proposed. The engine's Halton jitter is reused; the renderer passes
-  `scene_data->taa_jitter` / `prev_taa_jitter` × internal size × 0.5
-  (FSR2-style render pixels) and the effect converts to its x-right/y-down
-  convention as `(x, -y)`. `motionScale = (-1, -1)` for Godot's UV-delta
-  prev−cur velocity. Deterministic jitter-sign/shift validation remains a
-  recommended follow-up.
+- **Jitter ownership**: the effect did not own the jitter as §5.6/§2.6
+  proposed; the engine's Halton jitter was reused (`taa_jitter`/`prev_taa_jitter`
+  × internal size × 0.5) and the effect converted to its x-right/y-down
+  convention as `(x, -y)`; `motionScale = (-1, -1)`.
 - **Depth**: `reversed_depth = true` — the §5.6 step 6 statement in the
-  original contract was wrong; see the erratum below.
-- **Exposure**: taps exposure (internal 1×1 log-average) is used, not the
-  every-texel form; host `exposure` is an optional input (null RID in the TPS
-  v1 path because it has no auto-exposure).
-- **No reactive mask** on the WebGPU v1 path (`reactive = RID()`).
-- **Engine slot/context**: FSR2 slot inside `RenderForwardClustered` with a
-  per-render-buffers `PmndrsTemporalContext` (history/locks/exposure ping-pong,
-  dilated depth/motion/masks, atomic depth-scatter buffers), ~32 B/display-px +
-  ~28 B/render-px per viewport.
-- **Driver extensions**: raw-WGSL sampled-texture sample-type auto-layout and
-  depth-only aspect views were needed; they are documented in
-  `WGSL_COMPUTE_PATH.md` §12.
+  original contract was wrong; the erratum below is corrected and remains valid
+  for any retry.
+- **Exposure**: taps exposure (internal 1×1 log-average) was used, not the
+  every-texel form; host `exposure` was an optional null RID in the TPS path.
+- **No reactive mask** (`reactive = RID()`) — one of the ghosting causes.
+- **Engine slot/context**: FSR2 slot with a per-render-buffers
+  `PmndrsTemporalContext`, ~32 B/display-px + ~28 B/render-px per viewport.
+- **Driver extensions**: raw-WGSL sample-type auto-layout and depth-only aspect
+  views were needed; **both were reverted with the milestone**.
 
-**Verified 2026-11-28 00:28-00:35** on the TPS Forward+ WebGPU export: mode 7
-selected through the TPS settings screen logs `[PMNDRS] temporal upscaler
-running (reconstruct/clip/exposure/accumulate/RCAS) 640x360 -> 960x540, frame 0
-(reset)`, ~60 fps, 0 GPU validation/shader errors; strong-motion captures show
-no visible ghosting and the default FSR1 selection shows no temporal-running
-line. Evidence: `/tmp/temporal_run2_console.log`,
+**Automated verification before the revert (2026-11-28 00:28-00:35):** the TPS
+settings button logged `[PMNDRS] temporal upscaler running
+(reconstruct/clip/exposure/accumulate/RCAS) 640x360 -> 960x540, frame 0
+(reset)`, ~60 fps, 0 GPU validation/shader errors; the capture series looked
+clean to the automated checks. The **owner's real-browser test then showed
+severe ghosting**, which the automated captures did not catch. Evidence paths
+(historical): `/tmp/temporal_run2_console.log`,
 `/tmp/temporal_move_console.log`, `/tmp/fsr1_move_console.log`,
 `/tmp/ab_console.log`, `/tmp/temporal_run2_settings.png`,
 `/tmp/temporal_move_{still,move}*.png`, harnesses
 `/tmp/node-test/tps_pmndrs_temporal.js`, `tps_temporal_motion.js`,
-`tps_temporal_ab.js`. Known limitations (reactive/shading-change/sky ghosts,
-no camera-cut reset, single-view only, deferred passes) are listed in the
-milestone-2 section of `WEBGPU_HANDOFF.md`.
+`tps_temporal_ab.js`.
+
+The rest of this document (from §0 on) is the original research/contract; the
+§5.6 reversed-Z erratum remains a valid engine fact for a retry.
 
 ---
 

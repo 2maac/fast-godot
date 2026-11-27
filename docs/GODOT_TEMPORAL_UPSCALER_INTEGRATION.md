@@ -1,5 +1,16 @@
 # Temporal 3D upscaler integration guide (pmndrs temporal, Viewport scaling mode 7)
 
+> **STATUS (2026-11-28): IMPLEMENTED, THEN REVERTED — NOT SHIPPED.** Mode 7 and
+> the temporal effect were built, exported and browser-verified in automation,
+> then **fully removed from the engine** after the owner's real-browser test
+> showed severe ghosting. This document is **archived research** for a future
+> retry (milestone 2b); no mode-7/temporal code exists in the current stack.
+> The required retry follow-ups (reactive mask, shading-change detector,
+> camera-cut reset, deterministic jitter/velocity validation, ground-truth A/B
+> harness — FSR 2 is not usable on WebGPU — human Subjective review) are listed
+> in `PMNDRS_TEMPORAL_PORT.md` and in the `WEBGPU_HANDOFF.md` milestone-2
+> history section. The "As built" section below is **historical**.
+
 Engine-side integration contract for **milestone 2** of the pmndrs/upscaler port: a
 temporal upscaler that plugs in **where FSR2 does** in `RenderForwardClustered`, as a
 first-class `Viewport` scaling mode (`VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL`, value 7),
@@ -18,7 +29,7 @@ depends on a detail from it is marked **[port contract]**).
 | upstream | pmndrs/upscaler `f6e52098edffb66e16298a30c53b4da37b4b7d7f` (`v0.6.0`) |
 | existing milestone 1 | `docs/PMNDRS_UPSCALER_SPATIAL.md` (spatial EASU/RCAS, mode 6), `docs/WGSL_COMPUTE_PATH.md` (raw-WGSL RD path) |
 | FSR2 reference implementation | `thirdparty/amd-fsr2` wired in `servers/rendering/renderer_rd/effects/fsr2.{h,cpp}` + `render_forward_clustered.cpp` |
-| status | **implemented + browser-verified (2026-11-28)** — see **As built** below; the rest of this guide is the original design contract |
+| status | **implemented then REVERTED — NOT SHIPPED (2026-11-28)**; archived research for a future retry. The "As built" section below is historical |
 
 `file:line` refs are relative to the engine tree `/tmp/godot48` unless they name a
 workspace doc (`docs/...`). **The worktree is live**: parallel tasks are already landing
@@ -30,9 +41,13 @@ see §5.2). Line numbers in those files were re-verified against the worktree at
 
 ---
 
-## As built (2026-11-28)
+## Historical as-built (2026-11-28) — REVERTED, NOT SHIPPED
 
-Milestone 2 is **implemented, exported and browser-verified**. The implemented seam
+> The code described in this section was removed on 2026-11-28 after the
+> owner's browser test showed severe ghosting; it is kept only as a record for a
+> retry. Do not treat it as the current engine seam.
+
+Milestone 2 was **implemented, exported and browser-verified in automation** at the time. The implemented seam
 matches this guide's FSR2-slot proposal: mode 7
 (`Viewport.SCALING_3D_MODE_PMNDRS_TEMPORAL` /
 `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL` = 7, appended after
@@ -70,12 +85,15 @@ before tonemapping. See `WEBGPU_HANDOFF.md` (milestone-2 section) and
 - **No host exposure / reactive / guides inputs in v1**, and multiview/XR is
   unsupported (`view_count == 1`).
 
-**Known limitations** (also in the handoff): no reactive mask
-(transparent/particle ghosting), no shading-change detector (animated-lighting
-ghosting), sky/background ghosting under camera rotation (zero motion), no
-camera-cut reset signal (history resets only on render-buffer reconfigure/
-resize/mode switch), single-view only, and the deferred passes listed in
-`PMNDRS_TEMPORAL_PORT.md`. Verification evidence:
+**Known limitations — and the reason for the revert** (also in the handoff):
+no reactive mask (transparent/particle ghosting), no shading-change detector
+(animated-lighting ghosting), sky/background ghosting under camera rotation
+(zero motion), no camera-cut reset signal (history resets only on render-buffer
+reconfigure/resize/mode switch), single-view only, and the deferred passes
+listed in `PMNDRS_TEMPORAL_PORT.md`. The owner's real-browser test showed
+severe ghosting despite the clean automated captures, and the whole temporal
+path (mode 7 + effect + driver extensions) was removed rather than tuned. A
+retry must cover these limitations and add a human-A/B gate. Verification evidence:
 `/tmp/temporal_run2_console.log`, `/tmp/temporal_move_console.log`,
 `/tmp/fsr1_move_console.log`, `/tmp/ab_console.log`,
 `/tmp/temporal_run2_settings.png`, `/tmp/temporal_move_*.png`, harnesses

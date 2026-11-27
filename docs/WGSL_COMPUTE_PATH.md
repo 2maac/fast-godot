@@ -1140,7 +1140,15 @@ enum Features { ..., SUPPORTS_RAW_WGSL_COMPUTE };
 
 ---
 
-## 12. M2 raw-WGSL driver extensions (temporal path)
+## 12. M2 raw-WGSL driver extensions (HISTORICAL — REVERTED 2026-11-28)
+
+> **Status: not in the current driver.** These extensions were added for the
+> pmndrs temporal upscaler (milestone 2) and were removed again when that path
+> was reverted after severe ghosting in the owner's browser test. They are kept
+> here only as a record for a future retry; §11 is the current raw-WGSL API.
+
+### (historical) sample-type auto-layout and depth-only views
+ (temporal path)
 
 Milestone 2 (pmndrs temporal upscaler, `docs/PMNDRS_TEMPORAL_PORT.md`) needed three
 driver-side extensions on top of §11. They are implemented in
