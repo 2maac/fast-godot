@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; pmndrs milestone-1 stack commit `d8b3d583ae` + docs refreshes on the branch (tip `70cc14782e`), tag `529407b9fc` — the tag has not been moved to the pmndrs stack yet; the first-class pmndrs scaling-mode delta is uncommitted on top) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; pmndrs milestone-1 stack commit `d8b3d583ae` and first-class pmndrs scaling-mode commit `91a0a3e8e4` + docs refreshes on the branch, tag `529407b9fc` — the tag has not been moved to the pmndrs stack yet) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -47,17 +47,17 @@ scaling-mode change added six existing paths to `0005`
 `doc/classes/{Viewport,RenderingServer}.xml`), growing the layer to 156 paths.
 
 Verified 2026-11-27 ~21:55 for the first-class pmndrs scaling mode: the
-regenerated stack (committed milestone 1 `d8b3d583ae` + the uncommitted
-scaling-mode delta) applies cleanly to a fresh checkout of the pinned commit
+regenerated stack (milestone 1 `d8b3d583ae` + scaling mode `91a0a3e8e4`)
+applies cleanly to a fresh checkout of the pinned commit
 (`git worktree add --detach 67421f36e5` + `tools/apply.sh`) and re-diffing every
 layer with its `layers/*.files` list reproduces **all 8 `patches/*.patch` files
 byte-identically** (`/tmp/applytest` holds the applied tree, 1,784 staged paths;
 `0005` = 5,936,829 B). Patch deltas: the committed pmndrs milestone 1 was
-`0004` `+247/−21`, `0005` `+1288/−32`; the uncommitted scaling-mode change adds
-`0005` `+174/−41` and six paths. The regenerated patch files are **not committed
-yet**; the branch is local-only (not pushed) and tag `529407b9fc` still points at
-the SDFGI/FSR stack — the tag must be moved (and the branch pushed) to ship the
-pmndrs driver/template to fresh toolchain installs.
+`0004` `+247/−21`, `0005` `+1288/−32`; the first-class scaling mode adds
+`0005` `+174/−41` and six paths. Both are committed (`d8b3d583ae`,
+`91a0a3e8e4`); the branch is local-only (not pushed) and tag `529407b9fc` still
+points at the SDFGI/FSR stack — the tag must be moved (and the branch pushed) to
+ship the pmndrs driver/template to fresh toolchain installs.
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,

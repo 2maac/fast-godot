@@ -5,12 +5,11 @@ run on the WebGPU device, SDFGI is enabled on the WebGPU device, and
 pmndrs/upscaler milestone 1 is implemented, browser-verified, and now a
 first-class Viewport scaling mode.** The last committed engine tip is the tag
 `4.8-beta5` = `529407b9fc` (FSR 1/FSR 2 + SDFGI RGBA16F); the pmndrs milestone-1
-stack is committed on branch `4.8-beta5` as `d8b3d583ae` (2026-11-27), with docs
-refreshes above it (`70cc14782e` is the docs tip) — local commits, **not pushed
-yet** (`origin/4.8-beta5` is still at `4c28382482` until they are). The
-**first-class pmndrs scaling-mode change** (2026-11-27 ~21:43-21:54) is
-regenerated into `patches/` on top of that and is **not committed yet**. Branch
-and tag share the simple name but are different commits — use
+stack is committed on branch `4.8-beta5` as `d8b3d583ae` (2026-11-27), and the
+**first-class pmndrs Viewport scaling mode** (2026-11-27 ~21:43-21:54) is
+committed on top of it as `91a0a3e8e4` (with docs refreshes above that) — local
+commits, **not pushed yet** (`origin/4.8-beta5` is still at `4c28382482` until
+they are). Branch and tag share the simple name but are different commits — use
 `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the distinction matters.
 Fresh toolchain installs fetch the tag, i.e. the last committed
 driver/template. Verify with `git ls-remote origin refs/tags/4.8-beta5`.
@@ -122,7 +121,7 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` | `70cc14782e` | docs tip (HEAD): pmndrs milestone-1 stack commit `d8b3d583ae` (raw-WGSL path + pmndrs spatial upscaler + docs), with docs refreshes above it. **Local only — not pushed**, `origin/4.8-beta5` is still at `4c28382482`. The first-class pmndrs scaling-mode change is in the working `patches/` (uncommitted) on top of this. Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| branch `4.8-beta5` | `91a0a3e8e4` | first-class pmndrs scaling-mode commit (Viewport mode 6 + docs), one above the pmndrs milestone-1 stack commit `d8b3d583ae` (raw-WGSL path + pmndrs spatial upscaler). **Local only — not pushed**, `origin/4.8-beta5` is still at `4c28382482`. Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
 | tag `4.8-beta5` | `529407b9fc` | engine/patch-stack tip: FSR 1/FSR 2 on WebGPU + **SDFGI enabled**, **moved 2026-11-27** so fresh toolchain installs fetch the current driver/template. Lightweight tag (`git cat-file -t refs/tags/4.8-beta5` → `commit`); verify with `git ls-remote origin refs/tags/4.8-beta5` |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
@@ -141,11 +140,11 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | local branch `4.8-beta5` (**repository default branch**; `origin/4.8-beta5` is still `4c28382482` because the new commits are not pushed yet): pmndrs milestone-1 stack commit `d8b3d583ae`, docs tips above it (`70cc14782e` is HEAD); tag `4.8-beta5` = `529407b9fc` (last **tagged** engine tip: FSR 1/FSR 2 + SDFGI enabled — the tag has not been moved to the pmndrs stack yet, so fresh toolchain installs still bootstrap the SDFGI/FSR driver/template). The **first-class pmndrs scaling-mode change** (2026-11-27 ~21:43-21:54) is regenerated into `patches/` and **not committed yet**: `patches/0005-engine-renderer-patches.patch` (`+174/−41`) and `patches/layers/0005-engine-renderer-patches.files` (`+6` paths → 156) are modified on top of `70cc14782e`. Branch and tag share the simple name but are different commits — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate; the bootstrap downloads the tag (lightweight, so `git ls-remote` shows the commit directly) |
+| patch stack repo | local branch `4.8-beta5` (**repository default branch**; `origin/4.8-beta5` is still `4c28382482` because the new commits are not pushed yet): pmndrs milestone-1 stack commit `d8b3d583ae`, first-class pmndrs scaling-mode commit `91a0a3e8e4` (both include their docs refreshes); tag `4.8-beta5` = `529407b9fc` (last **tagged** engine tip: FSR 1/FSR 2 + SDFGI enabled — the tag has not been moved to the pmndrs stack yet, so fresh toolchain installs still bootstrap the SDFGI/FSR driver/template). Branch and tag share the simple name but are different commits — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate; the bootstrap downloads the tag (lightweight, so `git ls-remote` shows the commit directly) |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
-| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes and the first-class pmndrs scaling mode (52 modified files + 3 new `effects/pmndrs_upscaler*` files)**. Volatile and not pushed; the pmndrs milestone-1 part is committed on the repo branch (`d8b3d583ae`) and the scaling-mode delta is captured in the working `patches/` (regenerated 2026-11-27 ~21:55), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
-| patch round-trip | 2026-11-27 ~21:55: applying the full regenerated stack (committed milestone 1 + the first-class scaling-mode delta) to a pristine `67421f36e5` checkout (`/tmp/applytest`, 1,784 staged paths) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (`0001` 508,662 B, `0002` 203,592 B, `0003` 45,856 B, `0004` 891,250 B, `0005` 5,936,829 B, `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B; the `0005` layer list is now 156 paths) |
+| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs changes and the first-class pmndrs scaling mode (52 modified files + 3 new `effects/pmndrs_upscaler*` files)**. Volatile and not pushed; the pmndrs milestone-1 part is committed on the repo branch (`d8b3d583ae`) and the first-class scaling mode is committed as `91a0a3e8e4` (patch stack regenerated 2026-11-27 ~21:55), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
+| patch round-trip | 2026-11-27 ~21:55: applying the full regenerated stack (milestone-1 + first-class scaling-mode commits) to a pristine `67421f36e5` checkout (`/tmp/applytest`, 1,784 staged paths) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (`0001` 508,662 B, `0002` 203,592 B, `0003` 45,856 B, `0004` 891,250 B, `0005` 5,936,829 B, `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B; the `0005` layer list is now 156 paths) |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta + the current stack, **synced from `/tmp/godot48` before the 21:43 web build / 21:53 export** (the scaling-mode plumbing files are on disk 21:41:08-21:42:13) |
@@ -259,9 +258,9 @@ Consequences:
   (`git cat-file -t refs/tags/4.8-beta5` → `commit`) last moved on 2026-11-27 to
   `529407b9fc`, the SDFGI-enabling engine tip (the FSR/SDFGI fixes at
   `f799881f28` and the Forward+/MSAA/TAA fix at `b81f3de2c1` are ancestors); the
-  branch is above it (`d8b3d583ae` is the pmndrs milestone-1 stack commit, plus
-  docs-refresh commits, plus the uncommitted first-class scaling-mode patch
-  delta). So new toolchains build
+  branch is above it (`d8b3d583ae` = pmndrs milestone-1 stack commit,
+  `91a0a3e8e4` = first-class pmndrs Viewport scaling mode, plus docs-refresh
+  commits). So new toolchains build
   the SDFGI/FSR/Forward+ driver/template and read the self-contained `patches/`
   bundle. Move the tag again when engine-side fixes land; docs commits after a
   move sit on the branch above it, and editor-only changes don't matter for
@@ -286,9 +285,9 @@ The current 4.8 build tree is a **volatile linked git worktree of this repo at
 first-class pmndrs scaling mode** — not pushed). Those engine changes were
 regenerated into `patches/*.patch` and committed on the repo branch
 (`b81f3de2c1` MSAA/TAA, `f799881f28` FSR/SDFGI injection, `529407b9fc` SDFGI
-enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1); the first-class
-scaling-mode delta is in the working `patches/` and **not committed yet**, so the
-patch stack is the source of truth. Ancestors:
+enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1, `91a0a3e8e4`
+first-class pmndrs Viewport scaling mode); the patch stack is the source of
+truth. Ancestors:
 bundle-lock bootstrap `582d619026`, patches/ layout `cdc0907bf6`, ring hardening
 `9267990dcd`, source bootstrap `130ed7f48d`, MSAA mitigation `a495fc3e93`,
 pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
@@ -584,7 +583,7 @@ per-pass bindings, integration plan).
 - **Patch bookkeeping**: the committed milestone-1 stack (`d8b3d583ae`) was
   `0004` +247/−21 and `0005` +1288/−32 patch-file lines (three new
   `effects/pmndrs_upscaler*` files plus `renderer_scene_render_rd.h` in the
-  `0005` layer list). The uncommitted first-class-mode delta adds `0005`
+  `0005` layer list). The first-class-mode commit (`91a0a3e8e4`) adds `0005`
   +174/−41 and **six existing paths** to the `0005` layer list (150 → 156):
   `scene/main/viewport.{h,cpp}`, `servers/rendering/rendering_server_enums.h`,
   `servers/rendering/storage/render_scene_buffers.cpp`,
@@ -626,8 +625,8 @@ screenshots (pmndrs slightly different sharpening than AMD FSR1); logs
 `/tmp/pmndrs2_console.log` and `/tmp/fsr1b_console.log`, screenshots
 `/tmp/pmndrs2_game1.png` and `/tmp/fsr1b_game1.png`.
 
-**Round-trip**: the regenerated stack (committed milestone 1 + the uncommitted
-scaling-mode delta) applies to a pristine `67421f36e5` checkout
+**Round-trip**: the regenerated stack (milestone-1 + first-class scaling-mode
+commits) applies to a pristine `67421f36e5` checkout
 (`/tmp/applytest`) and re-diffs byte-identically per layer — all 8 layers,
 `0005` = 5,936,829 B, `0005` layer list 156 paths (see the Environment
 snapshot).
@@ -966,8 +965,8 @@ this file's history.
     captured in the regenerated patch stack (tag `529407b9fc` is still the last
     tagged engine tip and what fresh installs bootstrap from; the pmndrs
     milestone-1 stack is committed on the branch as `d8b3d583ae` and the
-    first-class scaling mode is in the working `patches/`, uncommitted; the tag
-    has not been moved to either yet). The staged editor reports
+    first-class scaling mode as `91a0a3e8e4`; the tag has not been moved to
+    either yet). The staged editor reports
     `4.8.beta.custom_build.582d61902` (built 2026-11-27 21:47); the web template
     was rebuilt 21:53, and the site export written 21:53:27 runs that
     template's wasm byte-for-byte (`3b25ba0b…`). If a distinct version stamp is
@@ -1003,8 +1002,8 @@ this file's history.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
   installs download it. It was moved on 2026-11-27 to `529407b9fc` (SDFGI
   enabled); the branch is above it (`d8b3d583ae` = raw-WGSL path + pmndrs
-  milestone 1, plus docs commits, plus the uncommitted first-class
-  scaling-mode delta). The tag is lightweight. It has **not** been moved to the
+  milestone 1, `91a0a3e8e4` = first-class pmndrs scaling mode, plus docs
+  commits). The tag is lightweight. It has **not** been moved to the
   pmndrs stack yet: move it (and push the branch) before relying on fresh
   installs for the pmndrs spatial upscaler scaling mode (`pmndrs (Spatial -
   Fast)` / `rendering/scaling_3d/mode=6`).
