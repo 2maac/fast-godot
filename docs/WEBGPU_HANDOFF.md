@@ -560,11 +560,13 @@ this file's history.
     is visual: comparing the native editor (Vulkan SDFGI, same fixed spawn and
     FSR2 settings) with HTML5 at the same spawn shows the editor lighting the
     scene warm/bright while HTML5 is dark, so the WebGPU SDFGI indirect light
-    is missing or much weaker. A `DEBUG_DRAW_SDFGI` debug capture is black in
-    both builds, and `RD::texture_get_data` returns empty for the 3D/array
-    SDFGI textures even with COPY_FROM usage, so the next step is a staging
-    2D copy/compute readback of the light cascade and lightprobe textures to
-    find which pass (sky/direct-light, integrate, or final probe) writes zero.
+    is missing or much weaker. `RD::texture_get_data` is frame-deferred (the first call only queues a copy),
+    and calling it from inside `SDFGI::render_region` never completes, so it
+    returned no data even with COPY_FROM usage. The next step is a post-frame
+    readback: call `texture_get_data` for the light cascade/lightprobe textures
+    after the frame submit (across several frames) or copy a slice with a
+    compute pass, then find which pass (sky/direct-light, integrate, or final
+    probe) writes zero.
     Forward+ bake is ~1524 stages (~3-6 min).
 11. **MSAA/depth sampler bindings + TAA (2026-11-27, later) — FIXED.** A
     real-Chrome run with MSAA enabled failed bind-group creation on
