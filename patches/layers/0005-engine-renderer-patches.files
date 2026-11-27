@@ -83,6 +83,7 @@ servers/rendering/renderer_rd/pipeline_hash_map_rd.h
 servers/rendering/renderer_rd/renderer_canvas_render_rd.cpp
 servers/rendering/renderer_rd/renderer_compositor_rd.cpp
 servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
+servers/rendering/renderer_rd/renderer_scene_render_rd.h
 servers/rendering/renderer_rd/shader_rd.cpp
 servers/rendering/renderer_rd/shader_rd.h
 servers/rendering/renderer_rd/shaders/blit.glsl
@@ -133,6 +134,9 @@ servers/rendering/renderer_rd/effects/fsr.cpp
 servers/rendering/renderer_rd/effects/fsr.h
 servers/rendering/renderer_rd/effects/fsr2.cpp
 servers/rendering/renderer_rd/effects/fsr2.h
+servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h
+servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
+servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
 servers/rendering/renderer_rd/environment/fog.cpp
 servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 servers/rendering/renderer_rd/shaders/cluster_render.glsl

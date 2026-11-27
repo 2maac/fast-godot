@@ -85291,6 +85291,989 @@ index 5c1d1fc434..3684b429ec 100644
  	struct {
  		Fsr2DepthClipPassShaderRD depth_clip;
  		Fsr2ReconstructPreviousDepthPassShaderRD reconstruct_previous_depth;
+diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
+new file mode 100644
+index 0000000000..b838088b41
+--- /dev/null
++++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
+@@ -0,0 +1,367 @@
++/**************************************************************************/
++/*  pmndrs_upscaler.cpp                                                   */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#include "pmndrs_upscaler.h"
++
++#include "pmndrs_upscaler_wgsl.h"
++
++#include "core/string/print_string.h"
++#include "core/templates/local_vector.h"
++#include "servers/rendering/renderer_rd/storage_rd/render_scene_buffers_rd.h"
++#include "servers/rendering/renderer_rd/uniform_set_cache_rd.h"
++#include "servers/rendering/rendering_device.h"
++
++using namespace RendererRD;
++
++namespace {
++
++// The WGSL declares `@group(0) @binding(0) var<uniform> C : FsrConstants;`.
++// The shader container rewrites the authored binding numbers to the WebGPU
++// driver's doubled convention (@binding(2*N)); the RD reflection keeps the
++// authored numbers, which is what both WGSLUniform::binding and
++// RD::Uniform::binding must use here.
++RD::WGSLUniform _wgsl_uniform_buffer(uint32_t p_binding) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
++	u.binding = p_binding;
++	u.length = PmndrsSpatial::FSR_CONSTANTS_SIZE;
++	return u;
++}
++
++RD::WGSLUniform _wgsl_sampled_texture(uint32_t p_binding) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_TEXTURE;
++	u.binding = p_binding;
++	u.length = 1;
++	u.texture_type = RD::TEXTURE_TYPE_2D;
++	// Informational for a sampled binding; the BGL sample type comes from the
++	// WGSL component (`texture_2d<f32>` -> float), never from this format.
++	u.texture_format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
++	return u;
++}
++
++RD::WGSLUniform _wgsl_storage_texture(uint32_t p_binding) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_IMAGE;
++	u.binding = p_binding;
++	u.length = 1;
++	// `texture_storage_2d<rgba16float, write>`: write-only storage access.
++	// This also drives RD's read/write tracking for the binding.
++	u.writable = true;
++	u.texture_type = RD::TEXTURE_TYPE_2D;
++	u.texture_format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
++	return u;
++}
++
++} // namespace
++
++PmndrsSpatial::PmndrsSpatial() {
++	// The raw-WGSL shader path only exists on WebGPU. On every other driver
++	// (or when an older build has no such feature) stay inert: the renderer
++	// will keep selecting FSR1.
++	ERR_FAIL_NULL(RD::get_singleton());
++	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_RAW_WGSL_COMPUTE)) {
++		return;
++	}
++
++	// The WGSL hard-codes `texture_storage_2d<rgba16float, ...>` for both
++	// storage bindings, so RGBA16F must be usable as a sampled + storage image.
++	if (!RD::get_singleton()->texture_is_format_supported_for_usage(
++				RD::DATA_FORMAT_R16G16B16A16_SFLOAT,
++				RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT)) {
++		return;
++	}
++
++	if (!_create_pipelines()) {
++		_free_resources();
++		return;
++	}
++
++	for (uint32_t i = 0; i < CONSTANTS_RING_SIZE; i++) {
++		constants_buffers[i] = RD::get_singleton()->uniform_buffer_create(FSR_CONSTANTS_BUFFER_SIZE);
++		if (constants_buffers[i].is_null()) {
++			ERR_PRINT("pmndrs spatial upscaler: failed to create the constants uniform buffer ring.");
++			_free_resources();
++			return;
++		}
++	}
++
++	available = true;
++
++	static bool announced = false;
++	if (!announced) {
++		announced = true;
++		print_line("[PMNDRS] spatial upscaler active (EASU+RCAS, raw WGSL)");
++	}
++}
++
++PmndrsSpatial::~PmndrsSpatial() {
++	_free_resources();
++}
++
++bool PmndrsSpatial::_create_pipelines() {
++	RenderingDevice *rd = RD::get_singleton();
++	ERR_FAIL_NULL_V(rd, false);
++
++	// Pass 1 - EASU: render-res RGBA16F color -> display-res RGBA16F storage image.
++	RD::WGSLShaderData easu_data;
++	easu_data.name = "PMNDRS_EASU";
++	easu_data.code = pmndrs_easu_wgsl;
++	easu_data.workgroup_size[0] = 8;
++	easu_data.workgroup_size[1] = 8;
++	easu_data.workgroup_size[2] = 1;
++	easu_data.uniform_sets.resize(1);
++	easu_data.uniform_sets.write[0].push_back(_wgsl_uniform_buffer(0));
++	easu_data.uniform_sets.write[0].push_back(_wgsl_sampled_texture(1));
++	easu_data.uniform_sets.write[0].push_back(_wgsl_storage_texture(2));
++
++	easu_shader = rd->shader_create_from_wgsl(easu_data);
++	if (easu_shader.is_null()) {
++		WARN_PRINT("pmndrs spatial upscaler: failed to create the EASU WGSL shader.");
++		return false;
++	}
++	easu_pipeline = rd->compute_pipeline_create(easu_shader);
++	if (easu_pipeline.is_null()) {
++		WARN_PRINT("pmndrs spatial upscaler: failed to create the EASU compute pipeline.");
++		return false;
++	}
++
++	// Pass 2 - RCAS: display-res EASU output -> display-res RGBA16F storage image.
++	// Binding 2 (`exposureTex`) is statically present but never read while
++	// FLAG_INPUT_REINHARD (bit 8) is clear; it still has to be bound.
++	RD::WGSLShaderData rcas_data;
++	rcas_data.name = "PMNDRS_RCAS";
++	rcas_data.code = pmndrs_rcas_wgsl;
++	rcas_data.workgroup_size[0] = 8;
++	rcas_data.workgroup_size[1] = 8;
++	rcas_data.workgroup_size[2] = 1;
++	rcas_data.uniform_sets.resize(1);
++	rcas_data.uniform_sets.write[0].push_back(_wgsl_uniform_buffer(0));
++	rcas_data.uniform_sets.write[0].push_back(_wgsl_sampled_texture(1));
++	rcas_data.uniform_sets.write[0].push_back(_wgsl_sampled_texture(2));
++	rcas_data.uniform_sets.write[0].push_back(_wgsl_storage_texture(3));
++	rcas_data.uniform_sets.write[0].push_back(_wgsl_sampled_texture(4));
++
++	rcas_shader = rd->shader_create_from_wgsl(rcas_data);
++	if (rcas_shader.is_null()) {
++		WARN_PRINT("pmndrs spatial upscaler: failed to create the RCAS WGSL shader.");
++		return false;
++	}
++	rcas_pipeline = rd->compute_pipeline_create(rcas_shader);
++	if (rcas_pipeline.is_null()) {
++		WARN_PRINT("pmndrs spatial upscaler: failed to create the RCAS compute pipeline.");
++		return false;
++	}
++
++	return true;
++}
++
++void PmndrsSpatial::_free_resources() {
++	RenderingDevice *rd = RD::get_singleton();
++	if (rd == nullptr) {
++		return;
++	}
++
++	if (easu_pipeline.is_valid()) {
++		rd->free_rid(easu_pipeline);
++		easu_pipeline = RID();
++	}
++	if (rcas_pipeline.is_valid()) {
++		rd->free_rid(rcas_pipeline);
++		rcas_pipeline = RID();
++	}
++	if (easu_shader.is_valid()) {
++		rd->free_rid(easu_shader);
++		easu_shader = RID();
++	}
++	if (rcas_shader.is_valid()) {
++		rd->free_rid(rcas_shader);
++		rcas_shader = RID();
++	}
++	for (uint32_t i = 0; i < CONSTANTS_RING_SIZE; i++) {
++		if (constants_buffers[i].is_valid()) {
++			rd->free_rid(constants_buffers[i]);
++			constants_buffers[i] = RID();
++		}
++	}
++}
++
++void PmndrsSpatial::_ensure_intermediate(Ref<RenderSceneBuffersRD> p_render_buffers) {
++	ERR_FAIL_COND(p_render_buffers.is_null());
++
++	if (p_render_buffers->has_texture(SNAME("PMNDRS"), SNAME("easu_output"))) {
++		return;
++	}
++
++	// Display-resolution RGBA16F intermediate written by EASU and sampled by
++	// RCAS. One layer: the shaders only see a 2D texture and process() runs
++	// once per view sequentially, exactly like FSR1's upscale_texture.
++	const uint32_t usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT;
++	RID texture = p_render_buffers->create_texture(SNAME("PMNDRS"), SNAME("easu_output"),
++			RD::DATA_FORMAT_R16G16B16A16_SFLOAT, usage_bits, RD::TEXTURE_SAMPLES_1,
++			p_render_buffers->get_target_size(), 1, 1, true, true);
++	ERR_FAIL_COND_MSG(texture.is_null(), "pmndrs spatial upscaler: failed to create the EASU intermediate texture.");
++}
++
++void PmndrsSpatial::ensure_context(Ref<RenderSceneBuffersRD> p_render_buffers) {
++	if (!available) {
++		return;
++	}
++	_ensure_intermediate(p_render_buffers);
++}
++
++void PmndrsSpatial::process(Ref<RenderSceneBuffersRD> p_render_buffers, RID p_source_rd_texture, RID p_destination_texture) {
++	if (!available || p_render_buffers.is_null()) {
++		return;
++	}
++
++	RenderingDevice *rd = RD::get_singleton();
++	ERR_FAIL_NULL(rd);
++	UniformSetCacheRD *uniform_set_cache = UniformSetCacheRD::get_singleton();
++	ERR_FAIL_NULL(uniform_set_cache);
++
++	if (p_source_rd_texture.is_null() || p_destination_texture.is_null()) {
++		return;
++	}
++
++	const Size2i render_size = p_render_buffers->get_internal_size();
++	const Size2i display_size = p_render_buffers->get_target_size();
++	if (render_size.x <= 0 || render_size.y <= 0 || display_size.x <= 0 || display_size.y <= 0) {
++		return;
++	}
++
++	// Both shaders hard-code `rgba16float` for their storage output, and the
++	// destination has to be writable through a storage image. The renderer's
++	// FSR slot already substitutes a storage-capable RGBA16F intermediate when
++	// the render target itself is not storage-capable (WebGPU), so a mismatch
++	// here means this slot cannot host the effect; leave the frame untouched.
++	const RD::TextureFormat destination_format = rd->texture_get_format(p_destination_texture);
++	if (destination_format.format != RD::DATA_FORMAT_R16G16B16A16_SFLOAT ||
++			!(destination_format.usage_bits & RD::TEXTURE_USAGE_STORAGE_BIT)) {
++		if (!warned_about_destination) {
++			warned_about_destination = true;
++			WARN_PRINT("pmndrs spatial upscaler: destination texture is not a storage-capable RGBA16F image; skipping upscale.");
++		}
++		return;
++	}
++
++	_ensure_intermediate(p_render_buffers);
++	RID easu_output = p_render_buffers->get_texture(SNAME("PMNDRS"), SNAME("easu_output"));
++	if (easu_output.is_null()) {
++		return;
++	}
++
++	// Constants: written to a fresh ring slot *before* the compute list opens.
++	// buffer_update() is not allowed while a compute list is recording, and a
++	// shared buffer would let another viewport/frame overwrite the values an
++	// already-recorded dispatch reads.
++	FsrConstants constants;
++	memset(&constants, 0, sizeof(constants));
++	constants.render_size[0] = (float)render_size.x;
++	constants.render_size[1] = (float)render_size.y;
++	constants.display_size[0] = (float)display_size.x;
++	constants.display_size[1] = (float)display_size.y;
++	constants.render_size_inv[0] = 1.0f / (float)render_size.x;
++	constants.render_size_inv[1] = 1.0f / (float)render_size.y;
++	constants.display_size_inv[0] = 1.0f / (float)display_size.x;
++	constants.display_size_inv[1] = 1.0f / (float)display_size.y;
++	// Reuse the FSR sharpness knob (AMD RCAS "stops") with pmndrs' spatial RCAS
++	// convention: peak = exp2(-2 * (1 - sharpness)) == exp2(-stops).
++	constants.sharpness = CLAMP(1.0f - p_render_buffers->get_fsr_sharpness() * 0.5f, 0.0f, 1.0f);
++	constants.flags = 0; // FLAG_INPUT_REINHARD (8) and FLAG_RCAS_DENOISE (512) must stay clear.
++
++	const uint32_t ring_slot = constants_ring_index;
++	constants_ring_index = (constants_ring_index + 1) % CONSTANTS_RING_SIZE;
++	RID constants_buffer = constants_buffers[ring_slot];
++	Error update_error = rd->buffer_update(constants_buffer, 0, sizeof(FsrConstants), &constants);
++	ERR_FAIL_COND(update_error != OK);
++
++	// One uniform set per shader: EASU and RCAS have different binding sets, so
++	// RD's set-format hash differs and a set cannot be shared between them.
++	LocalVector<RD::Uniform> easu_uniforms;
++	easu_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_buffer));
++	easu_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, p_source_rd_texture));
++	easu_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 2, easu_output));
++	RID easu_uniform_set = uniform_set_cache->get_cache_vec(easu_shader, 0, easu_uniforms);
++	if (easu_uniform_set.is_null()) {
++		return;
++	}
++
++	LocalVector<RD::Uniform> rcas_uniforms;
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_buffer));
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, easu_output));
++	// `exposureTex` is only loaded when FLAG_INPUT_REINHARD (bit 8) is set, which
++	// the spatial path keeps clear; the binding is statically present, so bind
++	// the EASU output as the placeholder (same as the alpha source below).
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 2, easu_output));
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 3, p_destination_texture));
++	// `alphaSource` is the EASU output again: RCAS passes alpha through.
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 4, easu_output));
++	RID rcas_uniform_set = uniform_set_cache->get_cache_vec(rcas_shader, 0, rcas_uniforms);
++	if (rcas_uniform_set.is_null()) {
++		return;
++	}
++
++	// One-time proof-of-use log: the constructor's announcement only says the
++	// effect is *available*; this line fires the first time it actually
++	// upscales a frame (used by the browser verification recipe in
++	// docs/WEBGPU_HANDOFF.md to tell FSR1 and pmndrs apart from the console).
++	static bool announced_running = false;
++	if (!announced_running) {
++		announced_running = true;
++		print_line(vformat("[PMNDRS] spatial upscaler running (EASU+RCAS) %dx%d -> %dx%d, %dx%d groups",
++				render_size.x, render_size.y, display_size.x, display_size.y,
++				((uint32_t)display_size.x + 7u) / 8u, ((uint32_t)display_size.y + 7u) / 8u));
++	}
++
++	// One invocation per display pixel, 8x8 workgroups. Clamp to 1 group so
++	// tiny viewports never produce a zero dispatch.
++	const uint32_t groups_x = MAX(1u, ((uint32_t)display_size.x + 7u) / 8u);
++	const uint32_t groups_y = MAX(1u, ((uint32_t)display_size.y + 7u) / 8u);
++
++	RD::ComputeListID compute_list = rd->compute_list_begin();
++
++	// Pass 1: EASU render -> intermediate.
++	rd->compute_list_bind_compute_pipeline(compute_list, easu_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, easu_uniform_set, 0);
++	rd->compute_list_dispatch(compute_list, groups_x, groups_y, 1);
++
++	// New usage scope: the intermediate was written by EASU and is sampled by
++	// RCAS. On WebGPU the driver's compute-pass usage guard also splits the pass
++	// here; the explicit barrier keeps the intent deterministic.
++	rd->compute_list_add_barrier(compute_list);
++
++	// Pass 2: RCAS intermediate -> destination.
++	rd->compute_list_bind_compute_pipeline(compute_list, rcas_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, rcas_uniform_set, 0);
++	rd->compute_list_dispatch(compute_list, groups_x, groups_y, 1);
++
++	rd->compute_list_end();
++}
+diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
+new file mode 100644
+index 0000000000..1ae317ed2b
+--- /dev/null
++++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
+@@ -0,0 +1,118 @@
++/**************************************************************************/
++/*  pmndrs_upscaler.h                                                     */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#pragma once
++
++#include "core/templates/rid.h"
++#include "core/templates/span.h"
++#include "servers/rendering/renderer_rd/effects/spatial_upscaler.h"
++
++namespace RendererRD {
++
++// Milestone 1 of the pmndrs/upscaler port: the spatial upscaling path
++// (EASU -> RCAS) running as hand-written WGSL compute shaders on the raw-WGSL
++// RenderingDevice path (WebGPU only).
++//
++// It is selected instead of FSR1 when the viewport scaling mode is FSR *and*
++// the `rendering/scaling_3d/pmndrs_spatial` project setting is enabled *and*
++// this class reports itself available. On every other driver (or when the
++// raw-WGSL shaders cannot be created) it stays inert and the renderer falls
++// back to RendererRD::FSR, which is the pre-existing behaviour.
++//
++// Contract references:
++//   docs/PMNDRS_UPSCALER_SPATIAL.md  (WGSL provenance, constants layout,
++//                                     per-pass bindings, dispatch math)
++//   docs/WGSL_COMPUTE_PATH.md        (raw-WGSL RD API)
++class PmndrsSpatial : public SpatialUpscaler {
++public:
++	PmndrsSpatial();
++	~PmndrsSpatial();
++
++	virtual const Span<char> get_label() const final { return "pmndrs Upscaler (spatial)"; }
++	virtual void ensure_context(Ref<RenderSceneBuffersRD> p_render_buffers) final;
++	virtual void process(Ref<RenderSceneBuffersRD> p_render_buffers, RID p_source_rd_texture, RID p_destination_texture) final;
++
++	// True when the raw-WGSL shaders and both compute pipelines could be
++	// created. When false the renderer must keep using RendererRD::FSR.
++	bool is_available() const { return available; }
++
++	// FsrConstants payload size in bytes (see docs/PMNDRS_UPSCALER_SPATIAL.md
++	// §5.2). The GPU buffer is 256 bytes (WebGPU uniform offset alignment);
++	// only the first 96 bytes are read by the shaders.
++	static constexpr uint32_t FSR_CONSTANTS_SIZE = 96;
++	static constexpr uint32_t FSR_CONSTANTS_BUFFER_SIZE = 256;
++
++private:
++
++	// Ring of constants uniform buffers. process() is called once per viewport
++	// per frame, all inside one RD frame, and buffer_update() must never touch
++	// a buffer that an already-recorded dispatch uses, so each process() takes
++	// a fresh slot. 64 slots is >= 2 * (viewports * frames in flight) + slack.
++	static constexpr uint32_t CONSTANTS_RING_SIZE = 64;
++
++	// Byte-exact CPU mirror of the WGSL `FsrConstants` struct (96 bytes, WGSL
++	// uniform layout). Do not repack/reorder, do not use alignas(16).
++	struct FsrConstants {
++		float render_size[2]; // offset 0: render (input) resolution in px.
++		float display_size[2]; // offset 8: display (output) resolution in px.
++		float render_size_inv[2]; // offset 16: 1/renderSize (unused, written anyway).
++		float display_size_inv[2]; // offset 24: 1/displaySize (EASU source mapping).
++		float jitter[2]; // offset 32: spatial path has no jitter.
++		float jitter_prev[2]; // offset 40.
++		float motion_scale[2]; // offset 48: unused on the spatial path.
++		float depth_near_far[2]; // offset 56: unused on the spatial path.
++		float sharpness; // offset 64: RCAS attenuation, 1 = sharpest.
++		float max_accumulation; // offset 68: unused.
++		float exposure; // offset 72: unused when FLAG_INPUT_REINHARD is clear.
++		float delta_time; // offset 76: unused.
++		uint32_t flags; // offset 80: FLAG_* bits; 0 on the spatial path.
++		uint32_t frame_index; // offset 84: unused.
++		uint32_t debug_mode; // offset 88: unused.
++		uint32_t pad; // offset 92: unused.
++	};
++	static_assert(sizeof(FsrConstants) == FSR_CONSTANTS_SIZE, "FsrConstants must match the WGSL struct layout (96 bytes).");
++
++	bool available = false;
++	bool warned_about_destination = false;
++
++	RID easu_shader;
++	RID rcas_shader;
++	RID easu_pipeline;
++	RID rcas_pipeline;
++
++	RID constants_buffers[CONSTANTS_RING_SIZE];
++	uint32_t constants_ring_index = 0;
++
++	bool _create_pipelines();
++	void _ensure_intermediate(Ref<RenderSceneBuffersRD> p_render_buffers);
++	void _free_resources();
++};
++
++} // namespace RendererRD
+diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h b/servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h
+new file mode 100644
+index 0000000000..6c9e1b1a60
+--- /dev/null
++++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h
+@@ -0,0 +1,480 @@
++/**************************************************************************/
++/*  pmndrs_upscaler_wgsl.h                                                */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#pragma once
++
++/*
++ * GENERATED FILE - do not edit by hand.
++ *
++ * Verbatim WGSL for the pmndrs/upscaler spatial upscaler (EASU + RCAS),
++ * embedded as C++ raw string literals so no shader files need to be packed
++ * into the export and no runtime file IO is involved.
++ *
++ * Upstream: https://github.com/pmndrs/upscaler
++ * Pinned commit: f6e52098edffb66e16298a30c53b4da37b4b7d7f (v0.6.0, 2026-11-27)
++ * Files vendored from /tmp/pmndrs-vendor/wgsl/ (assembled from the upstream
++ * TypeScript shader templates; no #include, no enable directives, complete
++ * translation units, entry point `main`, @workgroup_size(8, 8, 1)).
++ *
++ * The WGSL below is byte-identical to the vendored files; verify with:
++ *   shasum -a 256 /tmp/pmndrs-vendor/wgsl/easu.wgsl
++ *   shasum -a 256 /tmp/pmndrs-vendor/wgsl/rcas_spatial.wgsl
++ *
++ * IMPORTANT: these are CANONICAL copies. Do not hand-edit the WGSL or its
++ * @binding(N) numbers: the WebGPU raw-WGSL shader container applies the
++ * driver's binding-doubling convention (@binding(N) -> @binding(2*N)) when
++ * the module is created. The RD reflection (see pmndrs_upscaler.cpp) keeps
++ * the authored binding numbers 0..4.
++ *
++ * --- License / attribution (verbatim from the pinned upstream LICENSE) ---
++ *
++ * MIT License
++ *
++ * Copyright (c) 2026 Dennis Smolek
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in all
++ * copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ *
++ * The WGSL EASU and RCAS shaders are derived from AMD's FidelityFX Super
++ * Resolution (ffx_fsr1.h), and the temporal pipeline follows the architecture of
++ * FidelityFX Super Resolution 2/3:
++ *
++ * Copyright (c) 2021-2023 Advanced Micro Devices, Inc. All rights reserved.
++ * Released under the MIT License:
++ * https://github.com/GPUOpen-Effects/FidelityFX-FSR
++ * https://github.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK
++ */
++
++// EASU pass: render-res RGBA16F color -> display-res RGBA16F storage image.
++// Bindings (@group(0)): 0 = FsrConstants uniform buffer, 1 = inputColor
++// (texture_2d<f32>, render size), 2 = outputColor (texture_storage_2d<rgba16float, write>,
++// display size).
++// Vendored from pmndrs/upscaler @ f6e52098edffb66e16298a30c53b4da37b4b7d7f (v0.6.0)
++// Source: wgsl/easu.wgsl (7575 bytes, sha256 1758c181e3d644c45410a26c6697cff0c559e3a49040fc30523607ed53987b58)
++static const char pmndrs_easu_wgsl[] = R"PMS(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    _pad            : u32,    // offset 92
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++@group(0) @binding(1) var inputColor : texture_2d<f32>;
++@group(0) @binding(2) var outputColor : texture_storage_2d<rgba16float, write>;
++
++// Loads a render-resolution texel in the caller's color domain, alpha included.
++fn easuLoad(p : vec2i) -> vec4f {
++    let clamped = clamp(p, vec2i(0), vec2i(C.renderSize) - 1);
++    return textureLoad(inputColor, clamped, 0);
++}
++
++// EASU operates on a green-weighted luma: L = 0.5*R + G + 0.5*B.
++fn easuLuma(c : vec4f) -> f32 {
++    return 0.5 * c.r + c.g + 0.5 * c.b;
++}
++
++// Gradient analysis for one of the 4 nearest texels ('c' center of a +
++// pattern: a above, b left, d right, e below). Accumulates the bilinearly
++// weighted edge direction and edge strength (FsrEasuSetF).
++fn easuSet(
++    dir : ptr<function, vec2f>, len : ptr<function, f32>,
++    w : f32,
++    lA : f32, lB : f32, lC : f32, lD : f32, lE : f32,
++) {
++    //* Horizontal Gradient
++    let dc = lD - lC;
++    let cb = lC - lB;
++    var lenX = max(abs(dc), abs(cb));
++    lenX = 1.0 / max(lenX, 1.0e-5);
++    let dirX = lD - lB;
++    (*dir).x += dirX * w;
++    lenX = clamp(abs(dirX) * lenX, 0.0, 1.0);
++    lenX *= lenX;
++    *len += lenX * w;
++
++    //* Vertical Gradient
++    let ec = lE - lC;
++    let ca = lC - lA;
++    var lenY = max(abs(ec), abs(ca));
++    lenY = 1.0 / max(lenY, 1.0e-5);
++    let dirY = lE - lA;
++    (*dir).y += dirY * w;
++    lenY = clamp(abs(dirY) * lenY, 0.0, 1.0);
++    lenY *= lenY;
++    *len += lenY * w;
++}
++
++// One kernel tap: rotate the offset into edge space, apply anisotropy, then
++// evaluate the polynomial Lanczos2 approximation (FsrEasuTapF).
++fn easuTap(
++    aC : ptr<function, vec4f>, aW : ptr<function, f32>,
++    off : vec2f, dir : vec2f, len : vec2f, lob : f32, clp : f32, c : vec4f,
++) {
++    var v = vec2f(
++        off.x * dir.x + off.y * dir.y,
++        off.x * (-dir.y) + off.y * dir.x,
++    );
++    v *= len;
++    var d2 = dot(v, v);
++    d2 = min(d2, clp);
++    // (25/16 * (2/5 x² - 1)² - 9/16) * (lob x² - 1)²  — base * window
++    var wB = (2.0 / 5.0) * d2 - 1.0;
++    var wA = lob * d2 - 1.0;
++    wB *= wB;
++    wA *= wA;
++    wB = (25.0 / 16.0) * wB - (25.0 / 16.0 - 1.0);
++    let w = wB * wA;
++    *aC += c * w;
++    *aW += w;
++}
++
++@compute @workgroup_size(8, 8)
++fn main(@builtin(global_invocation_id) gid : vec3u) {
++    if (any(vec2f(gid.xy) >= C.displaySize)) { return; }
++
++    //* Source Position
++    // Map the output pixel into render-texture space and split into the
++    // integer base + sub-texel offset used for kernel/gradient weights.
++    var pp = (vec2f(gid.xy) + 0.5) * C.renderSize * C.displaySizeInv - 0.5;
++    let fp = floor(pp);
++    pp -= fp;
++    let ip = vec2i(fp);
++
++    //* 12-Tap Footprint
++    //    b c
++    //  e f g h
++    //  i j k l
++    //    n o
++    let cB = easuLoad(ip + vec2i(0, -1));
++    let cC = easuLoad(ip + vec2i(1, -1));
++    let cE = easuLoad(ip + vec2i(-1, 0));
++    let cF = easuLoad(ip + vec2i(0, 0));
++    let cG = easuLoad(ip + vec2i(1, 0));
++    let cH = easuLoad(ip + vec2i(2, 0));
++    let cI = easuLoad(ip + vec2i(-1, 1));
++    let cJ = easuLoad(ip + vec2i(0, 1));
++    let cK = easuLoad(ip + vec2i(1, 1));
++    let cL = easuLoad(ip + vec2i(2, 1));
++    let cN = easuLoad(ip + vec2i(0, 2));
++    let cO = easuLoad(ip + vec2i(1, 2));
++
++    let lB = easuLuma(cB); let lC = easuLuma(cC);
++    let lE = easuLuma(cE); let lF = easuLuma(cF);
++    let lG = easuLuma(cG); let lH = easuLuma(cH);
++    let lI = easuLuma(cI); let lJ = easuLuma(cJ);
++    let lK = easuLuma(cK); let lL = easuLuma(cL);
++    let lN = easuLuma(cN); let lO = easuLuma(cO);
++
++    //* Edge Analysis
++    // Bilinear blend of the gradient analysis at the 4 nearest texels
++    // (f, g, j, k), weighted by the sub-texel position.
++    var dir = vec2f(0.0);
++    var len = 0.0;
++    easuSet(&dir, &len, (1.0 - pp.x) * (1.0 - pp.y), lB, lE, lF, lG, lJ);
++    easuSet(&dir, &len, pp.x * (1.0 - pp.y), lC, lF, lG, lH, lK);
++    easuSet(&dir, &len, (1.0 - pp.x) * pp.y, lF, lI, lJ, lK, lN);
++    easuSet(&dir, &len, pp.x * pp.y, lG, lJ, lK, lL, lO);
++
++    //* Kernel Shaping
++    // Normalize the direction; degenerate (flat) regions fall back to axis
++    // aligned with zero edge strength.
++    let dir2 = dir * dir;
++    var dirR = dir2.x + dir2.y;
++    let zro = dirR < (1.0 / 32768.0);
++    dirR = inverseSqrt(max(dirR, 1.0e-12));
++    dirR = select(dirR, 1.0, zro);
++    dir.x = select(dir.x, 1.0, zro);
++    dir *= dirR;
++    // Edge strength from {0..2} to {0..1}, shaped with a square.
++    len = len * 0.5;
++    len *= len;
++    // Stretch the kernel along the edge: 1.0 axis-aligned up to sqrt(2)
++    // on diagonals, and contract it across the edge.
++    let stretch = (dir.x * dir.x + dir.y * dir.y) / max(abs(dir.x), abs(dir.y));
++    let len2 = vec2f(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);
++    // Negative lobe strength and window clipping point.
++    let lob = 0.5 + ((1.0 / 4.0 - 0.04) - 0.5) * len;
++    let clp = 1.0 / lob;
++
++    //* Accumulation
++    // Dering clamp uses the 4 nearest texels only.
++    let min4 = min(min(cF, cG), min(cJ, cK));
++    let max4 = max(max(cF, cG), max(cJ, cK));
++    var aC = vec4f(0.0);
++    var aW = 0.0;
++    easuTap(&aC, &aW, vec2f(0.0, -1.0) - pp, dir, len2, lob, clp, cB);
++    easuTap(&aC, &aW, vec2f(1.0, -1.0) - pp, dir, len2, lob, clp, cC);
++    easuTap(&aC, &aW, vec2f(-1.0, 0.0) - pp, dir, len2, lob, clp, cE);
++    easuTap(&aC, &aW, vec2f(0.0, 0.0) - pp, dir, len2, lob, clp, cF);
++    easuTap(&aC, &aW, vec2f(1.0, 0.0) - pp, dir, len2, lob, clp, cG);
++    easuTap(&aC, &aW, vec2f(2.0, 0.0) - pp, dir, len2, lob, clp, cH);
++    easuTap(&aC, &aW, vec2f(-1.0, 1.0) - pp, dir, len2, lob, clp, cI);
++    easuTap(&aC, &aW, vec2f(0.0, 1.0) - pp, dir, len2, lob, clp, cJ);
++    easuTap(&aC, &aW, vec2f(1.0, 1.0) - pp, dir, len2, lob, clp, cK);
++    easuTap(&aC, &aW, vec2f(2.0, 1.0) - pp, dir, len2, lob, clp, cL);
++    easuTap(&aC, &aW, vec2f(0.0, 2.0) - pp, dir, len2, lob, clp, cN);
++    easuTap(&aC, &aW, vec2f(1.0, 2.0) - pp, dir, len2, lob, clp, cO);
++
++    let pix = min(max4, max(min4, aC / aW));
++    textureStore(outputColor, gid.xy, pix);
++}
++)PMS";
++
++// RCAS pass: display-res RGBA16F EASU output -> display-res RGBA16F storage image.
++// Bindings (@group(0)): 0 = FsrConstants uniform buffer, 1 = inputColor
++// (texture_2d<f32>, display size), 2 = exposureTex (unused placeholder in spatial mode),
++// 3 = outputColor (texture_storage_2d<rgba16float, write>), 4 = alphaSource
++// (texture_2d<f32>, EASU output again; alpha is passed through).
++// Vendored from pmndrs/upscaler @ f6e52098edffb66e16298a30c53b4da37b4b7d7f (v0.6.0)
++// Source: wgsl/rcas_spatial.wgsl (7937 bytes, sha256 e68ac0f91e40d86b2afb9feb8333c81bf989198bce441532e3b20995b29cae7f)
++static const char pmndrs_rcas_wgsl[] = R"PMS(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    _pad            : u32,    // offset 92
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++fn tonemapInvertible(c : vec3f) -> vec3f {
++    return c / (1.0 + max(max(c.r, c.g), max(c.b, 0.0)));
++}
++
++fn tonemapInvert(c : vec3f) -> vec3f {
++    let m = min(max(max(c.r, c.g), max(c.b, 0.0)), 0.999);
++    return c / (1.0 - m);
++}
++
++@group(0) @binding(1) var inputColor : texture_2d<f32>;
++@group(0) @binding(2) var exposureTex : texture_2d<f32>;
++@group(0) @binding(3) var outputColor : texture_storage_2d<rgba16float, write>;
++@group(0) @binding(4) var alphaSource : texture_2d<f32>;
++
++// Maximum sharpening lobe magnitude — set so a single tap cannot exceed the
++// local contrast ring (0.25 - 1/16 in the reference).
++const RCAS_LIMIT : f32 = 0.25 - (1.0 / 16.0);
++
++// Loads a display-resolution texel as-is: conditioned tonemap-space history on
++// the temporal path, the caller's linear domain on the spatial path (main
++// conditions those taps itself).
++fn rcasLoad(p : vec2i) -> vec3f {
++    let clamped = clamp(p, vec2i(0), vec2i(C.displaySize) - 1);
++    return textureLoad(inputColor, clamped, 0).rgb;
++}
++
++@compute @workgroup_size(8, 8)
++fn main(@builtin(global_invocation_id) gid : vec3u) {
++    if (any(vec2f(gid.xy) >= C.displaySize)) { return; }
++    let sp = vec2i(gid.xy);
++
++    //* Cross Neighborhood
++    //   b
++    // d e f
++    //   h
++    let bIn = rcasLoad(sp + vec2i(0, -1));
++    let dIn = rcasLoad(sp + vec2i(-1, 0));
++    let eIn = rcasLoad(sp);
++    let fIn = rcasLoad(sp + vec2i(1, 0));
++    let hIn = rcasLoad(sp + vec2i(0, 1));
++    // The limiter below assumes [0,1]. Accumulate history already arrives
++    // conditioned; the spatial path's linear/HDR taps get the same invertible
++    // tonemap here, so both paths sharpen in one bounded space. A uniform
++    // branch, not select(), so the temporal path pays nothing for it.
++    var b = bIn;
++    var d = dIn;
++    var e = eIn;
++    var f = fIn;
++    var h = hIn;
++    if (!hasFlag(FLAG_INPUT_REINHARD)) {
++        b = tonemapInvertible(bIn);
++        d = tonemapInvertible(dIn);
++        e = tonemapInvertible(eIn);
++        f = tonemapInvertible(fIn);
++        h = tonemapInvertible(hIn);
++    }
++
++    // FSR's inexpensive luma is scaled by two; the scale cancels in ratios.
++    let bL = 0.5 * b.r + b.g + 0.5 * b.b;
++    let dL = 0.5 * d.r + d.g + 0.5 * d.b;
++    let eL = 0.5 * e.r + e.g + 0.5 * e.b;
++    let fL = 0.5 * f.r + f.g + 0.5 * f.b;
++    let hL = 0.5 * h.r + h.g + 0.5 * h.b;
++
++
++    //* Sharpening Lobe
++    // Min/max ring per channel bounds how strong the negative lobe may be
++    // before the output would exceed local contrast.
++    let mn4 = min(min(b, d), min(f, h));
++    let mx4 = max(max(b, d), max(f, h));
++
++    let lowerLimiterMultiplier = clamp(
++        eL / min(min(bL, dL), min(fL, hL)),
++        0.0,
++        1.0
++    );
++
++    let hitMin = mn4 / (4.0 * mx4) * lowerLimiterMultiplier;
++    let hitMax = (vec3f(1.0) - mx4) / (4.0 * mn4 - 4.0);
++    let lobeRGB = max(-hitMin, hitMax);
++    // C.sharpness 1 -> 0 attenuation stops (sharpest), 0 -> 2 stops.
++    let peak = exp2(-2.0 * (1.0 - C.sharpness));
++    var lobe = max(-RCAS_LIMIT, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * peak;
++
++    //* Denoise (FSR1's FSR_RCAS_DENOISE)
++    // A lone luma outlier vs its cross-neighborhood, normalized by the local
++    // range, reads as noise; attenuate the lobe there (up to 50%) so RCAS
++    // doesn't amplify grain from noisy inputs (e.g. reduced-res SSR/GI).
++    if (hasFlag(FLAG_RCAS_DENOISE)) {
++
++        let mn = min(min(min(bL, dL), eL), min(fL, hL));
++        let mx = max(max(max(bL, dL), eL), max(fL, hL));
++        var nz = 0.25 * (bL + dL + fL + hL) - eL;
++        nz = clamp(abs(nz) / max(mx - mn, 1.0e-4), 0.0, 1.0);
++        lobe *= 1.0 - 0.5 * nz;
++
++    }
++
++    //* Resolve
++    let rcpL = 1.0 / (4.0 * lobe + 1.0);
++
++    var pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
++    // Both paths cap the inverted result at the same lobe applied in linear
++    // space against the darkest ring tap:
++    //   center + 4 * |lobe| * rcpL * (center - ring min).
++    // The limiter keeps the result inside the conditioned range, but that
++    // range ends at linear infinity: near 1 a conditioned step of 0.008
++    // doubles the value. Uncapped, an isolated peak became a ~1000x firefly
++    // (issue #32) and a converged 64 plateau corner read 127 at sharpness 1,
++    // against 64-67 for linear RCAS (issue #50). With a non-negative ring min
++    // the cap is at most center / (1 - 4 * RCAS_LIMIT * peak), linear RCAS's
++    // own maximum gain, so it is never looser than the #32 gain cap it
++    // replaces. A uniform ring makes it exactly linear RCAS's result for the
++    // same lobe, and any brighter ring tap loosens it, so it binds on HDR
++    // edges and isolated peaks and leaves ordinary edges bit-exact.
++    if (hasFlag(FLAG_INPUT_REINHARD)) {
++        // Undo the accumulate conditioning once on the sharpened result: invert
++        // the tonemap, then divide out the baked-in pre-exposure. The ring
++        // minimum is inverted once: the inversion is monotone, so the
++        // per-channel min of the conditioned taps is at or below every
++        // inverted ring tap.
++        let exposure = max(textureLoad(exposureTex, vec2i(0), 0).r, 1.0e-4);
++        let eLin = tonemapInvert(e);
++        let mnLin = tonemapInvert(max(mn4, vec3f(0.0)));
++        let ceiling = eLin - 4.0 * lobe * rcpL * max(eLin - mnLin, vec3f(0.0));
++        pix = min(tonemapInvert(max(pix, vec3f(0.0))) / exposure, ceiling / exposure);
++    } else {
++        // Spatial: invert the tap conditioning once, anchored on the exact
++        // linear center: an unsharpened pixel passes through bit-exact, and
++        // values beyond tonemapInvert's clamp (linear ~1000) are not flattened
++        // to it. This input has no pre-exposure bounding it, so isolated peaks
++        // overshoot the conditioned range easily (a lone 0.5 on near-black
++        // became 1303 at sharpness 1 in GPU probes). The linear taps are at
++        // hand, so the cap needs no inversion.
++        let mnIn = max(min(min(bIn, dIn), min(fIn, hIn)), vec3f(0.0));
++        let ceiling = max(eIn, vec3f(0.0)) - 4.0 * lobe * rcpL * max(eIn - mnIn, vec3f(0.0));
++        pix = clamp(
++            eIn + tonemapInvert(max(pix, vec3f(0.0))) - tonemapInvert(e),
++            vec3f(0.0),
++            ceiling
++        );
++    }
++
++    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));
++}
++)PMS";
++
++static_assert(sizeof(pmndrs_easu_wgsl) > 1, "pmndrs EASU WGSL must be embedded");
++static_assert(sizeof(pmndrs_rcas_wgsl) > 1, "pmndrs RCAS WGSL must be embedded");
 diff --git a/servers/rendering/renderer_rd/effects/taa.cpp b/servers/rendering/renderer_rd/effects/taa.cpp
 index 9125301c43..d553569cec 100644
 --- a/servers/rendering/renderer_rd/effects/taa.cpp
@@ -86063,7 +87046,7 @@ index 623c24fef5..9a522f25bc 100644
  
  	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
-index 38540f4396..2ad9ff145c 100644
+index 38540f4396..5ed82c29a2 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 @@ -442,9 +442,20 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
@@ -86089,7 +87072,28 @@ index 38540f4396..2ad9ff145c 100644
  			}
  		}
  	}
-@@ -539,7 +550,11 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+@@ -474,7 +485,19 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+ 	SpatialUpscaler *spatial_upscaler = nullptr;
+ 	if (can_use_effects) {
+ 		if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR) {
+-			spatial_upscaler = fsr;
++			// The pmndrs spatial upscaler (EASU + RCAS, hand-written WGSL compute)
++			// reuses the FSR1 spatial slot. It is strictly opt-in and only
++			// available on drivers exposing the raw-WGSL compute path (WebGPU);
++			// otherwise, or when it disabled itself, FSR1 is used unchanged.
++			const bool pmndrs_spatial_requested = GLOBAL_GET_CACHED(bool, "rendering/scaling_3d/pmndrs_spatial");
++			if (pmndrs_spatial_requested && pmndrs_spatial != nullptr && pmndrs_spatial->is_available()) {
++				spatial_upscaler = pmndrs_spatial;
++			} else {
++				if (pmndrs_spatial_requested) {
++					WARN_PRINT_ONCE("rendering/scaling_3d/pmndrs_spatial is enabled but the pmndrs spatial upscaler is not available on this driver; falling back to FSR 1.0.");
++				}
++				spatial_upscaler = fsr;
++			}
+ 		} else if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
+ #if METAL_ENABLED
+ 			spatial_upscaler = mfx_spatial;
+@@ -539,7 +562,11 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
  
  			for (uint32_t i = 0; i < rb->get_view_count(); i++) {
  				buffers.base_texture = use_upscaled_texture ? rb->get_upscaled_texture(i) : rb->get_internal_texture(i);
@@ -86102,7 +87106,7 @@ index 38540f4396..2ad9ff145c 100644
  				buffers.base_fb = FramebufferCacheRD::get_singleton()->get_cache(buffers.base_texture); // TODO move this into bokeh_dof_raster, we can do this internally
  
  				// In stereo p_render_data->z_near and p_render_data->z_far can be offset for our combined frustum.
-@@ -871,7 +886,24 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+@@ -871,7 +898,24 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
  				RID source_texture = rb->get_texture_slice(use_smaa ? SNAME("SMAA") : SNAME("Tonemapper"), SNAME("destination"), v, 0);
  				RID dest_texture = texture_storage->render_target_get_rd_texture_slice(render_target, v);
  
@@ -86128,7 +87132,7 @@ index 38540f4396..2ad9ff145c 100644
  			}
  		} else {
  			// If no spatial upscaler is set, we are using bilinear or nearest filtering for scaling.
-@@ -1167,6 +1199,9 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
+@@ -1167,6 +1211,9 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
  }
  
  bool RendererSceneRenderRD::_render_buffers_can_be_storage() {
@@ -86138,6 +87142,50 @@ index 38540f4396..2ad9ff145c 100644
  	return true;
  }
  
+@@ -1886,6 +1933,12 @@ void RendererSceneRenderRD::init() {
+ 	if (can_use_storage) {
+ 		fsr = memnew(RendererRD::FSR);
+ 	}
++	// The pmndrs spatial upscaler needs the raw-WGSL compute path, which only
++	// the WebGPU driver exposes today. The effect never crashes on other
++	// drivers; it is simply never created there.
++	if (can_use_storage && RD::get_singleton()->has_feature(RD::SUPPORTS_RAW_WGSL_COMPUTE)) {
++		pmndrs_spatial = memnew(RendererRD::PmndrsSpatial);
++	}
+ #ifdef METAL_ENABLED
+ 	mfx_spatial = memnew(RendererRD::MFXSpatialEffect);
+ #endif
+@@ -1903,6 +1956,7 @@ RendererSceneRenderRD::~RendererSceneRenderRD() {
+ 	memdelete(tone_mapper);
+ 	memdelete(vrs);
+ 	memdelete(fsr);
++	memdelete(pmndrs_spatial);
+ #ifdef METAL_ENABLED
+ 	memdelete(mfx_spatial);
+ #endif
+diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.h b/servers/rendering/renderer_rd/renderer_scene_render_rd.h
+index 5c13984313..507a151581 100644
+--- a/servers/rendering/renderer_rd/renderer_scene_render_rd.h
++++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.h
+@@ -36,6 +36,7 @@
+ #include "servers/rendering/renderer_rd/effects/debug_effects.h"
+ #include "servers/rendering/renderer_rd/effects/fsr.h"
+ #include "servers/rendering/renderer_rd/effects/luminance.h"
++#include "servers/rendering/renderer_rd/effects/pmndrs_upscaler.h"
+ #include "servers/rendering/renderer_rd/effects/resolve.h"
+ #include "servers/rendering/renderer_rd/effects/smaa.h"
+ #include "servers/rendering/renderer_rd/effects/tone_mapper.h"
+@@ -67,6 +68,10 @@ protected:
+ 	RendererRD::SMAA *smaa = nullptr;
+ 	RendererRD::ToneMapper *tone_mapper = nullptr;
+ 	RendererRD::FSR *fsr = nullptr;
++	// pmndrs spatial upscaler (EASU + RCAS via raw WGSL compute). Only created
++	// when the driver exposes the raw-WGSL compute path; selected instead of
++	// FSR1 when the `rendering/scaling_3d/pmndrs_spatial` setting is enabled.
++	RendererRD::PmndrsSpatial *pmndrs_spatial = nullptr;
+ 	RendererRD::VRS *vrs = nullptr;
+ 	RendererRD::Resolve *resolve_effects = nullptr;
+ #ifdef METAL_ENABLED
 diff --git a/servers/rendering/renderer_rd/shader_rd.cpp b/servers/rendering/renderer_rd/shader_rd.cpp
 index b4e30f6848..08ed9c39f0 100644
 --- a/servers/rendering/renderer_rd/shader_rd.cpp
@@ -87689,7 +88737,7 @@ index 60374910e2..5515fc7ebf 100644
  				if (RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_SPATIAL)) {
  					// Prefer MetalFX spatial if it is supported, which will be much more efficient than FSR2,
 diff --git a/servers/rendering/rendering_device.cpp b/servers/rendering/rendering_device.cpp
-index eceb8b7ab6..e8f4586609 100644
+index eceb8b7ab6..30b5c4e88b 100644
 --- a/servers/rendering/rendering_device.cpp
 +++ b/servers/rendering/rendering_device.cpp
 @@ -275,12 +275,13 @@ void RenderingDevice::_replace_dependency(RID p_dependent, RID p_old_dependency,
@@ -88257,7 +89305,110 @@ index eceb8b7ab6..e8f4586609 100644
  	// Compile shader binary from SPIR-V.
  	bool code_compiled = shader_container->set_code_from_spirv(p_shader_name, p_spirv);
  	ERR_FAIL_COND_V_MSG(!code_compiled, Vector<uint8_t>(), vformat("Failed to compile code to native for SPIR-V."));
-@@ -4425,10 +4746,12 @@ RID RenderingDevice::uniform_buffer_create(uint32_t p_size_bytes, Span<uint8_t>
+@@ -4304,6 +4625,12 @@ RID RenderingDevice::shader_create_from_bytecode_with_samplers(const Vector<uint
+ 	RDD::ShaderID shader_id = driver->shader_create_from_container(shader_container, driver_immutable_samplers);
+ 	ERR_FAIL_COND_V(!shader_id, RID());
+ 
++	String shader_name;
++	shader_name.append_utf8(shader_container->shader_name);
++	return _shader_register(shader_id, shader_container->get_shader_reflection(), shader_name, p_placeholder);
++}
++
++RID RenderingDevice::_shader_register(RDD::ShaderID p_driver_id, const ShaderReflection &p_reflection, const String &p_shader_name, RID p_placeholder) {
+ 	_THREAD_SAFE_METHOD_
+ 
+ 	// All good, let's create modules.
+@@ -4318,11 +4645,10 @@ RID RenderingDevice::shader_create_from_bytecode_with_samplers(const Vector<uint
+ 	Shader *shader = shader_owner.get_or_null(id);
+ 	ERR_FAIL_NULL_V(shader, RID());
+ 
+-	*((ShaderReflection *)shader) = shader_container->get_shader_reflection();
+-	shader->name.clear();
+-	shader->name.append_utf8(shader_container->shader_name);
+-	shader->driver_id = shader_id;
+-	shader->layout_hash = driver->shader_get_layout_hash(shader_id);
++	*((ShaderReflection *)shader) = p_reflection;
++	shader->name = p_shader_name;
++	shader->driver_id = p_driver_id;
++	shader->layout_hash = driver->shader_get_layout_hash(p_driver_id);
+ 
+ 	for (int i = 0; i < shader->uniform_sets.size(); i++) {
+ 		uint32_t format = 0; // No format, default.
+@@ -4382,6 +4708,73 @@ RID RenderingDevice::shader_create_from_bytecode_with_samplers(const Vector<uint
+ 	return id;
+ }
+ 
++RID RenderingDevice::shader_create_from_wgsl(const WGSLShaderData &p_data) {
++	ERR_FAIL_COND_V_MSG(!driver->has_feature(SUPPORTS_RAW_WGSL_COMPUTE), RID(),
++			"The active rendering driver does not support raw-WGSL compute shaders (WebGPU only).");
++	ERR_FAIL_COND_V_MSG(p_data.code.strip_edges().is_empty(), RID(), "shader_create_from_wgsl: the WGSL source is empty.");
++	ERR_FAIL_COND_V_MSG(p_data.workgroup_size[0] == 0 || p_data.workgroup_size[1] == 0 || p_data.workgroup_size[2] == 0, RID(),
++			"shader_create_from_wgsl: every workgroup_size component must be non-zero.");
++	ERR_FAIL_COND_V_MSG(p_data.uniform_sets.size() > (int)MAX_UNIFORM_SETS, RID(),
++			vformat("shader_create_from_wgsl: too many uniform sets (%d, the maximum is %d).", p_data.uniform_sets.size(), (int)MAX_UNIFORM_SETS));
++
++	ShaderReflection reflection;
++	reflection.pipeline_type = PIPELINE_TYPE_COMPUTE;
++	reflection.compute_local_size[0] = p_data.workgroup_size[0];
++	reflection.compute_local_size[1] = p_data.workgroup_size[1];
++	reflection.compute_local_size[2] = p_data.workgroup_size[2];
++	reflection.push_constant_size = 0; // Raw WGSL cannot use push constants; use a uniform buffer.
++	reflection.stages_vector.push_back(SHADER_STAGE_COMPUTE);
++	reflection.stages_bits.set_flag(SHADER_STAGE_COMPUTE_BIT);
++	reflection.uniform_sets.resize(p_data.uniform_sets.size());
++
++	for (int set = 0; set < p_data.uniform_sets.size(); set++) {
++		const Vector<WGSLUniform> &src_set = p_data.uniform_sets[set];
++		ERR_FAIL_COND_V_MSG(src_set.is_empty(), RID(),
++				vformat("shader_create_from_wgsl: uniform set %d is empty; WebGPU uniform sets must contain at least one binding.", set));
++		Vector<ShaderUniform> &dst_set = reflection.uniform_sets.write[set];
++		dst_set.resize(src_set.size());
++		for (int i = 0; i < src_set.size(); i++) {
++			const WGSLUniform &src = src_set[i];
++			ERR_FAIL_COND_V_MSG(src.type == UNIFORM_TYPE_MAX, RID(),
++					vformat("shader_create_from_wgsl: set %d binding %d has no uniform type.", set, src.binding));
++			ERR_FAIL_COND_V_MSG(src.type == UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, RID(),
++					vformat("shader_create_from_wgsl: set %d binding %d uses UNIFORM_TYPE_SAMPLER_WITH_TEXTURE, which raw WGSL does not support; declare a separate sampler and texture binding instead.", set, src.binding));
++
++			ShaderUniform &dst = dst_set.write[i];
++			dst.type = src.type;
++			dst.binding = src.binding;
++			dst.length = src.length;
++			switch (src.type) {
++				case UNIFORM_TYPE_SAMPLER:
++				case UNIFORM_TYPE_TEXTURE:
++				case UNIFORM_TYPE_IMAGE:
++				case UNIFORM_TYPE_INPUT_ATTACHMENT:
++					// Array length; 0 means a single element.
++					if (dst.length == 0) {
++						dst.length = 1;
++					}
++					break;
++				default:
++					break;
++			}
++			dst.stages = SHADER_STAGE_COMPUTE_BIT;
++			dst.texture_type = src.texture_type;
++			dst.texture_format = src.texture_format;
++			dst.writable = src.writable;
++		}
++
++		dst_set.sort();
++		for (int i = 1; i < dst_set.size(); i++) {
++			ERR_FAIL_COND_V_MSG(dst_set[i].binding == dst_set[i - 1].binding, RID(),
++					vformat("shader_create_from_wgsl: duplicate binding %d in uniform set %d.", dst_set[i].binding, set));
++		}
++	}
++
++	RDD::ShaderID driver_id = driver->shader_create_from_wgsl(p_data.code, reflection, p_data.name);
++	ERR_FAIL_COND_V(!driver_id, RID());
++	return _shader_register(driver_id, reflection, p_data.name, RID());
++}
++
+ void RenderingDevice::shader_destroy_modules(RID p_shader) {
+ 	Shader *shader = shader_owner.get_or_null(p_shader);
+ 	ERR_FAIL_NULL(shader);
+@@ -4425,10 +4818,12 @@ RID RenderingDevice::uniform_buffer_create(uint32_t p_size_bytes, Span<uint8_t>
  		// stick to the known/intended use cases and scream if we deviate from it.
  		buffer.usage.clear_flag(RDD::BUFFER_USAGE_TRANSFER_TO_BIT);
  	}
@@ -88273,7 +89424,7 @@ index eceb8b7ab6..e8f4586609 100644
  	ERR_FAIL_COND_V(!buffer.driver_id, RID());
  
  	// Uniform buffers are assumed to be immutable unless they don't have initial data.
-@@ -4437,7 +4760,7 @@ RID RenderingDevice::uniform_buffer_create(uint32_t p_size_bytes, Span<uint8_t>
+@@ -4437,7 +4832,7 @@ RID RenderingDevice::uniform_buffer_create(uint32_t p_size_bytes, Span<uint8_t>
  		buffer.draw_tracker->buffer_driver_id = buffer.driver_id;
  	}
  
@@ -88282,7 +89433,7 @@ index eceb8b7ab6..e8f4586609 100644
  		_buffer_initialize(&buffer, p_data);
  	}
  
-@@ -6127,7 +6450,7 @@ void RenderingDevice::draw_list_set_push_constant(DrawListID p_list, const void
+@@ -6127,7 +6522,7 @@ void RenderingDevice::draw_list_set_push_constant(DrawListID p_list, const void
  #endif
  }
  
@@ -88291,7 +89442,7 @@ index eceb8b7ab6..e8f4586609 100644
  	ERR_RENDER_THREAD_GUARD();
  
  	ERR_FAIL_COND(!draw_list.active);
-@@ -6262,7 +6585,7 @@ void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint
+@@ -6262,7 +6657,7 @@ void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint
  				"Index amount (" + itos(to_draw) + ") must be a multiple of the amount of indices required by the render primitive (" + itos(draw_list.validation.pipeline_primitive_divisor) + ").");
  #endif
  
@@ -88300,7 +89451,7 @@ index eceb8b7ab6..e8f4586609 100644
  	} else {
  		uint32_t to_draw;
  
-@@ -6284,7 +6607,7 @@ void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint
+@@ -6284,7 +6679,7 @@ void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint
  				"Vertex amount (" + itos(to_draw) + ") must be a multiple of the amount of vertices required by the render primitive (" + itos(draw_list.validation.pipeline_primitive_divisor) + ").");
  #endif
  
@@ -88309,7 +89460,7 @@ index eceb8b7ab6..e8f4586609 100644
  	}
  
  	draw_list.state.draw_count++;
-@@ -8369,6 +8692,33 @@ void RenderingDevice::_end_frame() {
+@@ -8369,6 +8764,33 @@ void RenderingDevice::_end_frame() {
  		ERR_PRINT("Found open raytracing list at the end of the frame, this should never happen (further raytracing will likely not work).");
  	}
  
@@ -88343,7 +89494,7 @@ index eceb8b7ab6..e8f4586609 100644
  	// The command buffer must be copied into a stack variable as the driver workarounds can change the command buffer in use.
  	RDD::CommandBufferID command_buffer = frames[frame].command_buffer;
  	GodotProfileZoneGroupedFirst(_profile_zone, "_submit_transfer_workers");
-@@ -8466,6 +8816,17 @@ void RenderingDevice::_execute_frame(bool p_present) {
+@@ -8466,6 +8888,17 @@ void RenderingDevice::_execute_frame(bool p_present) {
  	// used, the CPU needs to wait on the work to be completed.
  	frames[frame].fence_signaled = true;
  
@@ -88361,7 +89512,7 @@ index eceb8b7ab6..e8f4586609 100644
  	if (frame_can_present) {
  		if (separate_present_queue) {
  			// Issue the presentation separately if the presentation queue is different from the main queue.
-@@ -8477,90 +8838,148 @@ void RenderingDevice::_execute_frame(bool p_present) {
+@@ -8477,90 +8910,148 @@ void RenderingDevice::_execute_frame(bool p_present) {
  }
  
  void RenderingDevice::_stall_for_frame(uint32_t p_frame) {
@@ -88401,15 +89552,15 @@ index eceb8b7ab6..e8f4586609 100644
 +			}
 +		}
 +	}
-+
+ 
+-				request.callback.call(packed_byte_array);
 +	while (!deferred_downloads.is_empty() && _download_batch_ready(deferred_downloads[0])) {
 +		_download_batch_hold_blocks(deferred_downloads[0], false);
 +		_download_batch_flush(deferred_downloads[0]);
 +		deferred_downloads.remove_at(0);
 +	}
 +}
- 
--				request.callback.call(packed_byte_array);
++
 +bool RenderingDevice::_download_batch_ready(const DownloadBatch &p_batch) {
 +	for (RDD::BufferID buffer : p_batch.download_buffer_staging_buffers) {
 +		if (!driver->buffer_map_ready(buffer)) {
@@ -88575,7 +89726,7 @@ index eceb8b7ab6..e8f4586609 100644
  	}
  }
  
-@@ -8812,6 +9231,14 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
+@@ -8812,6 +9303,14 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
  	// Convert staging buffer size from MB.
  	upload_staging_buffers.max_size = GLOBAL_GET("rendering/rendering_device/staging_buffer/max_size_mb");
  	upload_staging_buffers.max_size = MAX(1u, upload_staging_buffers.max_size);
@@ -88591,7 +89742,7 @@ index eceb8b7ab6..e8f4586609 100644
  	upload_staging_buffers.max_size = MAX(upload_staging_buffers.max_size, upload_staging_buffers.block_size * 4);
  
 diff --git a/servers/rendering/rendering_device.h b/servers/rendering/rendering_device.h
-index f54a109b61..43325c5e19 100644
+index f54a109b61..c56e64134c 100644
 --- a/servers/rendering/rendering_device.h
 +++ b/servers/rendering/rendering_device.h
 @@ -46,6 +46,7 @@
@@ -88648,7 +89799,19 @@ index f54a109b61..43325c5e19 100644
  	};
  
  public:
-@@ -1037,7 +1049,10 @@ public:
+@@ -958,6 +970,11 @@ private:
+ 
+ 	RID_Owner<Shader, true> shader_owner;
+ 
++	// Shared tail of shader_create_from_bytecode_with_samplers() and
++	// shader_create_from_wgsl(): makes the RD RID, copies reflection, computes
++	// set_formats and stage_bits.
++	RID _shader_register(RDD::ShaderID p_driver_id, const ShaderReflection &p_reflection, const String &p_shader_name, RID p_placeholder);
++
+ #ifndef DISABLE_DEPRECATED
+ public:
+ 	enum BarrierMask {
+@@ -1037,7 +1054,10 @@ public:
  
  	bool has_feature(const Features p_feature) const;
  
@@ -88660,7 +89823,51 @@ index f54a109b61..43325c5e19 100644
  	Vector<uint8_t> shader_compile_binary_from_spirv(const Vector<ShaderStageSPIRVData> &p_spirv, const String &p_shader_name = "");
  
  	RID shader_create_from_spirv(const Vector<ShaderStageSPIRVData> &p_spirv, const String &p_shader_name = "");
-@@ -1568,7 +1583,7 @@ public:
+@@ -1045,6 +1065,43 @@ public:
+ 	RID shader_create_placeholder();
+ 	void shader_destroy_modules(RID p_shader);
+ 
++	// One binding of a hand-written WGSL compute shader. `binding` is the WGSL
++	// @binding number as written in the source (see docs/WGSL_COMPUTE_PATH.md --
++	// the WebGPU container applies the driver's binding-doubling convention
++	// internally, so the WGSL author never writes @binding(2*N)).
++	struct WGSLUniform {
++		UniformType type = UNIFORM_TYPE_MAX;
++		uint32_t binding = 0;
++		// 0 = let the RD pick the type's natural default. Meaning per type:
++		//   UNIFORM_TYPE_UNIFORM_BUFFER(_DYNAMIC): WGSL struct size in bytes
++		//     (0 = don't validate the bound buffer size; strongly discouraged).
++		//   UNIFORM_TYPE_STORAGE_BUFFER(_DYNAMIC): keep 0 so RD skips its exact-size
++		//     check (a raw WGSL runtime-sized array has no compile-time byte size).
++		//   SAMPLER/TEXTURE/IMAGE/INPUT_ATTACHMENT: array length; 0 -> 1.
++		//   UNIFORM_TYPE_SAMPLER_WITH_TEXTURE: rejected for raw WGSL.
++		uint32_t length = 0;
++		TextureType texture_type = TEXTURE_TYPE_2D;
++		DataFormat texture_format = DATA_FORMAT_MAX; // IMAGE: WGSL storage format; else unused.
++		bool writable = false; // IMAGE: WGSL write/read_write; STORAGE_BUFFER: read_write.
++	};
++
++	struct WGSLShaderData {
++		String name; // Debug name; also the module/BGL/pipeline label.
++		String code; // WGSL source. Entry point MUST be named "main"; MUST be valid WebGPU WGSL.
++		// Outer index = @group. Inner list = one entry per reflected binding
++		// (sorted by RD). Groups must be contiguous and start at 0.
++		Vector<Vector<WGSLUniform>> uniform_sets;
++		// Must equal the @workgroup_size in the WGSL (used by
++		// compute_list_dispatch_threads and by driver validation).
++		uint32_t workgroup_size[3] = { 8, 8, 1 };
++	};
++
++	// Creates a compute shader from hand-written WGSL, without SPIR-V or Tint.
++	// Only available when has_feature(SUPPORTS_RAW_WGSL_COMPUTE) (WebGPU). On any other
++	// driver this fails and returns an invalid RID. Reflection validation and
++	// binding normalization happen here, before the driver is called.
++	RID shader_create_from_wgsl(const WGSLShaderData &p_data);
++
+ 	uint64_t shader_get_vertex_input_attribute_mask(RID p_shader);
+ 
+ 	/******************/
+@@ -1568,7 +1625,7 @@ public:
  	void draw_list_set_line_width(DrawListID p_list, float p_width);
  	void draw_list_set_push_constant(DrawListID p_list, const void *p_data, uint32_t p_data_size);
  
@@ -88669,7 +89876,7 @@ index f54a109b61..43325c5e19 100644
  	void draw_list_draw_indirect(DrawListID p_list, bool p_use_indices, RID p_buffer, uint32_t p_offset = 0, uint32_t p_draw_count = 1, uint32_t p_stride = 0);
  
  	void draw_list_set_viewport(DrawListID p_list, const Rect2i &p_rect);
-@@ -1799,7 +1814,26 @@ private:
+@@ -1799,7 +1856,26 @@ private:
  	// nature of the GPU. They will get deleted
  	// when the frame is cycled.
  
@@ -88697,7 +89904,7 @@ index f54a109b61..43325c5e19 100644
  		// List in usage order, from last to free to first to free.
  		List<Buffer> buffers_to_dispose_of;
  		List<Texture> textures_to_dispose_of;
-@@ -1812,17 +1846,6 @@ private:
+@@ -1812,17 +1888,6 @@ private:
  		List<AccelerationStructure> acceleration_structures_to_dispose_of;
  		List<RaytracingPipeline> raytracing_pipelines_to_dispose_of;
  
@@ -88715,7 +89922,7 @@ index f54a109b61..43325c5e19 100644
  		// The command pool used by the command buffer.
  		RDD::CommandPoolID command_pool;
  
-@@ -1900,6 +1923,9 @@ public:
+@@ -1900,6 +1965,9 @@ public:
  	void _end_frame();
  	void _execute_frame(bool p_present);
  	void _stall_for_frame(uint32_t p_frame);
@@ -88763,10 +89970,21 @@ index 8315cfcbd3..a32bccb3d2 100644
  	switch (p_format) {
  		case DATA_FORMAT_BC1_RGB_UNORM_BLOCK:
 diff --git a/servers/rendering/rendering_device_commons.h b/servers/rendering/rendering_device_commons.h
-index 0e40f75497..b98072b60d 100644
+index 0e40f75497..68dd484350 100644
 --- a/servers/rendering/rendering_device_commons.h
 +++ b/servers/rendering/rendering_device_commons.h
-@@ -1083,6 +1083,7 @@ protected:
+@@ -1038,6 +1038,10 @@ public:
+ 		SUPPORTS_HDR_OUTPUT,
+ 		SUPPORTS_RASTERIZATION_RATE_MAP,
+ 		SUPPORTS_GPU_MAPPABLE_BUFFER,
++		// Driver can create compute shaders directly from hand-written WGSL
++		// (RenderingDevice::shader_create_from_wgsl), skipping SPIR-V and Tint.
++		// Only the WebGPU driver does. See docs/WGSL_COMPUTE_PATH.md.
++		SUPPORTS_RAW_WGSL_COMPUTE,
+ 	};
+ 
+ 	enum SubgroupOperations {
+@@ -1083,6 +1087,7 @@ protected:
  
  	static void get_compressed_image_format_block_dimensions(DataFormat p_format, uint32_t &r_w, uint32_t &r_h);
  	uint32_t get_compressed_image_format_block_byte_size(DataFormat p_format) const;
@@ -88775,7 +89993,7 @@ index 0e40f75497..b98072b60d 100644
  	static uint32_t get_image_format_required_size(DataFormat p_format, uint32_t p_width, uint32_t p_height, uint32_t p_depth, uint32_t p_mipmaps, uint32_t *r_blockw = nullptr, uint32_t *r_blockh = nullptr, uint32_t *r_depth = nullptr);
  	static uint32_t get_image_required_mipmaps(uint32_t p_width, uint32_t p_height, uint32_t p_depth);
 diff --git a/servers/rendering/rendering_device_driver.cpp b/servers/rendering/rendering_device_driver.cpp
-index 1fc530fa2e..12684189de 100644
+index 1fc530fa2e..87bcc38b32 100644
 --- a/servers/rendering/rendering_device_driver.cpp
 +++ b/servers/rendering/rendering_device_driver.cpp
 @@ -59,6 +59,17 @@ uint64_t RenderingDeviceDriver::api_trait_get(ApiTrait p_trait) {
@@ -88796,8 +90014,21 @@ index 1fc530fa2e..12684189de 100644
  		default:
  			ERR_FAIL_V(0);
  	}
+@@ -72,4 +83,12 @@ void RenderingDeviceDriver::command_begin_compute_pass(CommandBufferID p_cmd_buf
+ void RenderingDeviceDriver::command_end_compute_pass(CommandBufferID p_cmd_buffer) {
+ }
+ 
++/****************/
++/**** SHADER ****/
++/****************/
++
++RenderingDeviceDriver::ShaderID RenderingDeviceDriver::shader_create_from_wgsl(const String &p_wgsl, const ShaderReflection &p_reflection, const String &p_shader_name) {
++	ERR_FAIL_V_MSG(ShaderID(), "This rendering driver does not support creating shaders from WGSL.");
++}
++
+ RenderingDeviceDriver::~RenderingDeviceDriver() {}
 diff --git a/servers/rendering/rendering_device_driver.h b/servers/rendering/rendering_device_driver.h
-index e6bb1dfd62..4e34f4126b 100644
+index e6bb1dfd62..53d5a61d33 100644
 --- a/servers/rendering/rendering_device_driver.h
 +++ b/servers/rendering/rendering_device_driver.h
 @@ -193,6 +193,16 @@ public:
@@ -88870,7 +90101,20 @@ index e6bb1dfd62..4e34f4126b 100644
  	/*****************/
  	/**** TEXTURE ****/
  	/*****************/
-@@ -587,6 +638,41 @@ public:
+@@ -517,6 +568,12 @@ public:
+ 	// Immutable samplers can be embedded when creating the pipeline layout on the condition they remain valid and unchanged, so they don't need to be
+ 	// specified when creating uniform sets PSO resource for binding.
+ 	virtual ShaderID shader_create_from_container(const Ref<RenderingShaderContainer> &p_shader_container, const Vector<ImmutableSampler> &p_immutable_samplers) = 0;
++	// Creates a shader from hand-written WGSL (no SPIR-V, no Tint). Drivers whose shader
++	// language cannot represent WGSL keep the default implementation, which returns an
++	// invalid ShaderID; RenderingDevice gates the call with SUPPORTS_RAW_WGSL_COMPUTE.
++	// `p_reflection` is compute-only, has no push constants, and its binding numbers are
++	// the authored (non-doubled) WGSL @binding numbers. See docs/WGSL_COMPUTE_PATH.md.
++	virtual ShaderID shader_create_from_wgsl(const String &p_wgsl, const ShaderReflection &p_reflection, const String &p_shader_name);
+ 	// Only meaningful if API_TRAIT_SHADER_CHANGE_INVALIDATION is SHADER_CHANGE_INVALIDATION_ALL_OR_NONE_ACCORDING_TO_LAYOUT_HASH.
+ 	virtual uint32_t shader_get_layout_hash(ShaderID p_shader) { return 0; }
+ 	virtual void shader_free(ShaderID p_shader) = 0;
+@@ -587,6 +644,41 @@ public:
  	virtual void command_copy_buffer_to_texture(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, VectorView<BufferTextureCopyRegion> p_regions) = 0;
  	virtual void command_copy_texture_to_buffer(CommandBufferID p_cmd_buffer, TextureID p_src_texture, TextureLayout p_src_texture_layout, BufferID p_dst_buffer, VectorView<BufferTextureCopyRegion> p_regions) = 0;
  
@@ -88912,7 +90156,7 @@ index e6bb1dfd62..4e34f4126b 100644
  	/******************/
  	/**** PIPELINE ****/
  	/******************/
-@@ -630,6 +716,10 @@ public:
+@@ -630,6 +722,10 @@ public:
  		AttachmentStoreOp stencil_store_op = ATTACHMENT_STORE_OP_DONT_CARE;
  		TextureLayout initial_layout = TEXTURE_LAYOUT_UNDEFINED;
  		TextureLayout final_layout = TEXTURE_LAYOUT_UNDEFINED;
@@ -88923,7 +90167,7 @@ index e6bb1dfd62..4e34f4126b 100644
  	};
  
  	struct AttachmentReference {
-@@ -921,6 +1011,66 @@ public:
+@@ -921,6 +1017,66 @@ public:
  		API_TRAIT_SHADER_GROUP_HANDLE_SIZE,
  		API_TRAIT_SHADER_GROUP_BASE_ALIGNMENT,
  		API_TRAIT_SHADER_GROUP_HANDLE_ALIGNMENT,
@@ -88990,7 +90234,7 @@ index e6bb1dfd62..4e34f4126b 100644
  	};
  
  	enum ShaderChangeInvalidation {
-@@ -943,6 +1093,9 @@ public:
+@@ -943,6 +1099,9 @@ public:
  		DeviceFamily device_family = DEVICE_UNKNOWN;
  		uint32_t version_major = 1;
  		uint32_t version_minor = 0;
@@ -89074,7 +90318,7 @@ index 3c0215f14e..a587552186 100644
  	void add_draw_list_draw_indexed_indirect(RDD::BufferID p_buffer, uint32_t p_offset, uint32_t p_draw_count, uint32_t p_stride);
  	void add_draw_list_execute_commands(RDD::CommandBufferID p_command_buffer);
 diff --git a/servers/rendering/rendering_server.cpp b/servers/rendering/rendering_server.cpp
-index 319e83c72b..a4e62c6e20 100644
+index 319e83c72b..13fcf17a3f 100644
 --- a/servers/rendering/rendering_server.cpp
 +++ b/servers/rendering/rendering_server.cpp
 @@ -3675,7 +3675,13 @@ void RenderingServer::init() {
@@ -89091,6 +90335,18 @@ index 319e83c72b..a4e62c6e20 100644
  	GLOBAL_DEF("rendering/textures/vram_compression/compress_with_gpu", true);
  	GLOBAL_DEF("rendering/textures/vram_compression/cache_gpu_compressor", true);
  
+@@ -3792,6 +3798,11 @@ void RenderingServer::init() {
+ 	}
+ 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/scaling_3d/scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), 1.0);
+ 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/scaling_3d/fsr_sharpness", PROPERTY_HINT_RANGE, "0,2,0.01"), 0.2f);
++	// Opt-in: run the pmndrs/upscaler spatial upscaler (EASU + RCAS as raw WGSL
++	// compute) in the FSR1 scaling slot instead of AMD FSR 1.0. Only takes
++	// effect on drivers with the raw-WGSL compute path (WebGPU); elsewhere it
++	// falls back to FSR1. Uses rendering/scaling_3d/fsr_sharpness for strength.
++	GLOBAL_DEF(PropertyInfo(Variant::BOOL, "rendering/scaling_3d/pmndrs_spatial"), false);
+ 
+ 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "rendering/textures/default_filters/texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), 0.0f);
+ 	GLOBAL_DEF(PropertyInfo(Variant::INT, "rendering/textures/decals/filter", PROPERTY_HINT_ENUM, "Nearest (Fast),Linear (Fast),Nearest Mipmap (Fast),Linear Mipmap (Fast),Nearest Mipmap Anisotropic (Average),Linear Mipmap Anisotropic (Average)"), RSE::DECAL_FILTER_LINEAR_MIPMAPS);
 diff --git a/servers/rendering/rendering_server_default.cpp b/servers/rendering/rendering_server_default.cpp
 index 82eebf5e8d..3fb4e18bf9 100644
 --- a/servers/rendering/rendering_server_default.cpp

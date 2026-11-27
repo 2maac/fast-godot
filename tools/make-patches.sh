@@ -22,6 +22,20 @@ for list in "$LAYERS_DIR"/*.files; do
 	while IFS= read -r p; do
 		if [ -n "$p" ]; then paths+=("$p"); fi
 	done < "$list"
+	# New (untracked) files would be silently skipped by `git diff <commit>`, so
+	# mark them intent-to-add first: that makes the diff carry their full
+	# contents as additions. `-f` also covers a new file whose name matches a
+	# .gitignore rule (`*.gen.*` used to swallow generated headers). The
+	# intent-to-add entries live only in the source tree's index and do not
+	# modify the working tree.
+	while IFS= read -r newfile; do
+		if [ -n "$newfile" ]; then
+			git -C "$SRC" add -N -f -- "$newfile" || {
+				echo "failed to mark new file as intent-to-add: $newfile" >&2
+				exit 3
+			}
+		fi
+	done < <(git -C "$SRC" ls-files --others -- "${paths[@]}" 2>/dev/null || true)
 	git -C "$SRC" diff --binary "$PINNED" -- "${paths[@]}" > "$PATCH_DIR/$name.patch" 2>/dev/null || \
 		git -C "$SRC" diff --binary HEAD -- "${paths[@]}" > "$PATCH_DIR/$name.patch"
 	echo "$name.patch $(wc -c < "$PATCH_DIR/$name.patch") bytes"

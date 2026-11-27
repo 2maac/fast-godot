@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..e5b75ee75f
+index 0000000000..0360a4152f
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10583 @@
+@@ -0,0 +1,10615 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -6014,6 +6014,16 @@ index 0000000000..e5b75ee75f
 +	return ShaderID(shader);
 +}
 +
++RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_wgsl(const String &p_wgsl, const ShaderReflection &p_reflection, const String &p_shader_name) {
++	Ref<RenderingShaderContainerWebGPU> container;
++	container.instantiate();
++	if (!container->set_code_from_wgsl_compute(p_shader_name, p_reflection, p_wgsl)) {
++		ERR_FAIL_V_MSG(ShaderID(), vformat("WebGPU: failed to build a raw-WGSL container for shader '%s'.", p_shader_name));
++	}
++	Vector<ImmutableSampler> immutable_samplers; // Raw WGSL cannot use immutable samplers.
++	return shader_create_from_container(container, immutable_samplers);
++}
++
 +bool RenderingDeviceDriverWebGPU::_shader_ensure_built(WGShader *p_shader) {
 +	if (p_shader->pending_container.is_valid()) {
 +		Ref<RenderingShaderContainer> container = p_shader->pending_container;
@@ -6133,20 +6143,32 @@ index 0000000000..e5b75ee75f
 +	Vector<RenderingShaderContainer::Shader> &stage_shaders = p_shader_container->shaders;
 +	for (int i = 0; i < stage_shaders.size(); i++) {
 +		const RenderingShaderContainer::Shader &s = stage_shaders[i];
++		const CharString baked_wgsl = Ref<RenderingShaderContainerWebGPU>(p_shader_container)->get_stage_wgsl(i);
 +
 +		// The code_compressed_bytes holds raw SPIR-V (no compression — code_decompressed_size == 0).
 +		const PackedByteArray &spv_bytes = s.code_compressed_bytes;
-+		if (spv_bytes.is_empty()) {
-+			error_text = "WebGPU: empty SPIR-V for shader stage.";
-+			break;
-+		}
-+		if (spv_bytes.size() % 4 != 0) {
-+			error_text = "WebGPU: SPIR-V size must be a multiple of 4.";
-+			break;
-+		}
 +
-+		// Store raw SPIR-V for potential re-conversion with specialization constants.
-+		shader->stage_spirv[(int)s.shader_stage] = spv_bytes;
++		// Raw-WGSL stage: WGSL provided but no SPIR-V. This is the hand-written
++		// RenderingDevice::shader_create_from_wgsl() path (docs/WGSL_COMPUTE_PATH.md).
++		// There is no SPIR-V to store for specialization-constant re-conversion, and
++		// the Tint-output-specific WGSL rewrites below must be skipped for it.
++		const bool raw_wgsl = !baked_wgsl.is_empty() && spv_bytes.is_empty();
++		if (!raw_wgsl) {
++			if (spv_bytes.is_empty()) {
++				error_text = "WebGPU: empty SPIR-V for shader stage.";
++				break;
++			}
++			if (spv_bytes.size() % 4 != 0) {
++				error_text = "WebGPU: SPIR-V size must be a multiple of 4.";
++				break;
++			}
++
++			// Store raw SPIR-V for potential re-conversion with specialization constants.
++			shader->stage_spirv[(int)s.shader_stage] = spv_bytes;
++		} else {
++			// Hand-written WGSL must not go through the SPIR-V cache / Tint.
++			print_verbose(vformat("WebGPU: raw WGSL for '%s' stage %d, Tint bypassed.", shader->name, (int)s.shader_stage));
++		}
 +
 +		// emdawnwebgpu does NOT support WGPUShaderSourceSPIRV — it's a thin wrapper
 +		// around the browser's WebGPU API which only accepts WGSL.
@@ -6154,9 +6176,8 @@ index 0000000000..e5b75ee75f
 +		// Many shader stages share SPIR-V bytes; _spv_to_wgsl_cached looks up a
 +		// process-lifetime cache before invoking Tint (see helper definition).
 +		// Baked shaders carry their WGSL; others go through the cache and Tint.
-+		const CharString baked_wgsl = Ref<RenderingShaderContainerWebGPU>(p_shader_container)->get_stage_wgsl(i);
-+		char *wgsl_str = baked_wgsl.length() > 0 ? _malloc_wgsl(baked_wgsl) : _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size());
-+		if (baked_wgsl.length() > 0) {
++		char *wgsl_str = !baked_wgsl.is_empty() ? _malloc_wgsl(baked_wgsl) : _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size());
++		if (!baked_wgsl.is_empty()) {
 +			_spv_to_wgsl_baked_hits++;
 +		}
 +
@@ -6167,6 +6188,12 @@ index 0000000000..e5b75ee75f
 +
 +		// DEPTH_ALIAS parsing removed — depth=2 images are now depth=1 in SPIR-V,
 +		// and a single texture_depth_2d variable handles both sampling modes.
++
++		// Raw WGSL is authored for WebGPU directly and is not Tint output: the text
++		// rewrites below (8-bit storage format names, binding_array flattening,
++		// read_write/read storage texture splits) assume Tint's output shape and can
++		// silently corrupt hand-written WGSL, so skip them for raw stages.
++		if (!raw_wgsl) {
 +
 +		// Remap unsupported 8-bit storage texture format names in WGSL.
 +		// r8* and rg8* are not valid base WebGPU storage texel formats — remap to
@@ -6673,6 +6700,7 @@ index 0000000000..e5b75ee75f
 +				memcpy(wgsl_str, cs.get_data(), cs.length() + 1);
 +			}
 +		}
++		} // !raw_wgsl (Tint-output WGSL rewrites are skipped for hand-written WGSL).
 +
 +		WGPUShaderSourceWGSL wgsl_source = {};
 +		wgsl_source.chain.sType = WGPUSType_ShaderSourceWGSL;
@@ -12597,6 +12625,10 @@ index 0000000000..e5b75ee75f
 +			return false; // Not available in WebGPU.
 +		case SUPPORTS_POINT_SIZE:
 +			return false; // Point size not controllable in WebGPU.
++		case SUPPORTS_RAW_WGSL_COMPUTE:
++			// RenderingDevice::shader_create_from_wgsl() is implemented by this driver:
++			// hand-written WGSL becomes a WGSL-only container, bypassing SPIR-V and Tint.
++			return true;
 +		default:
 +			return false;
 +	}
@@ -12637,10 +12669,10 @@ index 0000000000..e5b75ee75f
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.h b/drivers/webgpu/rendering_device_driver_webgpu.h
 new file mode 100644
-index 0000000000..d9a4cb06c7
+index 0000000000..8dd3098d65
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.h
-@@ -0,0 +1,767 @@
+@@ -0,0 +1,772 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.h                                      */
 +/**************************************************************************/
@@ -13177,6 +13209,11 @@ index 0000000000..d9a4cb06c7
 +	/// Create a shader from a container (SPIR-V). Translates SPIR-V → WGSL via Tint
 +	/// at runtime, splits combined image-samplers, and remaps push constants to storage buffer.
 +	virtual ShaderID shader_create_from_container(const Ref<RenderingShaderContainer> &p_shader_container, const Vector<ImmutableSampler> &p_immutable_samplers) override final;
++	/// Create a shader from hand-written WGSL (no SPIR-V / no Tint). Builds a
++	/// RenderingShaderContainerWebGPU with a single WGSL compute stage and the given
++	/// reflection (authored, non-doubled binding numbers), then defers to
++	/// shader_create_from_container(). Only used behind SUPPORTS_RAW_WGSL_COMPUTE.
++	virtual ShaderID shader_create_from_wgsl(const String &p_wgsl, const ShaderReflection &p_reflection, const String &p_shader_name) override final;
 +	/// Get the layout hash for a shader (used for pipeline cache keying).
 +	virtual uint32_t shader_get_layout_hash(ShaderID p_shader) override final;
 +	/// Release a shader and all its resources (modules, layouts, bind groups).
@@ -13410,10 +13447,10 @@ index 0000000000..d9a4cb06c7
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_shader_container_webgpu.cpp b/drivers/webgpu/rendering_shader_container_webgpu.cpp
 new file mode 100644
-index 0000000000..386a2ddd79
+index 0000000000..43ceb94f7f
 --- /dev/null
 +++ b/drivers/webgpu/rendering_shader_container_webgpu.cpp
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,355 @@
 +/**************************************************************************/
 +/*  rendering_shader_container_webgpu.cpp                                 */
 +/**************************************************************************/
@@ -13448,12 +13485,187 @@ index 0000000000..386a2ddd79
 +
 +#include "rendering_shader_container_webgpu.h"
 +
++#include "core/templates/hash_set.h"
++
 +#ifdef WEBGPU_BAKE_WGSL
 +#include "spirv_preprocess.h"
 +#include "spirv_to_wgsl.h"
 +
 +#include <cstdlib>
 +#endif
++
++// =========================================================================
++// Raw-WGSL helpers
++// =========================================================================
++
++// The WebGPU driver preprocesses SPIR-V bindings by doubling every non-push-constant
++// binding before Tint (drivers/webgpu/spirv_preprocess.cpp) and its BGL/bind-group
++// code uses `binding * 2` (rendering_device_driver_webgpu.cpp). Hand-written WGSL does
++// not go through that preprocessor, so this container applies the same convention to
++// the WGSL text mechanically: every `@binding(N)` becomes `@binding(2*N)`. The
++// reflection keeps the authored binding number N, which is what RD::Uniform.binding
++// and the driver's reflection-driven BGL code expect.
++// See docs/WGSL_COMPUTE_PATH.md §5.
++static String _double_wgsl_bindings(const String &p_wgsl) {
++	static const String needle = "@binding(";
++	String out;
++	out.reserve(p_wgsl.length() + 16);
++	int from = 0;
++	while (true) {
++		const int at = p_wgsl.find(needle, from);
++		if (at < 0) {
++			break;
++		}
++		out += p_wgsl.substr(from, at - from);
++		int i = at + needle.length();
++		uint64_t value = 0;
++		while (i < p_wgsl.length() && p_wgsl[i] >= '0' && p_wgsl[i] <= '9') {
++			value = value * 10 + (uint64_t)(p_wgsl[i] - '0');
++			i++;
++		}
++		if (i == at + needle.length() || value > (uint64_t)UINT32_MAX / 2) {
++			// Not a plain decimal binding index that can be doubled; leave it untouched
++			// (the reflection/WGSL consistency check below will reject it if reflected).
++			out += p_wgsl.substr(at, i - at);
++		} else {
++			out += needle;
++			out += itos((int64_t)(value * 2));
++		}
++		from = i;
++	}
++	out += p_wgsl.substr(from);
++	return out;
++}
++
++// Collects every (@group(G), @binding(B)) pair declared in a WGSL text, mirroring
++// the driver's parse_group_binding() scanner exactly (drivers/webgpu/
++// rendering_device_driver_webgpu.cpp): it requires "@group(G)" then spaces then
++// "@binding(B)" on the same declaration, because that is the only form the driver's
++// per-stage visibility / storage-format / sample-type scans can see. A declaration
++// that is not found here would get no BGL visibility and fail at pipeline creation.
++static void _collect_wgsl_binding_pairs(const String &p_wgsl, HashSet<uint64_t> &r_pairs) {
++	static const String group_needle = "@group(";
++	static const String binding_needle = "@binding(";
++	int from = 0;
++	while (true) {
++		const int g = p_wgsl.find(group_needle, from);
++		if (g < 0) {
++			break;
++		}
++		int i = g + group_needle.length();
++		uint64_t group = 0;
++		const int group_digits_start = i;
++		while (i < p_wgsl.length() && p_wgsl[i] >= '0' && p_wgsl[i] <= '9') {
++			group = group * 10 + (uint64_t)(p_wgsl[i] - '0');
++			i++;
++		}
++		if (i == group_digits_start) {
++			from = g + group_needle.length();
++			continue;
++		}
++		if (i < p_wgsl.length() && (p_wgsl[i] == 'u' || p_wgsl[i] == 'i')) {
++			i++;
++		}
++		if (i >= p_wgsl.length() || p_wgsl[i] != ')') {
++			from = g + group_needle.length();
++			continue;
++		}
++		i++;
++		while (i < p_wgsl.length() && p_wgsl[i] == ' ') {
++			i++;
++		}
++		if (p_wgsl.find(binding_needle, i) != i) {
++			from = g + group_needle.length();
++			continue;
++		}
++		i += binding_needle.length();
++		uint64_t binding = 0;
++		const int binding_digits_start = i;
++		while (i < p_wgsl.length() && p_wgsl[i] >= '0' && p_wgsl[i] <= '9') {
++			binding = binding * 10 + (uint64_t)(p_wgsl[i] - '0');
++			i++;
++		}
++		if (i == binding_digits_start) {
++			from = g + group_needle.length();
++			continue;
++		}
++		if (i < p_wgsl.length() && (p_wgsl[i] == 'u' || p_wgsl[i] == 'i')) {
++			i++;
++		}
++		r_pairs.insert((group << 32) | binding);
++		from = i;
++	}
++}
++
++bool RenderingShaderContainerWebGPU::set_code_from_wgsl_compute(const String &p_shader_name, const RenderingDeviceCommons::ShaderReflection &p_reflection, const String &p_wgsl) {
++	ERR_FAIL_COND_V_MSG(p_reflection.pipeline_type != RDC::PIPELINE_TYPE_COMPUTE, false,
++			"Raw WGSL containers only support compute shaders.");
++	ERR_FAIL_COND_V_MSG(p_reflection.push_constant_size != 0, false,
++			"Raw WGSL shaders cannot use push constants; use a uniform buffer instead.");
++	ERR_FAIL_COND_V_MSG(p_wgsl.strip_edges().is_empty(), false, "Raw WGSL container: empty WGSL source.");
++
++	ReflectShader reflection;
++	reflection.pipeline_type = RDC::PIPELINE_TYPE_COMPUTE;
++	memcpy(reflection.compute_local_size, p_reflection.compute_local_size, sizeof(reflection.compute_local_size));
++	reflection.stages_bits.set_flag(RDC::SHADER_STAGE_COMPUTE_BIT);
++	reflection.stages_vector.push_back(RDC::SHADER_STAGE_COMPUTE);
++	reflection.uniform_sets.resize(p_reflection.uniform_sets.size());
++	for (uint32_t s = 0; s < (uint32_t)p_reflection.uniform_sets.size(); s++) {
++		const Vector<RDC::ShaderUniform> &src_set = p_reflection.uniform_sets[s];
++		ERR_FAIL_COND_V_MSG(src_set.is_empty(), false,
++				vformat("Raw WGSL container: uniform set %d is empty.", s));
++		for (const RDC::ShaderUniform &su : src_set) {
++			ReflectUniform ru;
++			ru.type = su.type;
++			ru.binding = su.binding;
++			ru.length = su.length;
++			ru.writable = su.writable;
++			ru.texture_type = su.texture_type;
++			ru.texture_format = su.texture_format;
++			ru.stages.set_flag(RDC::SHADER_STAGE_COMPUTE_BIT);
++			reflection.uniform_sets[s].push_back(ru);
++		}
++		reflection.uniform_sets[s].sort();
++	}
++
++	shader_name = p_shader_name.utf8(); // Must be set before set_from_shader_reflection().
++	set_from_shader_reflection(reflection);
++
++	shaders.resize(1);
++	shaders.write[0].shader_stage = RDC::SHADER_STAGE_COMPUTE;
++	shaders.write[0].code_compression_flags = 0;
++	shaders.write[0].code_decompressed_size = 0;
++	// shaders[0].code_compressed_bytes stays empty: that is the driver's raw-WGSL marker.
++
++	const String doubled_wgsl = _double_wgsl_bindings(p_wgsl);
++
++	// The BGL is built from the reflection while the module is validated against the
++	// WGSL text, so a reflection/WGSL mismatch only surfaces as a Dawn validation error
++	// at the first pipeline/bind-group creation. Verify the doubled bindings here and
++	// log the mapping once, so the failure names the shader instead of Dawn.
++	HashSet<uint64_t> declared_pairs;
++	_collect_wgsl_binding_pairs(doubled_wgsl, declared_pairs);
++	String binding_map;
++	for (uint32_t s = 0; s < (uint32_t)p_reflection.uniform_sets.size(); s++) {
++		for (const RDC::ShaderUniform &su : p_reflection.uniform_sets[s]) {
++			const uint64_t key = ((uint64_t)s << 32) | (uint64_t)(su.binding * 2);
++			ERR_FAIL_COND_V_MSG(!declared_pairs.has(key), false,
++					vformat("Raw WGSL container '%s': reflected binding set %d binding %d has no matching '@group(%d) @binding(%d)' declaration in the WGSL (the container doubles authored bindings for the WebGPU driver).",
++							p_shader_name, s, su.binding, s, su.binding * 2));
++			if (!binding_map.is_empty()) {
++				binding_map += ", ";
++			}
++			binding_map += vformat("set%d:%d->@binding(%d)", s, su.binding, su.binding * 2);
++		}
++	}
++	print_verbose(vformat("WebGPU raw WGSL '%s': %s.", p_shader_name, binding_map.is_empty() ? String("no bindings") : binding_map));
++
++	stage_wgsl.resize(1);
++	stage_wgsl[0] = doubled_wgsl.utf8();
++	header_data.flags |= HEADER_FLAG_HAS_WGSL;
++	header_data.push_constant_bind_group = NO_PUSH_CONSTANTS;
++	return true;
++}
 +
 +// =========================================================================
 +// SPIR-V Storage
@@ -13596,10 +13808,10 @@ index 0000000000..386a2ddd79
 +
 diff --git a/drivers/webgpu/rendering_shader_container_webgpu.h b/drivers/webgpu/rendering_shader_container_webgpu.h
 new file mode 100644
-index 0000000000..4b0e65554a
+index 0000000000..dad0b0a2ed
 --- /dev/null
 +++ b/drivers/webgpu/rendering_shader_container_webgpu.h
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,125 @@
 +/**************************************************************************/
 +/*  rendering_shader_container_webgpu.h                                   */
 +/**************************************************************************/
@@ -13680,6 +13892,20 @@ index 0000000000..4b0e65554a
 +	// Empty when the container has no WGSL for that stage.
 +	CharString get_stage_wgsl(uint32_t p_index) const { return p_index < stage_wgsl.size() ? stage_wgsl[p_index] : CharString(); }
 +	bool has_push_constants() const { return header_data.push_constant_bind_group != NO_PUSH_CONSTANTS; }
++
++	// Fills this container with a single WGSL compute stage + hand-built reflection.
++	// Behavior:
++	//  - copies p_reflection into the protected base-class reflection tables via
++	//    set_from_shader_reflection() (compute-only, no push constants);
++	//  - stores `p_wgsl` in stage_wgsl[0], setting HEADER_FLAG_HAS_WGSL;
++	//  - rewrites every `@binding(N)` in the WGSL to `@binding(2*N)` (the WebGPU
++	//    driver's binding-doubling convention, see docs/WGSL_COMPUTE_PATH.md §5),
++	//    and verifies every reflected binding has a matching declaration;
++	//  - writes shaders[0] = { SHADER_STAGE_COMPUTE, empty code }, and
++	//    header_data.push_constant_bind_group = NO_PUSH_CONSTANTS.
++	// Returns false on invalid input.
++	bool set_code_from_wgsl_compute(const String &p_shader_name, const RDC::ShaderReflection &p_reflection,
++			const String &p_wgsl);
 +
 +	RenderingShaderContainerWebGPU();
 +	virtual ~RenderingShaderContainerWebGPU();
