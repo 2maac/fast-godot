@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; **pushed** branch tip `d097fa2ce3`, with pmndrs milestone-1 stack commit `d8b3d583ae` and first-class spatial-mode commit `91a0a3e8e4` below it; tag `4.8-beta5` = `91a0a3e8e4`; the **M2 temporal delta below is uncommitted** — it is committed next and the tag is force-moved to the M2 stack commit) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; **pushed**; M2 temporal stack commit `cb0aa639c7` = tag `4.8-beta5`, branch tip is the docs refresh above it; below it the pmndrs milestone-1 stack commit `d8b3d583ae` and first-class spatial-mode commit `91a0a3e8e4`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -76,10 +76,10 @@ files**. Sizes: `0001` 508,662 B, `0002` 203,592, `0003` 45,856, `0004` 898,639,
 `0005` 6,085,575, `0006` 15,131,334, `0007` 3,541,178, `0099` 29,700. Patch
 deltas vs the previously committed stack: `0004` `+135/−7`, `0005` `+3104/−275`
 (driver M2 fixes + temporal effect + mode 7 + the three SDFGI files), layer list
-`+6` paths → 162. The M2 patch files are **uncommitted**: they are committed
-next, then the branch pushed and tag `4.8-beta5` force-moved from
-`91a0a3e8e4` to the M2 stack commit so fresh toolchain installs bootstrap the
-mode-7 driver/template.
+`+6` paths → 162. The M2 patch files are **committed and pushed** as
+`cb0aa639c7`, and tag `4.8-beta5` was force-moved from `91a0a3e8e4` to it on
+2026-11-28 ~01:00 so fresh toolchain installs bootstrap the mode-7
+driver/template (the moved tag archive was re-checked).
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,

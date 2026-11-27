@@ -3,15 +3,13 @@
 Resume doc. Last updated 2026-11-28 ~00:50. **Forward+ and Forward Mobile both
 run on the WebGPU device, SDFGI is enabled on the WebGPU device, and both
 pmndrs/upscaler paths are implemented and browser-verified as first-class
-Viewport scaling modes: spatial (mode 6) and temporal (mode 7).** Everything up
-to the pmndrs milestone-1 + first-class-spatial stack is committed and
-**pushed** to `origin`: tag `4.8-beta5` = `91a0a3e8e4` and branch `4.8-beta5` =
-`d097fa2ce3` (commits `d8b3d583ae`, `70cc14782e`, `91a0a3e8e4`, `59b7ef60a9`,
-`d097fa2ce3`). The **milestone-2 temporal work** (2026-11-28 00:00-00:50: engine,
-regenerated patch stack and docs) is **committed next, not pushed yet**, and
-tag `4.8-beta5` will be force-moved from `91a0a3e8e4` to the new M2 stack
-commit — until then, fresh installs still bootstrap the mode-6 stack. Branch and
-tag share the simple name but are different commits — use
+Viewport scaling modes: spatial (mode 6) and temporal (mode 7).** The pmndrs
+milestone-2 temporal work (2026-11-28 00:00-00:50: engine, regenerated patch
+stack and docs) is committed as `cb0aa639c7` and **pushed**, and tag `4.8-beta5`
+was force-moved from `91a0a3e8e4` to `cb0aa639c7`; the branch tip is the docs
+refresh above it. Earlier stack commits: `d8b3d583ae` (raw-WGSL path + spatial),
+`91a0a3e8e4` (first-class spatial mode 6), `d097fa2ce3`/`59b7ef60a9`
+(docs). Branch and tag share the simple name but are different commits — use
 `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the distinction matters.
 Fresh toolchain installs fetch the tag, i.e. the current
 driver/template. Verify with `git ls-remote origin refs/tags/4.8-beta5`.
@@ -137,8 +135,8 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` = `origin/4.8-beta5` | `d097fa2ce3` | docs tip (HEAD): `d097fa2ce3` (pushed) is two docs commits above the first-class pmndrs scaling-mode commit `91a0a3e8e4`, which is one above the pmndrs milestone-1 stack commit `d8b3d583ae` (raw-WGSL path + pmndrs spatial upscaler). The M2 temporal work is committed on top next (not pushed yet). Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
-| tag `4.8-beta5` | `91a0a3e8e4` | **last pushed** engine/patch-stack tip: raw-WGSL compute path + **pmndrs spatial upscaler** + the **first-class pmndrs spatial Viewport scaling mode** (on top of Forward+/MSAA/TAA/FSR/SDFGI); `git ls-remote origin refs/tags/4.8-beta5` confirms it. **The M2 temporal commit will force-move this tag** (to the new stack commit) once it is pushed; until then fresh toolchain installs bootstrap the mode-6 stack. Lightweight tag (`git cat-file -t refs/tags/4.8-beta5` → `commit`) |
+| branch `4.8-beta5` = `origin/4.8-beta5` | `cb0aa639c7` | M2 temporal stack commit (`cb0aa639c7`, pushed) with this docs refresh on top of it (branch tip); below it `91a0a3e8e4` (first-class pmndrs spatial mode 6) and `d8b3d583ae` (raw-WGSL path + pmndrs spatial upscaler). Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| tag `4.8-beta5` | `cb0aa639c7` | engine/patch-stack tip: raw-WGSL compute path + pmndrs spatial (mode 6) + **pmndrs temporal (mode 7)** upscalers + M2 driver extensions, on top of Forward+/MSAA/TAA/FSR/SDFGI. **Force-moved 2026-11-28 ~01:00** from `91a0a3e8e4`; `git ls-remote origin refs/tags/4.8-beta5` confirms it and the moved tag archive was checked to carry the temporal patches. Lightweight tag (`git cat-file -t refs/tags/4.8-beta5` → `commit`) |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
 
@@ -156,7 +154,7 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` = `d097fa2ce3` (docs tip; **repository default branch**), pushed 2026-11-27 ~23:45; pmndrs milestone-1 stack commit `d8b3d583ae` and first-class spatial-mode commit `91a0a3e8e4` are below it. Tag `4.8-beta5` = `91a0a3e8e4` is the **last pushed** tagged tip. The **M2 temporal delta** (engine + `patches/` + docs, 2026-11-28 00:00-00:50) is **uncommitted and not pushed yet**: `patches/0004` (898,639 B) and `patches/0005` (6,085,575 B) plus `patches/layers/0005…files` (162 paths) are modified on top of `d097fa2ce3`. The M2 commit is made next and tag `4.8-beta5` force-moved to it — until then fresh installs bootstrap `91a0a3e8e4` (mode-6 stack). Branch and tag share the simple name — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate |
+| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` (**repository default branch**) is the docs refresh above the M2 temporal stack commit `cb0aa639c7` (pushed 2026-11-28 ~01:00); below it: `91a0a3e8e4` (first-class spatial mode 6), `d8b3d583ae` (raw-WGSL + spatial). Tag `4.8-beta5` = `cb0aa639c7` (force-moved 2026-11-28 ~01:00 from `91a0a3e8e4`) — fresh toolchain installs bootstrap the M2 temporal stack. Branch and tag share the simple name — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs spatial+temporal changes: 52 modified files + 6 new files (3 `effects/pmndrs_upscaler*`, 3 `effects/pmndrs_temporal*`)**. Volatile and not pushed; the M2 patches were regenerated from it 2026-11-28 ~00:36, so a fresh checkout + `tools/apply.sh` reproduces the build tree |
@@ -323,8 +321,8 @@ engine changes were regenerated into `patches/*.patch`; the committed part is on
 the repo branch (`b81f3de2c1` MSAA/TAA, `f799881f28` FSR/SDFGI injection,
 `529407b9fc` SDFGI enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1,
 `91a0a3e8e4` first-class pmndrs Viewport spatial mode 6) and the M2 temporal
-delta is in the working `patches/` (committed next), so the patch stack is the
-source of truth. Ancestors:
+delta is committed as `cb0aa639c7` and pushed, so the patch stack is the source
+of truth. Ancestors:
 bundle-lock bootstrap `582d619026`, patches/ layout `cdc0907bf6`, ring hardening
 `9267990dcd`, source bootstrap `130ed7f48d`, MSAA mitigation `a495fc3e93`,
 pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
@@ -1187,9 +1185,9 @@ this file's history.
     format) was changed to RGBA16F. Both re-verified with 0 validation errors.
 12. The Forward+ / pmndrs exports were verified with the editor/template built
     from `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
-    captured in the regenerated patch stack (last pushed tag `4.8-beta5` =
-    `91a0a3e8e4`; branch tip `d097fa2ce3`; the M2 commit is next, after which
-    the tag is force-moved to it). The staged M2 editor reports
+    captured in the regenerated patch stack (tag `4.8-beta5` =
+    `cb0aa639c7`, branch tip one docs refresh above it). The staged M2 editor
+    reports
     `4.8.beta.custom_build.582d61902` (binary built 2026-11-28 00:14-00:20);
     the web template was rebuilt 00:28, and the site export written 00:28:52
     runs that template's wasm byte-for-byte (`3fab49b3…`). If a distinct version
@@ -1232,12 +1230,9 @@ this file's history.
   the removal can no longer provision a fresh toolchain, so keep their existing
   toolchains or reinstall from a current build.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
-  installs download it. It is currently `91a0a3e8e4` (raw-WGSL path + pmndrs
-  milestone 1 + first-class spatial mode 6) and the branch tip is
-  `d097fa2ce3`; both are pushed. The **M2 temporal commit comes next**, after
-  which the tag must be **force-moved** from `91a0a3e8e4` to that M2 stack
-  commit and the branch pushed — until then fresh installs still bootstrap the
-  mode-6 stack. The tag is lightweight; after moving it, re-check the archive
+  installs download it. It was moved on 2026-11-28 ~01:00 to `cb0aa639c7` (M2
+  temporal stack; was `91a0a3e8e4`) and the branch (docs refresh above it) is
+  pushed. The tag is lightweight; after moving it, re-check the archive
   (`git ls-remote origin refs/tags/4.8-beta5`) and keep the docs commit above it
   (docs-only changes don't affect template builds).
   First-use provisioning also needs system `git` on the machine.
