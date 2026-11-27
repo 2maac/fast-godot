@@ -1212,3 +1212,6 @@ thirdparty/tint/src/tint/utils/text_generator/text_generator.cc
 thirdparty/tint/src/tint/utils/text_generator/text_generator.h
 thirdparty/tint/src/utils/compiler.h
 thirdparty/tint/src/utils/numeric.h
+thirdparty/amd-fsr2/shaders/ffx_fsr2_callbacks_glsl.h
+thirdparty/amd-fsr2/shaders/ffx_fsr2_compute_luminance_pyramid_pass.glsl
+thirdparty/amd-fsr2/shaders/ffx_spd.h

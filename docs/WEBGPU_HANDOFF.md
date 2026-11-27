@@ -23,8 +23,19 @@ Current state in one screen:
 - Forward+ extras verified 2026-11-27: **MSAA 4x** and **TAA** (both 0 validation
   errors, full level, ~60 fps). The MSAA/depth non-filtering-sampler bug reported
   from a real browser is fixed (see the dated note below).
-- The Godot Web Server site export (2026-11-27 12:28) contains the fixed build;
-  browsers need a hard reload to pick it up.
+- **FSR 1 and FSR 2 work on WebGPU** (browser-verified 2026-11-27, 960x540,
+  Quality 1/1.5, 0 validation errors, 60 fps): FSR 2's B10G11R11 storage images
+  are promoted to RGBA16F, its image-atomic/subgroup paths have WebGPU
+  fallbacks, and FSR 1 upscales through a storage-capable intermediate before
+  blitting to the non-storage render target. See the FSR section below.
+- **SDFGI is still disabled**, but for a different reason than before: its
+  attachment-less geometry injection is fixed (the SDF shader now has a
+  `USE_ATTACHMENT` variant and gets a throwaway colour target), yet its packed
+  `R32_UINT`/`R16_UINT` storage textures are sampled through `RGB9E5`/`R4G4B4A4`
+  float views, which WebGPU forbids on a storage texture. That needs sample
+  mirror textures and is still open.
+- The Godot Web Server site export is regenerated after each build; browsers need
+  a hard reload to pick it up.
 
 **2026-11-27 (later) — browser-reported validation error fixed.** A real-Chrome
 report showed `Filtering sampler ... is incompatible with non-filtering sampler
@@ -125,13 +136,16 @@ already have a toolchain are unaffected).
    readback/upload conversion, layered copy/init, per-stage SPIR-V version).
    Forward+ additions: compute-pass usage-scope splitting, Tint-risk bake
    pre-scan/`OpBitcast` rewrite, per-binding required sampler types
-   (`sampler_binding_types`), texture-format/sample-type/fallback-view fixes.
+   (`sampler_binding_types`), texture-format/sample-type/fallback-view fixes,
+   B10G11R11→RGBA16F storage promotion + WGSL rewrite (FSR 2 history).
 5. `0005-engine-renderer-patches` — batching (`batch_instance_index`), shader
    container format override, driver traits, GDScript native-call hooks, export
    window, WGSL shader baker plugin, icons/splash, frame profiler. Forward+:
    HTML5 Fast accepts `forward_plus`; cluster builder plain-atomics +
    `USE_ATTACHMENT` fallback; scene-shader identity subgroup macros; FSR1/FSR2
-   fp16 gating and viewport fallback; SDFGI gated off; TAA RGBA16F
+   fp16 gating; FSR2 WebGPU paths (no image atomics / no subgroup SPD, rgba16f
+   output) and the FSR1 intermediate blit; SDFGI geometry-injection attachment
+   variant (still gated for WebGPU format-view reasons); TAA RGBA16F
    previous-velocity buffer for WebGPU storage compatibility.
 6. `0006-thirdparty-vendored` — Tint + SPIRV-Tools.
 7. `0007-tools-fixtures-docs` — tools/, toolchain, test_project, docs.
@@ -360,6 +374,44 @@ pass/draw/resolve/ring counters (including `passFlush`) to the browser console;
 `rendering/webgpu/disable_batching` disables the batch/firstInstance traits and
 was used to rule the batching path out.
 
+## FSR 1 / FSR 2 on WebGPU (2026-11-27)
+
+Both 3D upscalers now run on the WebGPU device. Verified with TPS in Chrome for
+Testing/Dawn at 960x540, `resolution_scale` 1/1.5 (Quality), VoxelGI and
+Forward+: `[PERF] fps≈60`, zero `GPUValidationError`, zero shader/SPIR-V errors,
+and the selected upscaler actually active (`window.scaling_3d_mode` = FSR / FSR2).
+
+FSR 2:
+
+- B10G11R11 has no WebGPU storage texel format. The driver now promotes
+  storage-usage B10G11R11 textures to RGBA16F and rewrites the WGSL storage
+  declaration (`rg11b10ufloat`/`r11f_g11f_b10f` → `rgba16float`); FSR2's
+  previous-colour history is the only user.
+- FSR2's fp16 variants stay disabled when `SUPPORTS_HALF_FLOAT` is false, and the
+  remaining WebGPU-hostile paths are compiled out: the image atomics in
+  reconstruct-previous-depth (`imageAtomicMin/Max`) become a load/store, and the
+  SPD luminance pyramid uses `SPD_NO_WAVE_OPERATIONS` + `SPD_NO_IMAGE_ATOMICS`
+  (deterministic last-workgroup election, no subgroup quad swaps) when the
+  device has no image atomics/subgroups.
+- The app-controlled upscaled output is declared `rgba16f` in the FSR2 shaders,
+  matching the Forward+ target; a format-less storage image is invalid WGSL.
+- The effect is no longer skipped: `FSR2Effect::is_supported()` now probes true
+  on WebGPU, and the viewport FSR2→FSR1 fallback no longer triggers. The
+  fallback remains for devices that really lack B10G11R11 storage support.
+
+FSR 1:
+
+- FSR 1's RCAS pass writes its destination as a storage image, but WebGPU render
+  targets (swap-chain textures) are not storage-capable. The renderer now
+  upscales into a storage-capable RGBA16F intermediate and blits that to the
+  render target; the old path remains for devices whose render target supports
+  storage.
+
+Performance: FSR 2 and FSR 1 both hold 60 fps (VSync) in the TPS run. FSR2's
+WebGPU shaders are compiled at runtime (the offline bake uses the host's feature
+set, so the WebGPU-gated defines do not match the baked cache) and are then
+cached for the session; this affects startup, not the frame rate.
+
 ## Forward+ on WebGPU (2026-11-27)
 
 Forward+ is the second rendering method running on the WebGPU device (after
@@ -429,11 +481,16 @@ binding).
 
 Remaining Forward+ limitations (documented, intentional):
 
-- **SDFGI is disabled** on WebGPU (its geometry injection needs attachment-less
-  render passes). Volumetric fog, SSAO/SSIL/SSR, VoxelGI and SSR work as far as
-  this TPS run exercised them.
-- **FSR2 is unavailable** (B10G11R11 storage images are not a WebGPU storage
-  texel format); 3D scaling falls back to FSR 1 / off as described above.
+- **SDFGI is disabled** on WebGPU. Its attachment-less geometry-injection pass is
+  fixed (the SDF shader has a `USE_ATTACHMENT` variant and the pass gets a
+  throwaway colour target), but its packed UINT storage textures (`R32_UINT` for
+  light/lightprobe data, `R16_UINT` for occlusion) are sampled through float
+  views (`RGB9E5`, `R4G4B4A4`). WebGPU forbids a non-storage view format on a
+  storage texture, so SDFGI needs sample mirror textures before it can run.
+  Volumetric fog, SSAO/SSIL/SSR, VoxelGI and SSR work as far as this TPS run
+  exercised them.
+- **FSR 1 and FSR 2 are available** on WebGPU (verified 2026-11-27, 60 fps,
+  0 validation errors); see the FSR section above.
 - **Bake cost**: Forward+ bakes ~1524 shader-stage variants (mostly clustered
   scene variants), ~3-6 min on the dev machine, versus ~200 for Mobile. Skipped
   stages are harmless (the device never compiles them).
@@ -492,10 +549,12 @@ this file's history.
    silently, and keep the provisioner validating the resulting tree.
 
 10. **Forward+ on WebGPU — WORKING, with limits (2026-11-27).** TPS boots and
-    renders the full level at ~60 fps with zero validation errors; MSAA 4x and
-    TAA were verified too (see the Forward+ section). Remaining limitations:
-    SDFGI is disabled (needs attachment-less passes); FSR2 is unavailable so 3D
-    scaling falls back to FSR 1 / off. Forward+ bake is ~1524 stages (~3-6 min).
+    renders the full level at ~60 fps with zero validation errors; MSAA 4x, TAA,
+    FSR 1 and FSR 2 were verified too (see the Forward+ and FSR sections).
+    Remaining limitation: SDFGI is disabled because its packed UINT storage
+    textures need float sample views that WebGPU does not allow (the
+    attachment-less-pass blocker itself is fixed). Forward+ bake is ~1524 stages
+    (~3-6 min).
 11. **MSAA/depth sampler bindings + TAA (2026-11-27, later) — FIXED.** A
     real-Chrome run with MSAA enabled failed bind-group creation on
     `ResolveShaderRD` (`Filtering sampler ... NonFiltering`); combined

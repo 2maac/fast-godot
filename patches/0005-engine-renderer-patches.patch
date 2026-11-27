@@ -85131,7 +85131,7 @@ index e1766cb136..92e04ece2b 100644
  	PipelineDeferredRD pipeline;
  };
 diff --git a/servers/rendering/renderer_rd/effects/fsr2.cpp b/servers/rendering/renderer_rd/effects/fsr2.cpp
-index 207bb29a12..17d34d0e3f 100644
+index 207bb29a12..e4105b1441 100644
 --- a/servers/rendering/renderer_rd/effects/fsr2.cpp
 +++ b/servers/rendering/renderer_rd/effects/fsr2.cpp
 @@ -514,6 +514,18 @@ FSR2Context::~FSR2Context() {
@@ -85153,7 +85153,29 @@ index 207bb29a12..17d34d0e3f 100644
  	FfxDeviceCapabilities &capabilities = device.capabilities;
  	capabilities.minimumSupportedShaderModel = FFX_SHADER_MODEL_5_1;
  	capabilities.waveLaneCountMin = 32;
-@@ -549,6 +561,13 @@ FSR2Effect::FSR2Effect() {
+@@ -530,6 +542,21 @@ FSR2Effect::FSR2Effect() {
+ 			"\n#define FFX_FSR2_OPTION_GODOT_REACTIVE_MASK_CLAMP 1\n"
+ 			"\n#define FFX_FSR2_OPTION_GODOT_DERIVE_INVALID_MOTION_VECTORS 1\n";
+ 
++	// WebGPU has no image atomics and no (core) subgroup operations. Skip the
++	// FSR2 paths that need them so Tint can lower every compiled stage to WGSL:
++	// - reconstruct-previous-depth's atomic min/max becomes a plain load/store
++	//   (a rare lost update only leaves a slightly stale depth hint),
++	// - the SPD luminance pyramid's workgroup election lets every workgroup run
++	//   the final global mips (they read the same source texels, so the redundant
++	//   writes are identical), and its quad-swap reductions use the LDS fallback.
++	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
++		general_defines += "\n#define FFX_FSR2_NO_IMAGE_ATOMICS 1\n";
++		general_defines += "\n#define SPD_NO_IMAGE_ATOMICS 1\n";
++	}
++	if (RD::get_singleton()->limit_get(RD::LIMIT_SUBGROUP_SIZE) == 0) {
++		general_defines += "\n#define SPD_NO_WAVE_OPERATIONS 1\n";
++	}
++
+ 	Vector<String> modes_single;
+ 	modes_single.push_back("");
+ 
+@@ -549,6 +576,13 @@ FSR2Effect::FSR2Effect() {
  		Pass &pass = device.passes[FFX_FSR2_PASS_DEPTH_CLIP];
  		pass.shader = &shaders.depth_clip;
  		pass.shader->initialize(modes_with_fp16, general_defines);
@@ -85167,7 +85189,7 @@ index 207bb29a12..17d34d0e3f 100644
  		pass.shader_version = pass.shader->version_create();
  		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
  
-@@ -580,6 +599,13 @@ FSR2Effect::FSR2Effect() {
+@@ -580,6 +614,13 @@ FSR2Effect::FSR2Effect() {
  		Pass &pass = device.passes[FFX_FSR2_PASS_RECONSTRUCT_PREVIOUS_DEPTH];
  		pass.shader = &shaders.reconstruct_previous_depth;
  		pass.shader->initialize(modes_with_fp16, general_defines);
@@ -85181,7 +85203,7 @@ index 207bb29a12..17d34d0e3f 100644
  		pass.shader_version = pass.shader->version_create();
  		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
  
-@@ -610,6 +636,13 @@ FSR2Effect::FSR2Effect() {
+@@ -610,6 +651,13 @@ FSR2Effect::FSR2Effect() {
  		Pass &pass = device.passes[FFX_FSR2_PASS_LOCK];
  		pass.shader = &shaders.lock;
  		pass.shader->initialize(modes_with_fp16, general_defines);
@@ -85195,7 +85217,7 @@ index 207bb29a12..17d34d0e3f 100644
  		pass.shader_version = pass.shader->version_create();
  		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
  
-@@ -639,6 +672,13 @@ FSR2Effect::FSR2Effect() {
+@@ -639,6 +687,13 @@ FSR2Effect::FSR2Effect() {
  		Pass &pass = device.passes[FFX_FSR2_PASS_ACCUMULATE];
  		pass.shader = &shaders.accumulate;
  		pass.shader->initialize(accumulate_modes_with_fp16, general_defines);
@@ -85209,7 +85231,7 @@ index 207bb29a12..17d34d0e3f 100644
  		pass.shader_version = pass.shader->version_create();
  		pass.shader_variant = capabilities.fp16Supported && fp16_path_supported ? 2 : 0;
  
-@@ -724,6 +764,13 @@ FSR2Effect::FSR2Effect() {
+@@ -724,6 +779,13 @@ FSR2Effect::FSR2Effect() {
  		Pass &pass = device.passes[FFX_FSR2_PASS_GENERATE_REACTIVE];
  		pass.shader = &shaders.autogen_reactive;
  		pass.shader->initialize(modes_with_fp16, general_defines);
@@ -85223,7 +85245,7 @@ index 207bb29a12..17d34d0e3f 100644
  		pass.shader_version = pass.shader->version_create();
  		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
  
-@@ -746,6 +793,13 @@ FSR2Effect::FSR2Effect() {
+@@ -746,6 +808,13 @@ FSR2Effect::FSR2Effect() {
  		Pass &pass = device.passes[FFX_FSR2_PASS_TCR_AUTOGENERATE];
  		pass.shader = &shaders.tcr_autogen;
  		pass.shader->initialize(modes_with_fp16, general_defines);
@@ -85237,7 +85259,7 @@ index 207bb29a12..17d34d0e3f 100644
  		pass.shader_version = pass.shader->version_create();
  		pass.shader_variant = capabilities.fp16Supported ? 1 : 0;
  
-@@ -792,6 +846,9 @@ FSR2Effect::FSR2Effect() {
+@@ -792,6 +861,9 @@ FSR2Effect::FSR2Effect() {
  }
  
  FSR2Effect::~FSR2Effect() {
@@ -85324,8 +85346,25 @@ index d55f5c4085..b3ea306ea0 100644
  		{
  			RD::Uniform u;
  			u.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
+diff --git a/servers/rendering/renderer_rd/environment/gi.cpp b/servers/rendering/renderer_rd/environment/gi.cpp
+index 3130c76648..9b9e27494d 100644
+--- a/servers/rendering/renderer_rd/environment/gi.cpp
++++ b/servers/rendering/renderer_rd/environment/gi.cpp
+@@ -454,7 +454,11 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
+ 		}
+ 
+ 		tf_render.format = RD::DATA_FORMAT_R32_UINT;
+-		tf_render.usage_bits |= RD::TEXTURE_USAGE_STORAGE_ATOMIC_BIT;
++		// WebGPU has no image atomics; the SDF shader then uses a non-atomic
++		// imageLoad/imageStore path, so the texture only needs STORAGE.
++		if (RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
++			tf_render.usage_bits |= RD::TEXTURE_USAGE_STORAGE_ATOMIC_BIT;
++		}
+ 		render_geom_facing = create_clear_texture(tf_render, "SDFGI Render Geometry Facing");
+ 		tf_render.usage_bits &= ~RD::TEXTURE_USAGE_STORAGE_ATOMIC_BIT;
+ 
 diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
-index d8a0620034..26e34e1964 100644
+index d8a0620034..ead5923433 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 +++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 @@ -1867,7 +1867,14 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
@@ -85344,36 +85383,49 @@ index d8a0620034..26e34e1964 100644
  			break;
  		case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
  #ifdef METAL_MFXTEMPORAL_ENABLED
-@@ -1955,7 +1962,13 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+@@ -1955,7 +1962,16 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
  
  		if (p_render_data->environment.is_valid()) {
  			if (environment_get_sdfgi_enabled(p_render_data->environment) && get_debug_draw_mode() != RSE::VIEWPORT_DEBUG_DRAW_UNSHADED) {
 -				using_sdfgi = true;
-+				if (RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++				if (RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
 +					using_sdfgi = true;
 +				} else {
-+					// SDFGI's geometry injection renders into storage images only and
-+					// relies on attachment-less render passes, which WebGPU forbids.
-+					WARN_PRINT_ONCE("SDFGI requires attachment-less render passes, which this rendering device does not support. Disabling SDFGI.");
++					// SDFGI renders its SDF/light/probe data into packed UINT storage
++					// images (R32_UINT, R16_UINT) and samples them through float views
++					// (RGB9E5, R4G4B4A4). WebGPU forbids a non-storage view format on a
++					// storage texture, so those sample paths need mirror textures; until
++					// that exists, keep SDFGI off rather than emitting invalid bind groups.
++					WARN_PRINT_ONCE("SDFGI requires storage textures with float sample views, which this rendering device does not support. Disabling SDFGI.");
 +				}
  			}
  			if (environment_get_ssr_enabled(p_render_data->environment)) {
  				if (!p_render_data->transparent_bg) {
-@@ -3201,6 +3214,13 @@ void RenderForwardClustered::_render_uv2(const PagedArray<RenderGeometryInstance
- }
+@@ -3271,7 +3287,22 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
  
- void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_buffers, const Vector3i &p_from, const Vector3i &p_size, const AABB &p_bounds, const PagedArray<RenderGeometryInstance *> &p_instances, const RID &p_albedo_texture, const RID &p_emission_texture, const RID &p_emission_aniso_texture, const RID &p_geom_facing_texture, float p_exposure_normalization) {
-+	// Geometry injection renders into storage images with an attachment-less render
-+	// pass; WebGPU requires at least one attachment, and there is no equivalent shader
-+	// variant for the SDF depth pass. Skip the injection (SDFGI cascades stay as they
-+	// are) rather than emitting invalid passes every frame.
-+	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
-+		return;
-+	}
- 	RENDER_TIMESTAMP("Render SDFGI");
+ 		HashMap<Size2i, RID>::Iterator E = sdfgi_framebuffer_size_cache.find(fb_size);
+ 		if (!E) {
+-			RID fb = RD::get_singleton()->framebuffer_create_empty(fb_size);
++			RID fb;
++			if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++				// The SDF variant is compiled with USE_ATTACHMENT on these drivers
++				// (see SceneShaderForwardClustered::init), so the pass needs a real
++				// colour target of the cascade slice's size.
++				RD::TextureFormat tf;
++				tf.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
++				tf.width = fb_size.width;
++				tf.height = fb_size.height;
++				tf.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
++				RID attachment = RD::get_singleton()->texture_create(tf, RD::TextureView());
++				sdfgi_attachment_size_cache.insert(fb_size, attachment);
++				fb = RD::get_singleton()->framebuffer_create({ attachment });
++			} else {
++				fb = RD::get_singleton()->framebuffer_create_empty(fb_size);
++			}
+ 			E = sdfgi_framebuffer_size_cache.insert(fb_size, fb);
+ 		}
  
- 	RD::get_singleton()->draw_command_begin_label("Render SDFGI Voxel");
-@@ -5299,6 +5319,17 @@ RenderForwardClustered::RenderForwardClustered() {
+@@ -5299,6 +5330,17 @@ RenderForwardClustered::RenderForwardClustered() {
  		}
  #endif
  
@@ -85391,6 +85443,63 @@ index d8a0620034..26e34e1964 100644
  		scene_shader.init(defines);
  	}
  
+@@ -5462,4 +5504,8 @@ RenderForwardClustered::~RenderForwardClustered() {
+ 		RD::get_singleton()->free_rid(sdfgi_framebuffer_size_cache.begin()->value);
+ 		sdfgi_framebuffer_size_cache.remove(sdfgi_framebuffer_size_cache.begin());
+ 	}
++	while (sdfgi_attachment_size_cache.begin()) {
++		RD::get_singleton()->free_rid(sdfgi_attachment_size_cache.begin()->value);
++		sdfgi_attachment_size_cache.remove(sdfgi_attachment_size_cache.begin());
++	}
+ }
+diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
+index aff29be18d..5ff2fc6661 100644
+--- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
++++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
+@@ -495,6 +495,7 @@ private:
+ 	void _fill_render_list(RenderListType p_render_list, const RenderDataRD *p_render_data, PassMode p_pass_mode, bool p_using_sdfgi = false, bool p_using_opaque_gi = false, bool p_using_motion_pass = false, bool p_append = false);
+ 
+ 	HashMap<Size2i, RID> sdfgi_framebuffer_size_cache;
++	HashMap<Size2i, RID> sdfgi_attachment_size_cache;
+ 
+ 	struct GeometryInstanceData;
+ 	class GeometryInstanceForwardClustered;
+diff --git a/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
+index ab3a4a9f4b..68ea8b1a29 100644
+--- a/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
++++ b/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
+@@ -474,8 +474,13 @@ void SceneShaderForwardClustered::ShaderData::_create_pipeline(PipelineKey p_pip
+ 			case PIPELINE_VERSION_DEPTH_PASS:
+ 			case PIPELINE_VERSION_DEPTH_PASS_DP:
+ 			case PIPELINE_VERSION_DEPTH_PASS_MULTIVIEW:
++				break;
+ 			case PIPELINE_VERSION_DEPTH_PASS_WITH_SDF:
+-			default:
++				// Drivers without attachment-less passes (WebGPU) give the SDF
++				// injection a throwaway colour attachment; supply a matching
++				// disabled blend state for that one target. On other drivers the
++				// framebuffer has no colour target and this is simply unused.
++				blend_state = RD::PipelineColorBlendState::create_disabled(1);
+ 				break;
+ 		}
+ 	}
+@@ -656,7 +661,15 @@ void SceneShaderForwardClustered::init(const String p_defines) {
+ 			shader_versions.push_back(ShaderRD::VariantDefine(SHADER_GROUP_MULTIVIEW, base_define + "\n#define USE_MULTIVIEW\n#define MODE_RENDER_DEPTH\n#define MODE_RENDER_NORMAL_ROUGHNESS\n", false)); // SHADER_VERSION_DEPTH_PASS_WITH_NORMAL_AND_ROUGHNESS_MULTIVIEW
+ 			shader_versions.push_back(ShaderRD::VariantDefine(SHADER_GROUP_ADVANCED_MULTIVIEW, base_define + "\n#define USE_MULTIVIEW\n#define MODE_RENDER_DEPTH\n#define MODE_RENDER_NORMAL_ROUGHNESS\n#define MODE_RENDER_VOXEL_GI\n", false)); // SHADER_VERSION_DEPTH_PASS_WITH_NORMAL_AND_ROUGHNESS_AND_VOXEL_GI_MULTIVIEW
+ 			shader_versions.push_back(ShaderRD::VariantDefine(SHADER_GROUP_ADVANCED, base_define + "\n#define MODE_RENDER_DEPTH\n#define MODE_RENDER_MATERIAL\n", false)); // SHADER_VERSION_DEPTH_PASS_WITH_MATERIAL
+-			shader_versions.push_back(ShaderRD::VariantDefine(SHADER_GROUP_ADVANCED, base_define + "\n#define MODE_RENDER_DEPTH\n#define MODE_RENDER_SDF\n", false)); // SHADER_VERSION_DEPTH_PASS_WITH_SDF
++			// SDFGI geometry injection writes only to storage images, which WebGPU
++			// cannot put in an attachment-less render pass. On those drivers compile
++			// the SDF variant with a fragment output and render it against a
++			// throwaway colour target (see _render_sdfgi()).
++			String sdf_define = base_define + "\n#define MODE_RENDER_DEPTH\n#define MODE_RENDER_SDF\n";
++			if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++				sdf_define += "#define USE_ATTACHMENT\n";
++			}
++			shader_versions.push_back(ShaderRD::VariantDefine(SHADER_GROUP_ADVANCED, sdf_define, false)); // SHADER_VERSION_DEPTH_PASS_WITH_SDF
+ 		}
+ 
+ 		Vector<String> color_pass_flags = {
 diff --git a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp b/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
 index 870bdbd5d2..1cc8675b98 100644
 --- a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
@@ -85803,7 +85912,7 @@ index 623c24fef5..9a522f25bc 100644
  
  	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
-index 38540f4396..ac19c6b7a1 100644
+index 38540f4396..2ad9ff145c 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 @@ -442,9 +442,20 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
@@ -85842,7 +85951,33 @@ index 38540f4396..ac19c6b7a1 100644
  				buffers.base_fb = FramebufferCacheRD::get_singleton()->get_cache(buffers.base_texture); // TODO move this into bokeh_dof_raster, we can do this internally
  
  				// In stereo p_render_data->z_near and p_render_data->z_far can be offset for our combined frustum.
-@@ -1167,6 +1182,9 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
+@@ -871,7 +886,24 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+ 				RID source_texture = rb->get_texture_slice(use_smaa ? SNAME("SMAA") : SNAME("Tonemapper"), SNAME("destination"), v, 0);
+ 				RID dest_texture = texture_storage->render_target_get_rd_texture_slice(render_target, v);
+ 
+-				spatial_upscaler->process(rb, source_texture, dest_texture);
++				// The FSR 1 pass writes its destination through a storage image.
++				// WebGPU render-target textures are not storage-capable, so upscale
++				// into a storage-capable intermediate and blit that to the target.
++				RD::TextureFormat dest_format = RD::get_singleton()->texture_get_format(dest_texture);
++				if (!(dest_format.usage_bits & RD::TEXTURE_USAGE_STORAGE_BIT)) {
++					if (!rb->has_texture(SNAME("FSR"), SNAME("upscaled_output"))) {
++						rb->create_texture(SNAME("FSR"), SNAME("upscaled_output"), RD::DATA_FORMAT_R16G16B16A16_SFLOAT,
++								RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT | RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT,
++								RD::TEXTURE_SAMPLES_1, rb->get_target_size(), rb->get_view_count(), 1, true, true);
++					}
++					RID intermediate = rb->get_texture_slice(SNAME("FSR"), SNAME("upscaled_output"), v, 0);
++					spatial_upscaler->process(rb, source_texture, intermediate);
++
++					RID dest_fb = texture_storage->render_target_get_rd_framebuffer(render_target);
++					copy_effects->copy_to_fb_rect(intermediate, dest_fb, Rect2i(Point2i(), rb->get_target_size()));
++				} else {
++					spatial_upscaler->process(rb, source_texture, dest_texture);
++				}
+ 			}
+ 		} else {
+ 			// If no spatial upscaler is set, we are using bilinear or nearest filtering for scaling.
+@@ -1167,6 +1199,9 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
  }
  
  bool RendererSceneRenderRD::_render_buffers_can_be_storage() {
@@ -86392,10 +86527,27 @@ index f102bce9a8..94f6dc6d46 100644
  
  struct VoxelGIData {
 diff --git a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
-index de1cb92e51..5db7902436 100644
+index de1cb92e51..9be762731a 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
 +++ b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
-@@ -1074,7 +1074,8 @@ vec4 fog_process(vec3 vertex) {
+@@ -1002,6 +1002,16 @@ layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) uniform MaterialUniforms
+ 
+ #ifdef MODE_RENDER_DEPTH
+ 
++#ifdef MODE_RENDER_SDF
++#ifdef USE_ATTACHMENT
++// WebGPU requires at least one attachment on every render pass. Drivers that
++// cannot express attachment-less fragment shaders (SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS
++// is false) get a throwaway colour target and this output; the SDF geometry
++// injection itself still writes everything through storage images.
++layout(location = 0) out vec4 frag_color;
++#endif
++#endif
++
+ #ifdef MODE_RENDER_MATERIAL
+ 
+ layout(location = 0) out vec4 albedo_output_buffer;
+@@ -1074,7 +1084,8 @@ vec4 fog_process(vec3 vertex) {
  		float mip_level = mix(1.0 / MAX_ROUGHNESS_LOD, 1.0, 1.0 - (abs(vertex.z) - scene_data_block.data.z_near) / (scene_data_block.data.z_far - scene_data_block.data.z_near));
  #ifdef USE_RADIANCE_OCTMAP_ARRAY
  		float roughness_lod, blend;
@@ -86405,7 +86557,7 @@ index de1cb92e51..5db7902436 100644
  		float cube_lod = vec3_to_oct_lod(dFdx(cube_view), dFdy(cube_view), scene_data_block.data.radiance_pixel_size);
  		vec2 cube_uv = vec3_to_oct_with_border(cube_view, vec2(scene_data_block.data.radiance_border_size, 1.0 - scene_data_block.data.radiance_border_size * 2.0));
  		vec3 sky_sample_a = textureLod(sampler2DArray(radiance_octmap, DEFAULT_SAMPLER_LINEAR_WITH_MIPMAPS_CLAMP), vec3(cube_uv, roughness_lod), cube_lod).rgb;
-@@ -1717,7 +1718,8 @@ void fragment_shader(in SceneData scene_data) {
+@@ -1717,7 +1728,8 @@ void fragment_shader(in SceneData scene_data) {
  
  		float roughness_lod, blend;
  
@@ -86415,7 +86567,7 @@ index de1cb92e51..5db7902436 100644
  
  		float ref_lod = vec3_to_oct_lod(dFdx(ref_vec), dFdy(ref_vec), scene_data_block.data.radiance_pixel_size);
  		vec2 ref_uv = vec3_to_oct_with_border(ref_vec, vec2(scene_data_block.data.radiance_border_size, 1.0 - scene_data_block.data.radiance_border_size * 2.0));
-@@ -1780,7 +1782,8 @@ void fragment_shader(in SceneData scene_data) {
+@@ -1780,7 +1792,8 @@ void fragment_shader(in SceneData scene_data) {
  #ifdef USE_RADIANCE_OCTMAP_ARRAY
  
  		float lod, blend;
@@ -86425,7 +86577,7 @@ index de1cb92e51..5db7902436 100644
  
  		float ref_lod = vec3_to_oct_lod(dFdx(cc_radiance_ref_vec), dFdy(cc_radiance_ref_vec), scene_data_block.data.radiance_pixel_size);
  		vec2 ref_uv = vec3_to_oct_with_border(cc_radiance_ref_vec, vec2(scene_data_block.data.radiance_border_size, 1.0 - scene_data_block.data.radiance_border_size * 2.0));
-@@ -3020,7 +3023,7 @@ void fragment_shader(in SceneData scene_data) {
+@@ -3020,7 +3033,7 @@ void fragment_shader(in SceneData scene_data) {
  
  		vec3 cam_normal = mat3(inv_view_matrix) * normalize(normal_interp);
  
@@ -86434,6 +86586,18 @@ index de1cb92e51..5db7902436 100644
  
  		for (uint i = 0; i < 6; i++) {
  			float d = dot(cam_normal, aniso_dir[i]);
+@@ -3087,6 +3100,11 @@ void fragment_shader(in SceneData scene_data) {
+ 			imageStore(emission_grid, grid_pos, uvec4(light_rgbe));
+ 			imageStore(emission_aniso_grid, grid_pos, uvec4(light_aniso));
+ 		}
++
++#ifdef USE_ATTACHMENT
++		// Keep the throwaway attachment satisfied; nothing reads this target.
++		frag_color = vec4(0.0);
++#endif
+ 	}
+ 
+ #endif
 diff --git a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
 index 807b2fb971..540db2c95f 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl

@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..71bc97f317
+index 0000000000..5d6ad54884
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10549 @@
+@@ -0,0 +1,10573 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -4920,6 +4920,7 @@ index 0000000000..71bc97f317
 +		case DATA_FORMAT_R16G16B16A16_SFLOAT:
 +		case DATA_FORMAT_R16G16B16A16_UINT:
 +		case DATA_FORMAT_R16G16B16A16_SINT:
++		case DATA_FORMAT_B10G11R11_UFLOAT_PACK32:
 +		case DATA_FORMAT_R32_SFLOAT:
 +		case DATA_FORMAT_R32_UINT:
 +		case DATA_FORMAT_R32_SINT:
@@ -5084,6 +5085,14 @@ index 0000000000..71bc97f317
 +		case WGPUTextureFormat_RG8Sint:
 +			if (has_texture_formats_tier1) { return p_format; }
 +			return WGPUTextureFormat_RG32Sint;
++		// B10G11R11 is not a WebGPU storage texel format (it is only renderable,
++		// and only behind the rg11b10ufloat-renderable feature), but the FSR2
++		// internals need a storage image for their previous-colour history. Promote
++		// it to RGBA16F, which is a base WebGPU storage format and has plenty of
++		// range for the history colour; the WGSL declaration is rewritten to
++		// rgba16float in the shader build below.
++		case WGPUTextureFormat_RG11B10Ufloat:
++			return WGPUTextureFormat_RGBA16Float;
 +		// 16-bit formats: always promote. Shaders reference the 32-bit version
 +		// and there is no matching WGSL replacement for these.
 +		case WGPUTextureFormat_R16Float:
@@ -6177,6 +6186,21 @@ index 0000000000..71bc97f317
 +			ws = ws.replace("r8snorm", "r32float");
 +			ws = ws.replace("r8uint", "r32uint");
 +			ws = ws.replace("r8sint", "r32sint");
++			free(wgsl_str);
++			CharString cs = ws.utf8();
++			wgsl_str = (char *)malloc(cs.length() + 1);
++			memcpy(wgsl_str, cs.get_data(), cs.length() + 1);
++		}
++
++		// B10G11R11 (WGSL "rg11b10ufloat") is not a WebGPU storage texel format.
++		// texture_create() promotes storage-usage textures of that format to
++		// RGBA16F (see _promote_storage_format), so the WGSL declaration has to
++		// name the same physical format. FSR2's previous-colour history images are
++		// the only users.
++		if (strstr(wgsl_str, "rg11b10ufloat") || strstr(wgsl_str, "r11f_g11f_b10f")) {
++			String ws(wgsl_str);
++			ws = ws.replace("r11f_g11f_b10f", "rgba16float");
++			ws = ws.replace("rg11b10ufloat", "rgba16float");
 +			free(wgsl_str);
 +			CharString cs = ws.utf8();
 +			wgsl_str = (char *)malloc(cs.length() + 1);
