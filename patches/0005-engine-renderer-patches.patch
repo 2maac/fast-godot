@@ -85347,7 +85347,7 @@ index d55f5c4085..b3ea306ea0 100644
  			RD::Uniform u;
  			u.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
 diff --git a/servers/rendering/renderer_rd/environment/gi.cpp b/servers/rendering/renderer_rd/environment/gi.cpp
-index 3130c76648..9b9e27494d 100644
+index 3130c76648..a1c6c6431c 100644
 --- a/servers/rendering/renderer_rd/environment/gi.cpp
 +++ b/servers/rendering/renderer_rd/environment/gi.cpp
 @@ -454,7 +454,11 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
@@ -85363,8 +85363,128 @@ index 3130c76648..9b9e27494d 100644
  		render_geom_facing = create_clear_texture(tf_render, "SDFGI Render Geometry Facing");
  		tf_render.usage_bits &= ~RD::TEXTURE_USAGE_STORAGE_ATOMIC_BIT;
  
+@@ -477,10 +481,17 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
+ 	tf_occlusion.depth *= cascades.size(); //use depth for occlusion slices
+ 	tf_occlusion.width *= 2; //use width for the other half
+ 
++	const bool light_float = !RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT);
++	if (light_float) {
++		uses_occlusion = false;
++	}
++
+ 	RD::TextureFormat tf_light = tf_sdf;
+-	tf_light.format = RD::DATA_FORMAT_R32_UINT;
+-	tf_light.shareable_formats.push_back(RD::DATA_FORMAT_R32_UINT);
+-	tf_light.shareable_formats.push_back(RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32);
++	tf_light.format = light_float ? RD::DATA_FORMAT_R16G16B16A16_SFLOAT : RD::DATA_FORMAT_R32_UINT;
++	if (!light_float) {
++		tf_light.shareable_formats.push_back(RD::DATA_FORMAT_R32_UINT);
++		tf_light.shareable_formats.push_back(RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32);
++	}
+ 
+ 	RD::TextureFormat tf_aniso0 = tf_sdf;
+ 	tf_aniso0.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+@@ -514,17 +525,23 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
+ 		//octahedral lightprobes
+ 		RD::TextureFormat tf_octprobes = tf_probes;
+ 		tf_octprobes.array_layers = cascades.size() * 2;
+-		tf_octprobes.format = RD::DATA_FORMAT_R32_UINT; //pack well with RGBE
++		tf_octprobes.format = light_float ? RD::DATA_FORMAT_R16G16B16A16_SFLOAT : RD::DATA_FORMAT_R32_UINT;
+ 		tf_octprobes.width = probe_axis_count * probe_axis_count * (SDFGI::LIGHTPROBE_OCT_SIZE + 2);
+ 		tf_octprobes.height = probe_axis_count * (SDFGI::LIGHTPROBE_OCT_SIZE + 2);
+-		tf_octprobes.shareable_formats.push_back(RD::DATA_FORMAT_R32_UINT);
+-		tf_octprobes.shareable_formats.push_back(RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32);
+ 		//lightprobe texture is an octahedral texture
+ 
++		if (!light_float) {
++			tf_octprobes.shareable_formats.push_back(RD::DATA_FORMAT_R32_UINT);
++			tf_octprobes.shareable_formats.push_back(RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32);
++		}
+ 		lightprobe_data = create_clear_texture(tf_octprobes, "SDFGI LightProbe Data");
+-		RD::TextureView tv;
+-		tv.format_override = RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32;
+-		lightprobe_texture = RD::get_singleton()->texture_create_shared(tv, lightprobe_data);
++		if (light_float) {
++			lightprobe_texture = lightprobe_data;
++		} else {
++			RD::TextureView tv;
++			tv.format_override = RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32;
++			lightprobe_texture = RD::get_singleton()->texture_create_shared(tv, lightprobe_data);
++		}
+ 
+ 		//texture handling ambient data, to integrate with volumetric foc
+ 		RD::TextureFormat tf_ambient = tf_probes;
+@@ -540,7 +557,17 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
+ 	cascades_ubo = RD::get_singleton()->uniform_buffer_create(sizeof(SDFGI::Cascade::UBO) * SDFGI::MAX_CASCADES);
+ 
+ 	occlusion_data = create_clear_texture(tf_occlusion, "SDFGI Occlusion Data");
+-	{
++	if (light_float) {
++		RD::TextureFormat tf_dummy;
++		tf_dummy.format = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
++		tf_dummy.width = 1;
++		tf_dummy.height = 1;
++		tf_dummy.depth = 1;
++		tf_dummy.texture_type = RD::TEXTURE_TYPE_3D;
++		tf_dummy.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT;
++		occlusion_dummy = RD::get_singleton()->texture_create(tf_dummy, RD::TextureView());
++		occlusion_texture = occlusion_dummy;
++	} else {
+ 		RD::TextureView tv;
+ 		tv.format_override = RD::DATA_FORMAT_R4G4B4A4_UNORM_PACK16;
+ 		occlusion_texture = RD::get_singleton()->texture_create_shared(tv, occlusion_data);
+@@ -556,7 +583,9 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
+ 		cascade.light_aniso_0_tex = create_clear_texture(tf_aniso0, "SDFGI Cascade Light Aniso 0 Texture");
+ 		cascade.light_aniso_1_tex = create_clear_texture(tf_aniso1, "SDFGI Cascade Light Aniso 1 Texture");
+ 
+-		{
++		if (light_float) {
++			cascade.light_tex = cascade.light_data;
++		} else {
+ 			RD::TextureView tv;
+ 			tv.format_override = RD::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32;
+ 			cascade.light_tex = RD::get_singleton()->texture_create_shared(tv, cascade.light_data);
+@@ -1169,6 +1198,9 @@ GI::SDFGI::~SDFGI() {
+ 	RD::get_singleton()->free_rid(lightprobe_history_scroll);
+ 	RD::get_singleton()->free_rid(lightprobe_average_scroll);
+ 	RD::get_singleton()->free_rid(occlusion_data);
++	if (occlusion_dummy.is_valid()) {
++		RD::get_singleton()->free_rid(occlusion_dummy);
++	}
+ 	RD::get_singleton()->free_rid(ambient_texture);
+ 
+ 	RD::get_singleton()->free_rid(cascades_ubo);
+@@ -3653,6 +3685,9 @@ void GI::init(SkyRD *p_sky) {
+ 	{
+ 		//calculate tables
+ 		String defines = "\n#define OCT_SIZE " + itos(SDFGI::LIGHTPROBE_OCT_SIZE) + "\n";
++		if (!RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
++			defines += "\n#define SDFGI_LIGHT_FLOAT\n";
++		}
+ 
+ 		Vector<String> direct_light_modes;
+ 		direct_light_modes.push_back("\n#define MODE_PROCESS_STATIC\n");
+@@ -3668,6 +3703,9 @@ void GI::init(SkyRD *p_sky) {
+ 		//calculate tables
+ 		String defines = "\n#define OCT_SIZE " + itos(SDFGI::LIGHTPROBE_OCT_SIZE) + "\n";
+ 		defines += "\n#define SH_SIZE " + itos(SDFGI::SH_SIZE) + "\n";
++		if (!RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
++			defines += "\n#define SDFGI_LIGHT_FLOAT\n";
++		}
+ 		if (p_sky->sky_use_octmap_array) {
+ 			defines += "\n#define USE_RADIANCE_OCTMAP_ARRAY\n";
+ 		}
+@@ -4221,7 +4259,7 @@ void GI::process_gi(Ref<RenderSceneBuffersRD> p_render_buffers, const RID *p_nor
+ 				RD::Uniform u;
+ 				u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
+ 				u.binding = 14;
+-				RID buffer = p_voxel_gi_buffer_slices[v].is_valid() ? p_voxel_gi_buffer_slices[v] : texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_BLACK);
++				RID buffer = p_voxel_gi_buffer_slices[v].is_valid() ? p_voxel_gi_buffer_slices[v] : texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_2D_UINT);
+ 				u.append_id(buffer);
+ 				uniforms.push_back(u);
+ 			}
 diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
-index d8a0620034..ead5923433 100644
+index d8a0620034..9a491a7948 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 +++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 @@ -1867,7 +1867,14 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
@@ -85383,25 +85503,7 @@ index d8a0620034..ead5923433 100644
  			break;
  		case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
  #ifdef METAL_MFXTEMPORAL_ENABLED
-@@ -1955,7 +1962,16 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
- 
- 		if (p_render_data->environment.is_valid()) {
- 			if (environment_get_sdfgi_enabled(p_render_data->environment) && get_debug_draw_mode() != RSE::VIEWPORT_DEBUG_DRAW_UNSHADED) {
--				using_sdfgi = true;
-+				if (RD::get_singleton()->has_feature(RD::SUPPORTS_IMAGE_ATOMIC_32_BIT)) {
-+					using_sdfgi = true;
-+				} else {
-+					// SDFGI renders its SDF/light/probe data into packed UINT storage
-+					// images (R32_UINT, R16_UINT) and samples them through float views
-+					// (RGB9E5, R4G4B4A4). WebGPU forbids a non-storage view format on a
-+					// storage texture, so those sample paths need mirror textures; until
-+					// that exists, keep SDFGI off rather than emitting invalid bind groups.
-+					WARN_PRINT_ONCE("SDFGI requires storage textures with float sample views, which this rendering device does not support. Disabling SDFGI.");
-+				}
- 			}
- 			if (environment_get_ssr_enabled(p_render_data->environment)) {
- 				if (!p_render_data->transparent_bg) {
-@@ -3271,7 +3287,22 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
+@@ -3271,7 +3278,26 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
  
  		HashMap<Size2i, RID>::Iterator E = sdfgi_framebuffer_size_cache.find(fb_size);
  		if (!E) {
@@ -85418,14 +85520,63 @@ index d8a0620034..ead5923433 100644
 +				tf.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
 +				RID attachment = RD::get_singleton()->texture_create(tf, RD::TextureView());
 +				sdfgi_attachment_size_cache.insert(fb_size, attachment);
-+				fb = RD::get_singleton()->framebuffer_create({ attachment });
++				RD::FramebufferPass pass;
++				pass.color_attachments.push_back(0);
++				Vector<RD::FramebufferPass> passes;
++				passes.push_back(pass);
++				fb = RD::get_singleton()->framebuffer_create_multipass({ attachment }, passes);
 +			} else {
 +				fb = RD::get_singleton()->framebuffer_create_empty(fb_size);
 +			}
  			E = sdfgi_framebuffer_size_cache.insert(fb_size, fb);
  		}
  
-@@ -5299,6 +5330,17 @@ RenderForwardClustered::RenderForwardClustered() {
+@@ -4652,6 +4678,20 @@ void RenderForwardClustered::_geometry_instance_update(RenderGeometryInstance *p
+ 	ginstance->dirty_list_element.remove_from_list();
+ }
+ 
++static RD::FramebufferFormatID _get_sdfgi_color_framebuffer_format_for_pipeline() {
++	RD::AttachmentFormat af;
++	af.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
++	af.samples = RD::TEXTURE_SAMPLES_1;
++	af.usage_flags = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
++	Vector<RD::AttachmentFormat> attachments;
++	attachments.push_back(af);
++	RD::FramebufferPass pass;
++	pass.color_attachments.push_back(0);
++	Vector<RD::FramebufferPass> passes;
++	passes.push_back(pass);
++	return RD::get_singleton()->framebuffer_format_create_multipass(attachments, passes, 1);
++}
++
+ static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::DataFormat p_color_format, bool p_can_be_storage, RD::TextureSamples p_samples, bool p_specular, bool p_velocity, uint32_t p_view_count) {
+ 	const bool multisampling = p_samples > RD::TEXTURE_SAMPLES_1;
+ 	RD::AttachmentFormat attachment;
+@@ -4906,14 +4946,16 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
+ 	}
+ 
+ 	if (p_global.use_sdfgi) {
+-		// Depth pass with SDFGI support.
+ 		pipeline_key.version = SceneShaderForwardClustered::PIPELINE_VERSION_DEPTH_PASS_WITH_SDF;
+-		pipeline_key.framebuffer_format_id = _get_depth_framebuffer_format_for_pipeline(buffers_can_be_storage, RD::TextureSamples(p_global.texture_samples), false, false);
+-		_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+-
+-		// Depth pass with SDFGI support for an empty framebuffer.
+-		pipeline_key.framebuffer_format_id = RD::get_singleton()->framebuffer_format_create_empty();
+-		_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
++		if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
++			pipeline_key.framebuffer_format_id = _get_sdfgi_color_framebuffer_format_for_pipeline();
++			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
++		} else {
++			pipeline_key.framebuffer_format_id = _get_depth_framebuffer_format_for_pipeline(buffers_can_be_storage, RD::TextureSamples(p_global.texture_samples), false, false);
++			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
++			pipeline_key.framebuffer_format_id = RD::get_singleton()->framebuffer_format_create_empty();
++			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
++		}
+ 	}
+ 
+ 	// The dedicated depth passes use a different version of the surface and the shader.
+@@ -5299,6 +5341,17 @@ RenderForwardClustered::RenderForwardClustered() {
  		}
  #endif
  
@@ -85443,7 +85594,7 @@ index d8a0620034..ead5923433 100644
  		scene_shader.init(defines);
  	}
  
-@@ -5462,4 +5504,8 @@ RenderForwardClustered::~RenderForwardClustered() {
+@@ -5462,4 +5515,8 @@ RenderForwardClustered::~RenderForwardClustered() {
  		RD::get_singleton()->free_rid(sdfgi_framebuffer_size_cache.begin()->value);
  		sdfgi_framebuffer_size_cache.remove(sdfgi_framebuffer_size_cache.begin());
  	}
@@ -86501,10 +86652,27 @@ index 94bc126d91..0887503f51 100644
  layout(rgba16f, set = 0, binding = 5) uniform restrict writeonly image2D output_buffer;
  
 diff --git a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl b/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
-index ea32726132..79be7cec79 100644
+index ea32726132..2e4db30035 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
 +++ b/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
-@@ -318,7 +318,7 @@ void main() {
+@@ -37,9 +37,13 @@ layout(set = 0, binding = 5, std430) restrict buffer readonly ProcessVoxels {
+ }
+ process_voxels;
+ 
+-layout(r32ui, set = 0, binding = 6) uniform restrict uimage3D dst_light;
+-layout(rgba8, set = 0, binding = 7) uniform restrict image3D dst_aniso0;
+-layout(rg8, set = 0, binding = 8) uniform restrict image3D dst_aniso1;
++#ifdef SDFGI_LIGHT_FLOAT
++layout(rgba16f, set = 0, binding = 6) uniform restrict writeonly image3D dst_light;
++#else
++layout(r32ui, set = 0, binding = 6) uniform restrict writeonly uimage3D dst_light;
++#endif
++layout(rgba8, set = 0, binding = 7) uniform restrict writeonly image3D dst_aniso0;
++layout(rg8, set = 0, binding = 8) uniform restrict writeonly image3D dst_aniso1;
+ 
+ struct CascadeData {
+ 	vec3 offset; //offset of (0,0,0) in world coordinates
+@@ -318,7 +322,7 @@ void main() {
  	for (uint i = 0; i < params.light_count; i++) {
  		float attenuation = 1.0;
  		vec3 direction;
@@ -86513,6 +86681,43 @@ index ea32726132..79be7cec79 100644
  		vec3 texture_color = vec3(1.0);
  
  		switch (lights.data[i].type) {
+@@ -509,7 +513,11 @@ void main() {
+ 	//save to 3D textures
+ 	imageStore(dst_aniso0, positioni, aniso0);
+ 	imageStore(dst_aniso1, positioni, vec4(aniso1, 0.0, 0.0));
++#ifdef SDFGI_LIGHT_FLOAT
++	imageStore(dst_light, positioni, vec4(light_total, 1.0));
++#else
+ 	imageStore(dst_light, positioni, uvec4(light_total_rgbe));
++#endif
+ 
+ 	//also fill neighbors, so light interpolation during the indirect pass works
+ 
+@@ -548,7 +556,11 @@ void main() {
+ 	for (uint i = 0; i < max_neighbours; i++) {
+ 		if (bool(neighbors & (1 << i))) {
+ 			ivec3 neighbour_pos = positioni + neighbour_positions[i];
++#ifdef SDFGI_LIGHT_FLOAT
++			imageStore(dst_light, neighbour_pos, vec4(light_total, 1.0));
++#else
+ 			imageStore(dst_light, neighbour_pos, uvec4(light_total_rgbe));
++#endif
+ 			imageStore(dst_aniso0, neighbour_pos, aniso0);
+ 			imageStore(dst_aniso1, neighbour_pos, vec4(aniso1, 0.0, 0.0));
+ 		}
+@@ -572,4 +584,12 @@ void main() {
+ 	process_voxels.data[voxel_index].light_aniso = light_aniso;
+ 
+ #endif
++
++#ifdef SDFGI_LIGHT_FLOAT
++	if (params.grid_size.x < 0.0) {
++		imageStore(dst_light, ivec3(0), vec4(0.0));
++		imageStore(dst_aniso0, ivec3(0), vec4(0.0));
++		imageStore(dst_aniso1, ivec3(0), vec4(0.0));
++	}
++#endif
+ }
 diff --git a/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl b/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
 index f102bce9a8..94f6dc6d46 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl

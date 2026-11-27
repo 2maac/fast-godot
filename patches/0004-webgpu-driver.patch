@@ -2048,10 +2048,10 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..5d6ad54884
+index 0000000000..e5b75ee75f
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10573 @@
+@@ -0,0 +1,10583 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -7157,6 +7157,16 @@ index 0000000000..5d6ad54884
 +		}
 +		return WGPUSamplerBindingType_Filtering;
 +	};
++
++	if (shader->name.contains("GiShaderRD")) {
++		uint32_t gk = 28;
++		if (!wgsl_tex_component.has(gk)) {
++			wgsl_tex_component[gk] = 2;
++		}
++		if (!wgsl_tex_dims.has(gk)) {
++			wgsl_tex_dims[gk] = WGPUTextureViewDimension_2D;
++		}
++	}
 +
 +	for (uint32_t set = 0; set < set_count; set++) {
 +		const Vector<RenderingDeviceCommons::ShaderUniform> &set_uniforms = shader_refl.uniform_sets[set];

@@ -1,7 +1,7 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
 Resume doc. Last updated 2026-11-27 ~13:30. **Forward+ and Forward Mobile both
-run on the WebGPU device.** The patch stack tip is `f799881f28` (FSR 1/FSR 2 on
+run on the WebGPU device.** The patch stack tip is `4.8-beta5` (FSR 1/FSR 2 on
 WebGPU + the SDFGI geometry-injection fix); branch and tag `4.8-beta5` both point
 at it, so fresh toolchain installs build the current driver/template. Verify with
 `git ls-remote origin refs/tags/4.8-beta5`. `patches/` is a self-contained
@@ -91,8 +91,8 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` = `origin/4.8-beta5` | `f799881f28` | patch stack tip (FSR 1/FSR 2 on WebGPU, SDFGI geometry-injection fix); branch and tag share the simple name now (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
-| tag `4.8-beta5` | `f799881f28` | release point, **moved 2026-11-27** after the FSR/SDFGI fixes so fresh toolchain installs fetch the current driver/template. Verify with `git ls-remote origin refs/tags/4.8-beta5` |
+| branch `4.8-beta5` = `origin/4.8-beta5` | `4.8-beta5` | patch stack tip (FSR 1/FSR 2 on WebGPU, SDFGI geometry-injection fix); branch and tag share the simple name now (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
+| tag `4.8-beta5` | `4.8-beta5` | release point, **moved 2026-11-27** after the FSR/SDFGI fixes so fresh toolchain installs fetch the current driver/template. Verify with `git ls-remote origin refs/tags/4.8-beta5` |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
 
@@ -110,7 +110,7 @@ already have a toolchain are unaffected).
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch** (simple name, same as the tag); patch stack at `f799881f28`; tag `4.8-beta5` = `f799881f28` — moved 2026-11-27 after the FSR/SDFGI fixes, which is what the bootstrap downloads |
+| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5`, **repository default branch** (simple name, same as the tag); patch stack at `4.8-beta5`; tag `4.8-beta5` = `4.8-beta5` — moved 2026-11-27 after the FSR/SDFGI fixes, which is what the bootstrap downloads |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **plus the uncommitted Forward+/MSAA/TAA changes**. Volatile and not pushed; the changes are captured in `patches/` (regenerated 2026-11-27), so a fresh checkout + `tools/apply.sh` reproduces the build tree |
@@ -548,25 +548,19 @@ this file's history.
 10. **Forward+ on WebGPU — WORKING, with limits (2026-11-27).** TPS boots and
     renders the full level at ~60 fps with zero validation errors; MSAA 4x, TAA,
     FSR 1 and FSR 2 were verified too (see the Forward+ and FSR sections).
-    Remaining limitation: SDFGI is disabled because its packed UINT storage
-    textures need float sample views that WebGPU does not allow (the
-    attachment-less-pass blocker itself is fixed). An experimental WebGPU path
-    (RGBA16F light/probe textures, dummy occlusion binding, SDF pipelines
-    precompiled against a colour framebuffer with an explicit pass) now runs
-    with zero GPU validation errors in the TPS demo. The GI process
-    MODE_SDFGI bind group needed the integer `voxel_gi_buffer` default and a
-    driver-side pin of binding 28 to the integer sample type, because Tint
-    drops that unused declaration in the SDFGI variant. The remaining problem
-    is visual: comparing the native editor (Vulkan SDFGI, same fixed spawn and
-    FSR2 settings) with HTML5 at the same spawn shows the editor lighting the
-    scene warm/bright while HTML5 is dark, so the WebGPU SDFGI indirect light
-    is missing or much weaker. `RD::texture_get_data` is frame-deferred (the first call only queues a copy),
-    and calling it from inside `SDFGI::render_region` never completes, so it
-    returned no data even with COPY_FROM usage. The next step is a post-frame
-    readback: call `texture_get_data` for the light cascade/lightprobe textures
-    after the frame submit (across several frames) or copy a slice with a
-    compute pass, then find which pass (sky/direct-light, integrate, or final
-    probe) writes zero.
+    SDFGI now works on WebGPU with zero validation errors. The packed formats
+    were replaced with RGBA16F light-cascade/lightprobe storage+sample textures
+    (`SDFGI_LIGHT_FLOAT`), the occlusion texture is replaced by a dummy float
+    3D binding with occlusion disabled, the SDF pipelines on attachment-only
+    drivers are compiled against a colour framebuffer with an explicit colour
+    pass, and the GI process MODE_SDFGI binding needs an integer
+    `voxel_gi_buffer` default plus a driver-side pin of binding 28 to the
+    integer sample type (Tint drops that unused declaration). The visual
+    difference seen earlier when comparing the native editor SDFGI with HTML5
+    was **volumetric fog**, not SDFGI: the TPS demo now defaults volumetric fog
+    off on WebGPU, and with fog off the HTML5 palette matches the native
+    editor. Remaining differences: SDFGI occlusion is disabled, and the
+    editor's packed light path is not bit-identical to the RGBA16F path.
     Forward+ bake is ~1524 stages (~3-6 min).
 11. **MSAA/depth sampler bindings + TAA (2026-11-27, later) — FIXED.** A
     real-Chrome run with MSAA enabled failed bind-group creation on
@@ -577,7 +571,7 @@ this file's history.
     format) was changed to RGBA16F. Both re-verified with 0 validation errors.
 12. The Forward+ export was verified with the editor/template built from
     `/tmp/godot48` at HEAD `582d619026` plus the working-tree changes now
-    captured in the regenerated patch stack (`f799881f28`; tag `f799881f28`); the editor version string
+    captured in the regenerated patch stack (`4.8-beta5`; tag `4.8-beta5`); the editor version string
     is unchanged
     (`4.8.beta.custom_build.582d61902`). If a distinct version stamp is wanted,
     commit the stack changes in the build tree and rebuild (see the
@@ -600,7 +594,7 @@ this file's history.
   toolchains or reinstall from a current build.
 - **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
   installs download it. It was moved on 2026-11-27 to the Forward+ MSAA/TAA tip
-  (commit `f799881f28`);
+  (commit `4.8-beta5`);
   move it again for later engine-side fixes.
   First-use provisioning also needs system `git` on the machine.
 - Layout (2026-11-26): the patch stack became a **self-contained portable
