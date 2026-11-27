@@ -154,3 +154,9 @@ servers/rendering/rendering_server_enums.h
 servers/rendering/storage/render_scene_buffers.cpp
 doc/classes/Viewport.xml
 doc/classes/RenderingServer.xml
+servers/rendering/renderer_rd/effects/pmndrs_temporal.cpp
+servers/rendering/renderer_rd/effects/pmndrs_temporal.h
+servers/rendering/renderer_rd/effects/pmndrs_temporal_wgsl.h
+servers/rendering/renderer_rd/environment/gi.h
+servers/rendering/renderer_rd/shaders/environment/gi.glsl
+servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl

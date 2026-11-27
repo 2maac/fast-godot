@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; branch tip `59b7ef60a9`, pmndrs milestone-1 stack commit `d8b3d583ae` and first-class pmndrs scaling-mode commit `91a0a3e8e4` below it; tag `4.8-beta5` = `91a0a3e8e4`, moved 2026-11-27) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; **pushed** branch tip `d097fa2ce3`, with pmndrs milestone-1 stack commit `d8b3d583ae` and first-class spatial-mode commit `91a0a3e8e4` below it; tag `4.8-beta5` = `91a0a3e8e4`; the **M2 temporal delta below is uncommitted** — it is committed next and the tag is force-moved to the M2 stack commit) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -39,28 +39,47 @@ entries live only in the source tree's index, not in the working tree. The
 pmndrs milestone-1 regeneration used this for the three new
 `servers/rendering/renderer_rd/effects/pmndrs_upscaler*` files (the `0005`
 layer list grew by 4 paths, including `renderer_scene_render_rd.h`). Existing
-files must be added to a layer list explicitly too: the first-class pmndrs
-scaling-mode change added six existing paths to `0005`
-(`scene/main/viewport.{h,cpp}`,
+files must be added to a layer list explicitly too: the first-class spatial-mode
+change added six existing paths to `0005` (`scene/main/viewport.{h,cpp}`,
 `servers/rendering/rendering_server_enums.h`,
 `servers/rendering/storage/render_scene_buffers.cpp`,
-`doc/classes/{Viewport,RenderingServer}.xml`), growing the layer to 156 paths.
+`doc/classes/{Viewport,RenderingServer}.xml`), and **milestone 2 added the three
+new `servers/rendering/renderer_rd/effects/pmndrs_temporal*` files**.
 
-Verified 2026-11-27 ~21:55 for the first-class pmndrs scaling mode: the
-regenerated stack (milestone 1 `d8b3d583ae` + scaling mode `91a0a3e8e4`)
-applies cleanly to a fresh checkout of the pinned commit
-(`git worktree add --detach 67421f36e5` + `tools/apply.sh`) and re-diffing every
-layer with its `layers/*.files` list reproduces **all 8 `patches/*.patch` files
-byte-identically** (`/tmp/applytest` holds the applied tree, 1,784 staged paths;
-`0005` = 5,936,829 B). Patch deltas: the committed pmndrs milestone 1 was
-`0004` `+247/−21`, `0005` `+1288/−32`; the first-class scaling mode adds
-`0005` `+174/−41` and six paths. Both are committed and pushed (`d8b3d583ae`,
-`91a0a3e8e4`, branch tip `59b7ef60a9`), and tag `4.8-beta5` was moved to
-`91a0a3e8e4` on 2026-11-27 ~23:45 so fresh toolchain installs bootstrap the
-pmndrs driver/template. The moved tag archive was checked: it contains
-`patches/0004`/`0005` with the raw-WGSL + pmndrs scaling-mode changes,
-`patches/layers/0005-engine-renderer-patches.files` with 156 paths and the
-intent-to-add-aware `tools/make-patches.sh`.
+**Layer completeness (important, fixed in M2).** The per-layer round-trip check
+only re-diffs the paths *listed* in `layers/*.files`, so it **cannot detect an
+omitted file**. Three SDFGI files had been modified in the worktree but were
+missing from every layer list (`servers/rendering/renderer_rd/environment/
+gi.h`, `…/shaders/environment/gi.glsl`,
+`…/shaders/environment/sdfgi_integrate.glsl`), so the previously
+committed/tagged stack could not reproduce the SDFGI build even though its
+per-layer round-trip looked clean. M2 added them to `0005`; now every
+worktree-changed path is covered (**58/58** check against
+`git -C /tmp/godot48 status`) and the `0005` layer list has **162 paths**.
+Regeneration must therefore cross-check the worktree status paths against the
+union of all layer lists, not just run the round-trip.
+
+Verified 2026-11-27 ~21:55 for the first-class pmndrs spatial scaling mode: the
+regenerated stack (milestone 1 `d8b3d583ae` + spatial mode `91a0a3e8e4`) applied
+cleanly to a fresh checkout of the pinned commit and re-diffed byte-identically
+for all 8 layers (`0005` = 5,936,829 B; `/tmp/applytest`, 1,784 staged paths).
+Patch deltas: milestone 1 was `0004` `+247/−21`, `0005` `+1288/−32`; the spatial
+mode added `0005` `+174/−41` and six paths. Both commits were pushed and tag
+`4.8-beta5` moved to `91a0a3e8e4` on 2026-11-27 ~23:45.
+
+**Verified 2026-11-28 ~00:36 for pmndrs milestone 2 (temporal):** a freshly
+recreated pristine `67421f36e5` worktree (`/tmp/applytest`) + `tools/apply.sh`
+with the full M2 stack, then re-diffing every layer with its `layers/*.files`
+list, reproduces **all 8 `patches/*.patch` files byte-identically** (independently
+re-checked); both the worktree and the applied tree have **16,070 tracked
+files**. Sizes: `0001` 508,662 B, `0002` 203,592, `0003` 45,856, `0004` 898,639,
+`0005` 6,085,575, `0006` 15,131,334, `0007` 3,541,178, `0099` 29,700. Patch
+deltas vs the previously committed stack: `0004` `+135/−7`, `0005` `+3104/−275`
+(driver M2 fixes + temporal effect + mode 7 + the three SDFGI files), layer list
+`+6` paths → 162. The M2 patch files are **uncommitted**: they are committed
+next, then the branch pushed and tag `4.8-beta5` force-moved from
+`91a0a3e8e4` to the M2 stack commit so fresh toolchain installs bootstrap the
+mode-7 driver/template.
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,
@@ -76,8 +95,8 @@ current tag, so the editor and the layout are updated together.
 | `0001-modules-grit` | 39 | Fast/Grit AOT export compiler, runtime and editor plugins (adapted to 4.8 GDScript internals: `GDType` member maps, const `MethodBind` codegen, parser `resolved_type`/`type_constraint`) |
 | `0002-modules-cffi` | 53 | CFFI module |
 | `0003-web-html5-fast-export` | 17 | "HTML5 Fast" export platform + web platform hooks (detect.py, js/engine, display server, export options) |
-| `0004-webgpu-driver` | 32 | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion, layered copy/initialize, per-stage SPIR-V version; push-constant ring (8 MB), sRGB view siblings, per-frame debug counters and the `rendering/webgpu/*` diagnostic settings. Forward+ additions: compute-pass usage-scope splitting (per-subresource writable+read conflicts), Tint-risk pre-scan/`OpBitcast` rewrite in `spirv_preprocess`, storage-texture format table (`rgb10a2unorm/uint`, integer 8-bit, B10G11R11→RGBA16F promotion + `rg11b10ufloat` WGSL rewrite), WGSL component-driven sample types, physical-format texture views, dimension/sample-type-correct fallback views, `depth32float-stencil8` feature gating, fragment-stage `read_write` storage buffers, unused-colour-target handling, non-negative LOD clamps; per-binding required sampler type map (combined sampler+texture layouts) so NonFiltering MSAA/depth samplers are always satisfied, in both bind-group creation and cross-shader rebinds. **Raw-WGSL compute path** (pmndrs milestone 1): `set_code_from_wgsl_compute()` container factory (fills reflection + per-stage WGSL, mechanically rewrites authored `@binding(N)` → `@binding(2*N)`, checks reflection↔WGSL pairs), and `_shader_build()` recognises the raw-stage marker (WGSL present, SPIR-V empty) and skips the Tint-output WGSL rewrites for it |
-| `0005-engine-renderer-patches` | 156 | engine/renderer/editor patches the driver needs: batching (`batch_instance_index`), shader container format override, driver traits, GDScript native-call hooks, export window, WGSL shader baker plugin, frame profiler, **white-box PCK encryption** (`core_builders.py` table network, `FileAccessEncrypted::open_and_parse_keystream`, pack loader keystream branches), icons/splash. Forward+: HTML5 Fast accepts `forward_plus`; cluster builder renders with plain atomics and a real colour attachment (`USE_ATTACHMENT` variant) when side-effect-only passes are unsupported; scene shader identity subgroup macros + `NO_IMAGE_ATOMICS`; FSR1/FSR2 fp16 variant gating; FSR2 WebGPU paths (B10G11R11→RGBA16F via the driver, no image atomics, no-subgroup SPD, rgba16f output); FSR1 upscales through a storage-capable intermediate; SDFGI enabled on WebGPU (RGBA16F light/probe storage+sample textures, dummy occlusion binding with occlusion disabled, integer voxel-GI default + GI binding pin, colour-framebuffer SDF pipeline with an explicit pass); volumetric-fog dead binding removed; TAA previous-velocity buffer uses RGBA16F on WebGPU (RG16F has no storage format). **pmndrs milestone 1**: raw-WGSL RenderingDevice API (`WGSLUniform`/`WGSLShaderData`, `RenderingDevice::shader_create_from_wgsl()`, shared private `_shader_register()`, default-failing non-pure `RenderingDeviceDriver::shader_create_from_wgsl()`, `SUPPORTS_RAW_WGSL_COMPUTE` feature), the `RendererRD::PmndrsSpatial` spatial upscaler (EASU+RCAS WGSL vendored from pmndrs/upscaler v0.6.0 commit `f6e52098…`, new `effects/pmndrs_upscaler*` files) and the **first-class pmndrs scaling mode** (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` / `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6, appended after `SCALING_3D_MODE_NEAREST` so old values are unchanged, `*_MAX` = 7; `rendering/scaling_3d/mode` hint `pmndrs (Spatial - Fast):6`; enum docs in `doc/classes/{Viewport,RenderingServer}.xml`; Forward+-only guard + spatial fallback semantics in `renderer_viewport.cpp`; mode-6 → PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`; the old `rendering/scaling_3d/pmndrs_spatial` bool was removed) |
+| `0004-webgpu-driver` | 32 | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion, layered copy/initialize, per-stage SPIR-V version; push-constant ring (8 MB), sRGB view siblings, per-frame debug counters and the `rendering/webgpu/*` diagnostic settings. Forward+ additions: compute-pass usage-scope splitting (per-subresource writable+read conflicts), Tint-risk pre-scan/`OpBitcast` rewrite in `spirv_preprocess`, storage-texture format table (`rgb10a2unorm/uint`, integer 8-bit, B10G11R11→RGBA16F promotion + `rg11b10ufloat` WGSL rewrite), WGSL component-driven sample types, physical-format texture views, dimension/sample-type-correct fallback views, `depth32float-stencil8` feature gating, fragment-stage `read_write` storage buffers, unused-colour-target handling, non-negative LOD clamps; per-binding required sampler type map (combined sampler+texture layouts) so NonFiltering MSAA/depth samplers are always satisfied, in both bind-group creation and cross-shader rebinds. **Raw-WGSL compute path** (pmndrs milestone 1): `set_code_from_wgsl_compute()` container factory (fills reflection + per-stage WGSL, mechanically rewrites authored `@binding(N)` → `@binding(2*N)`, checks reflection↔WGSL pairs), and `_shader_build()` recognises the raw-stage marker (WGSL present, SPIR-V empty) and skips the Tint-output WGSL rewrites for it. **M2 driver extensions**: raw-WGSL sampled-texture sample-type auto-layout (`textureLoad`-only f32 → `UnfilterableFloat`, sampler-sampled → `Float`, scoped to raw-WGSL stages so SPIR-V/Tint Forward+ BGLs stay byte-identical) and cached depth-only aspect views for combined depth-stencil textures bound to `Depth` sample-type entries (`D32S8` → `D32Float`, `D24PlusS8` → `D24Plus`); storage buffers/atomics/samplers/multi-group support on the raw path audited and first exercised end-to-end by the temporal effect (see `WGSL_COMPUTE_PATH.md` §12) |
+| `0005-engine-renderer-patches` | 162 | engine/renderer/editor patches the driver needs: batching (`batch_instance_index`), shader container format override, driver traits, GDScript native-call hooks, export window, WGSL shader baker plugin, frame profiler, **white-box PCK encryption** (`core_builders.py` table network, `FileAccessEncrypted::open_and_parse_keystream`, pack loader keystream branches), icons/splash. Forward+: HTML5 Fast accepts `forward_plus`; cluster builder renders with plain atomics and a real colour attachment (`USE_ATTACHMENT` variant) when side-effect-only passes are unsupported; scene shader identity subgroup macros + `NO_IMAGE_ATOMICS`; FSR1/FSR2 fp16 variant gating; FSR2 WebGPU paths (B10G11R11→RGBA16F via the driver, no image atomics, no-subgroup SPD, rgba16f output); FSR1 upscales through a storage-capable intermediate; SDFGI enabled on WebGPU (RGBA16F light/probe storage+sample textures, dummy occlusion binding with occlusion disabled, integer voxel-GI default + GI binding pin, colour-framebuffer SDF pipeline with an explicit pass); volumetric-fog dead binding removed; TAA previous-velocity buffer uses RGBA16F on WebGPU (RG16F has no storage format). **pmndrs milestone 1**: raw-WGSL RenderingDevice API (`WGSLUniform`/`WGSLShaderData`, `RenderingDevice::shader_create_from_wgsl()`, shared private `_shader_register()`, default-failing non-pure `RenderingDeviceDriver::shader_create_from_wgsl()`, `SUPPORTS_RAW_WGSL_COMPUTE` feature), the `RendererRD::PmndrsSpatial` spatial upscaler (EASU+RCAS WGSL vendored from pmndrs/upscaler v0.6.0 commit `f6e52098…`, new `effects/pmndrs_upscaler*` files) and the **first-class pmndrs scaling mode** (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` / `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6, appended after `SCALING_3D_MODE_NEAREST` so old values are unchanged, `*_MAX` = 7; `rendering/scaling_3d/mode` hint `pmndrs (Spatial - Fast):6`; enum docs in `doc/classes/{Viewport,RenderingServer}.xml`; Forward+-only guard + spatial fallback semantics in `renderer_viewport.cpp`; mode-6 → PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`; the old `rendering/scaling_3d/pmndrs_spatial` bool was removed. **pmndrs milestone 2 (temporal)**: `RendererRD::PmndrsTemporal` (reconstruct/depth-clip/exposure-taps/accumulate/RCAS, 5 vendored WGSL modules from pmndrs/upscaler v0.6.0 commit `f6e52098…`, new `effects/pmndrs_temporal*` files), the per-viewport `PmndrsTemporalContext` seam inside `RenderForwardClustered` (FSR2 slot, pre-tonemap, engine jitter/motion-vector/reversed-Z plumbing), and the first-class temporal mode `Viewport.SCALING_3D_MODE_PMNDRS_TEMPORAL` / `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL` = 7 (appended after mode 6 so old values are unchanged, `*_MAX` = 8; classified `VIEWPORT_SCALING_3D_TYPE_TEMPORAL`; hints `pmndrs (Temporal - Slow):7`; enum docs; Forward+-only guard + FSR2→FSR1→off fallback + MSAA-forced-off/TAA conflict handling in `renderer_viewport.cpp`; mode-7 fallback/selection in `render_forward_clustered.cpp`). The `0005` list gained the 3 temporal files plus 3 previously-missing SDFGI paths (`gi.h`, `gi.glsl`, `sdfgi_integrate.glsl`) → 162 paths) |
 | `0006-thirdparty-vendored` | 1217 | vendored Tint + SPIRV-Tools for the export-time SPIR-V→WGSL bake |
 | `0007-tools-fixtures-docs` | 251 | tools/ (grit_build.py, toolchain provisioning), test_project/, docs, webgpu notes/tests, SPIR-V fixtures |
 | `0099-misc` | 19 | remaining touched files |
@@ -110,7 +129,17 @@ export — the first-class `pmndrs Spatial` scaling mode
 running (EASU+RCAS) 640x360 -> 960x540, 120x68 groups` with 0 validation/shader
 errors at 59-60 fps, selected live through the TPS settings-screen button
 (verified 2026-11-27 21:54); the same build with the default FSR1 selection
-shows no `running` line and runs FSR1 unchanged with 0 errors.
+shows no `running` line and runs FSR1 unchanged with 0 errors. pmndrs milestone
+2 (2026-11-28): the temporal path is browser-verified as the first-class
+`pmndrs Temporal` scaling mode (`Viewport.SCALING_3D_MODE_PMNDRS_TEMPORAL` = 7)
+on the 00:28 TPS export — selected live from the TPS settings button it logs
+`[PMNDRS] temporal upscaler running (reconstruct/clip/exposure/accumulate/RCAS)
+640x360 -> 960x540, frame 0 (reset)` with 0 validation/shader errors at
+59-60 fps; the default FSR1 selection shows no temporal-running line, and the
+strong-motion capture series shows no visible ghosting. FSR2 is not usable as a
+WebGPU A/B target here (disabled/falls back to FSR1), so the M2 comparison is
+vs FSR1 and the no-temporal baseline. See `WEBGPU_HANDOFF.md` (milestone-2
+section) and the M2 round-trip/layer-completeness note above.
 
 ## Known gaps
 
@@ -119,14 +148,20 @@ shows no `running` line and runs FSR1 unchanged with 0 errors.
 - Forward+ limitations on WebGPU: SDFGI is enabled (occlusion disabled,
   RGBA16F light/probe path). Volumetric fog tints the SDFGI scene differently
   from the native renderer, so the TPS demo defaults it off on WebGPU.
-  FSR 1/FSR 2 and the first-class `pmndrs Spatial` scaling mode are
-  browser-verified.
-  See `WEBGPU_HANDOFF.md`.
-- pmndrs upscaler milestone 1 is **spatial only**: no temporal history/jitter,
-  post-tonemap (spatial-upscaler slot) placement, no `sharpness == 0` blit
-  fallback, Forward+-only and needs a render scale below 1.0 (at 1.0 spatial
-  modes are internally switched OFF), and the fixed-camera perf A/B against
-  FSR1/FSR2 has not been run. The temporal path is milestone 2. See
-  `WEBGPU_HANDOFF.md` and `PMNDRS_UPSCALER_SPATIAL.md`.
+  FSR 1 and the first-class `pmndrs Spatial` (6) and `pmndrs Temporal` (7)
+  scaling modes are browser-verified; FSR 2 is disabled/falls back to FSR 1 on
+  the current WebGPU builds. See `WEBGPU_HANDOFF.md`.
+- pmndrs spatial (milestone 1) is post-tonemap in the spatial-upscaler slot, has
+  no `sharpness == 0` blit fallback, is Forward+-only and needs a render scale
+  below 1.0 (at 1.0 spatial modes are internally switched OFF).
+- pmndrs temporal (milestone 2) quality gaps: no reactive mask
+  (transparent/particle ghosting), no shading-change detector (animated-lighting
+  ghosting), sky/background ghosting under camera rotation (zero motion), no
+  camera-cut reset signal, single-view only (multiview/XR unsupported), and the
+  deferred passes (every-texel exposure, moments, debug view, linear-depth mode,
+  split-frame, blit fallback). Verification used the TPS third-person camera
+  only — no human Subjective ghosting review yet. Memory footprint ~32 B/display-px
+  + ~28 B/render-px per viewport. The fixed-camera quality/perf A/B (milestone 3)
+  has not been run. See `WEBGPU_HANDOFF.md` and `PMNDRS_TEMPORAL_PORT.md`.
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime
   only needs the keystream decoder (see the handoff).

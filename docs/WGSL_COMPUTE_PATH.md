@@ -1137,3 +1137,121 @@ enum Features { ..., SUPPORTS_RAW_WGSL_COMPUTE };
   `@binding(0,2,4)`, refound pairs `(0,0),(0,2),(0,4)`; RCAS authored `@binding(0..4)`
   → rewritten `@binding(0,2,4,6,8)`, pairs `(0,0),(0,2),(0,4),(0,6),(0,8)` — exactly
   the reflected doubled bindings, i.e. no "reflection/WGSL mismatch" failure.
+
+---
+
+## 12. M2 raw-WGSL driver extensions (temporal path)
+
+Milestone 2 (pmndrs temporal upscaler, `docs/PMNDRS_TEMPORAL_PORT.md`) needed three
+driver-side extensions on top of §11. They are implemented in
+`drivers/webgpu/` only; no `servers/rendering/` API change was needed. The container
+format, binding doubling (§5/§11.2) and reflection contract are unchanged.
+
+### 12.1 Gap A — sampled-texture sample-type inference (`texture_2d<f32>` load-only)
+
+WebGPU's auto-layout rule for a sampled f32 texture is: `float` if it is statically
+used *with a sampler* (`textureSample`/`textureSampleLevel`/`textureSampleBias`/
+`textureSampleGrad`/`textureGather`), otherwise `unfilterable-float`. The raw-WGSL
+temporal passes bind `r32float` dilated depth / history / shading textures via
+`textureLoad` only, so the previous component-only inference (`f32 → Float`) produced
+an invalid BGL.
+
+Implemented in `_shader_build()`:
+
+- the existing call-site scan (`wgsl_sampler_needs_nonfiltering`) now also records
+  `wgsl_tex_sampled_with_sampler[(set << 16) | binding] = true` for every texture
+  resolved as the first argument of one of those five builtins with a sampler as the
+  second argument;
+- the standalone `UNIFORM_TYPE_TEXTURE` / `INPUT_ATTACHMENT` BGL entry computes
+  `sampleType` as before for Depth/Uint/Sint/MSAA, but for an f32 binding of a
+  **raw-WGSL shader** (`raw_wgsl_shader`, set when a WGSL-only stage is present) it is
+  `UnfilterableFloat` when the binding is not sampled with a sampler and `Float`
+  otherwise;
+- the rule is scoped to raw-WGSL containers: SPIR-V/Tint stages keep byte-identical
+  BGL entries (the inference map is populated for every stage but only consumed when
+  the container carries a raw WGSL stage — raw containers are single-stage compute by
+  construction). Per-binding decisions are logged with `print_verbose`.
+
+Verified against all 16 vendored temporal modules with a mirror of the driver's
+scanner (declaration scan + call-site scan): the produced sample types match
+`docs/PMNDRS_TEMPORAL_PORT.md` Appendix A exactly — e.g. accumulate b4/b7 `float`,
+everything else `unfilterable-float`; exposure b1 `float`, b3/5/6/7
+`unfilterable-float`; blit b1/b5 `float`, b3 `unfilterable-float`; shading-change b9
+`uint`; reconstruct b1 `depth`; RCAS/debug all `unfilterable-float`.
+
+Residual risk: detection follows *static* call sites. A raw shader that passes the
+texture handle or sampler through a function parameter (so the call site names neither
+binding) would not be detected and would get `UnfilterableFloat` for a
+sampler-sampled texture (pipeline creation error) — the vendored WGSL only uses direct
+`textureSampleLevel(<binding>, <binding>, …)` calls, which is the supported shape.
+Also, a raw shader sampling an unfilterable format (`r32float`) with a sampler cannot be
+described by this inference (auto-layout would demand `float`); use `textureLoad`.
+
+### 12.2 Gap B — depth-only view for `texture_depth_2d` bindings
+
+The engine scene depth is a combined depth-stencil texture (`D32_SFLOAT_S8_UINT` when
+the WebGPU feature is present, otherwise `D24_UNORM_S8_UINT` → `depth24plus-stencil8`)
+whose default view has `aspect: all`. WebGPU requires a single-aspect
+(`depth-only`) view for a `Depth` sample type, so binding scene depth as
+`texture_depth_2d` failed.
+
+Implemented:
+
+- `WGTexture::depth_view` — a lazily created, cached `aspect: depth-only` view that
+  keeps the same format, dimension, base mip/layer and mip/layer counts as the default
+  view. It is created by `RenderingDeviceDriverWebGPU::_depth_only_view()`, stored on
+  the owning `WGTexture`, released in `texture_free()`, and explicitly nulled in
+  `texture_create_shared()` / `texture_create_shared_from_slice()` (those copy the
+  `WGTexture` struct, so the cached view must not be shared/double-released). A verbose
+  line is printed the first time such a view is created.
+- `uniform_set_create()`'s standalone `UNIFORM_TYPE_TEXTURE` path: when the BGL entry's
+  `sampleType` is `Depth`, the depth-only view is bound instead of `default_view`
+  (falling back to `default_view` for non-depth-format textures). The depth-only view is
+  also created for depth-only formats (an explicit `depth-only` aspect is always valid
+  and matches the existing depth-copy/MSAA-depth paths).
+- `_get_compatible_bind_group()` (BGL rebinding fallback): a cached entry created for a
+  non-Depth layout whose target BGL expects `Depth` is adapted to the bound texture's
+  depth-only view, mirroring the existing Depth→Float adaptation.
+
+Effect-side requirements (report): declare the depth pass binding as
+`UNIFORM_TYPE_TEXTURE`, `TEXTURE_TYPE_2D`, `length = 1` (WGSL `var sceneDepth :
+texture_depth_2d;`); bind an RD depth texture created with `TEXTURE_USAGE_SAMPLING_BIT`
+(scene depth already has it, see `RenderSceneBuffersRD::get_depth_usage_bits()`), 1
+sample, 1 mip, 1 layer; `texture_format = DATA_FORMAT_D32_SFLOAT` is informational (RD
+only warns on mismatch, the BGL sample type comes from the WGSL text). MSAA depth is not
+supported through `texture_depth_2d` (use `texture_depth_multisampled_2d` + MSAA
+binding, or a resolved depth target).
+
+### 12.3 Gap C — storage buffers / atomics, samplers, multiple bind groups (verified)
+
+Audited, no code change required:
+
+- **Storage buffers incl. `array<atomic<u32>>`**: the reflection
+  (`UNIFORM_TYPE_STORAGE_BUFFER`, `length = 0`, `writable` true for `read_write`) maps to
+  the BGL buffer type via the WGSL scan (`wgsl_ssbo_readonly` parses the exact spellings
+  the vendored modules use: `var<storage, read_write>`, `var<storage, read>`,
+  `var<storage>`); bind-group creation binds `offset 0` and `size = buffer size`
+  (multiple of 4, ≤ `maxStorageBufferBindingSize`); `buffer_update` before the compute
+  list and `storage_buffer_create(size, data)` (initial `0x7f800000` scatter data) use
+  the normal transfer-worker path. Atomic operations (`atomicMin` etc.) need no driver
+  work (core WGSL, plain `Storage` buffer BGL entry).
+  Caveat (pre-existing, not raw-specific): the driver's writable-storage aliasing stub
+  redirects a *second* binding of the same `WGPUBuffer` in one uniform set to a 64 KB
+  dummy. The temporal passes never bind one buffer to two storage bindings (the
+  scatter ping-pong buffers are distinct RIDs, and depth-clip's read/write buffers
+  differ), so this must stay true.
+- **Samplers**: plain `var s : sampler` bindings get `Filtering` (correct for the linear
+  clamp sampler used by exposure/accumulate/blit); the bind group passes the created
+  `RD::sampler_create` sampler through. Only samplers statically paired with a
+  `texture_depth_*` binding are switched to `NonFiltering` (existing behavior).
+- **Multiple bind groups**: reflection `uniform_sets` → one BGL per set → pipeline layout
+  with `bindGroupLayoutCount = set_count`; uniform-set bindings are per set. This is
+  structurally supported for any number of sets (RD `MAX_UNIFORM_SETS = 16`); only the
+  every-texel exposure form (two groups, deferred per
+  `docs/PMNDRS_TEMPORAL_PORT.md` §12.3 Gap C) would exercise it. Not end-to-end tested
+  in this milestone (no raw shader with `@group(1)` is shipped yet); the mandatory
+  temporal slice uses one bind group throughout.
+- **Not required / still deferred**: multiple entry points per module (every-texel
+  exposure), read/read_write storage textures (all temporal storage images are
+  `write` only, formats `r32float`/`rgba8unorm`/`rgba16float`/`rgba32uint` are all in
+  the driver's format table).

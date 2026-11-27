@@ -1756,10 +1756,10 @@ index 65f9e9772c..9920994d55 100644
  	}
  };
 diff --git a/doc/classes/RenderingServer.xml b/doc/classes/RenderingServer.xml
-index f373a64a7a..93ce7a3e0d 100644
+index f373a64a7a..f39183071a 100644
 --- a/doc/classes/RenderingServer.xml
 +++ b/doc/classes/RenderingServer.xml
-@@ -5435,7 +5435,11 @@
+@@ -5435,7 +5435,15 @@
  			Use nearest-neighbor filtering for the viewport's 3D buffer. This looks crisper than [constant VIEWPORT_SCALING_3D_MODE_BILINEAR] and has no additional rendering cost. The amount of scaling can be set using [member Viewport.scaling_3d_scale]. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
  			[b]Note:[/b] When using the [b]Nearest[/b] scaling mode, to avoid uneven pixel scaling, it's highly recommended to use a value equal to an integer divisor with a dividend of [code]1[/code]. For example, it's best to use a scale of [code]0.5[/code] (1/2), [code]0.3333[/code] (1/3), [code]0.25[/code] (1/4), [code]0.2[/code] (1/5), and so on.
  		</constant>
@@ -1768,15 +1768,19 @@ index f373a64a7a..93ce7a3e0d 100644
 +			Use the [url=https://github.com/pmndrs/upscaler]pmndrs spatial upscaler[/url] (EASU + RCAS) for the viewport's 3D buffer. The amount of scaling can be set using [member Viewport.scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using EASU and sharpened using RCAS. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
 +			[b]Note:[/b] Only supported when using the Forward+ renderer with the WebGPU rendering driver. On other rendering drivers, FSR 1.0 is used instead.
 +		</constant>
-+		<constant name="VIEWPORT_SCALING_3D_MODE_MAX" value="7" enum="ViewportScaling3DMode">
++		<constant name="VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL" value="7" enum="ViewportScaling3DMode">
++			Use the [url=https://github.com/pmndrs/upscaler]pmndrs temporal upscaler[/url] for the viewport's 3D buffer. The amount of scaling can be set using [member Viewport.scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using the temporal upscaler. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] will use the temporal upscaler at native resolution as a TAA solution.
++			[b]Note:[/b] Only supported when using the Forward+ renderer with the WebGPU rendering driver. On other rendering drivers, FSR 2.2, FSR 1.0, or bilinear scaling is used instead. This upscaler does not support 3D MSAA, which is disabled internally when this mode is selected.
++		</constant>
++		<constant name="VIEWPORT_SCALING_3D_MODE_MAX" value="8" enum="ViewportScaling3DMode">
  			Represents the size of the [enum ViewportScaling3DMode] enum.
  		</constant>
  		<constant name="VIEWPORT_UPDATE_DISABLED" value="0" enum="ViewportUpdateMode">
 diff --git a/doc/classes/Viewport.xml b/doc/classes/Viewport.xml
-index bafca16d64..c40084243a 100644
+index bafca16d64..dbe2042ca9 100644
 --- a/doc/classes/Viewport.xml
 +++ b/doc/classes/Viewport.xml
-@@ -579,7 +579,11 @@
+@@ -579,7 +579,15 @@
  			Use nearest-neighbor filtering for the viewport's 3D buffer. This looks crisper than [constant SCALING_3D_MODE_BILINEAR] and has no additional rendering cost. The amount of scaling can be set using [member scaling_3d_scale]. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
  			[b]Note:[/b] When using the [b]Nearest[/b] scaling mode, to avoid uneven pixel scaling, it's highly recommended to use a value equal to an integer divisor with a dividend of [code]1[/code]. For example, it's best to use a scale of [code]0.5[/code] (1/2), [code]0.3333[/code] (1/3), [code]0.25[/code] (1/4), [code]0.2[/code] (1/5), and so on.
  		</constant>
@@ -1785,7 +1789,11 @@ index bafca16d64..c40084243a 100644
 +			Use the [url=https://github.com/pmndrs/upscaler]pmndrs spatial upscaler[/url] (EASU + RCAS) for the viewport's 3D buffer. The amount of scaling can be set using [member scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using EASU and sharpened using RCAS. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] disables scaling.
 +			[b]Note:[/b] Only supported when using the Forward+ renderer with the WebGPU rendering driver. On other rendering drivers, FSR 1.0 is used instead.
 +		</constant>
-+		<constant name="SCALING_3D_MODE_MAX" value="7" enum="Scaling3DMode">
++		<constant name="SCALING_3D_MODE_PMNDRS_TEMPORAL" value="7" enum="Scaling3DMode">
++			Use the [url=https://github.com/pmndrs/upscaler]pmndrs temporal upscaler[/url] for the viewport's 3D buffer. The amount of scaling can be set using [member scaling_3d_scale]. Values less than [code]1.0[/code] will result in the viewport being upscaled using the temporal upscaler. Values greater than [code]1.0[/code] are not supported and bilinear downsampling will be used instead. A value of [code]1.0[/code] will use the temporal upscaler at native resolution as a TAA solution.
++			[b]Note:[/b] Only supported when using the Forward+ renderer with the WebGPU rendering driver. On other rendering drivers, FSR 2.2, FSR 1.0, or bilinear scaling is used instead. This upscaler does not support 3D MSAA, which is disabled internally when this mode is selected.
++		</constant>
++		<constant name="SCALING_3D_MODE_MAX" value="8" enum="Scaling3DMode">
  			Represents the size of the [enum Scaling3DMode] enum.
  		</constant>
  		<constant name="MSAA_DISABLED" value="0" enum="MSAA">
@@ -84886,7 +84894,7 @@ index bb6b077157..ff763964e2 100644
  	int get_option_count() const;
  
 diff --git a/scene/main/viewport.cpp b/scene/main/viewport.cpp
-index 12c75ecc6b..bce312ef4c 100644
+index 12c75ecc6b..0558bcbe00 100644
 --- a/scene/main/viewport.cpp
 +++ b/scene/main/viewport.cpp
 @@ -5420,7 +5420,7 @@ void Viewport::_bind_methods() {
@@ -84894,27 +84902,29 @@ index 12c75ecc6b..bce312ef4c 100644
  #ifndef _3D_DISABLED
  	ADD_GROUP("Scaling 3D", "");
 -	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4"), "set_scaling_3d_mode", "get_scaling_3d_mode");
-+	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,pmndrs (Spatial - Fast):6"), "set_scaling_3d_mode", "get_scaling_3d_mode");
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,pmndrs (Spatial - Fast):6,pmndrs (Temporal - Slow):7"), "set_scaling_3d_mode", "get_scaling_3d_mode");
  	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "scaling_3d_scale", PROPERTY_HINT_RANGE, "0.1,2.0,0.0001"), "set_scaling_3d_scale", "get_scaling_3d_scale");
  	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "texture_mipmap_bias", PROPERTY_HINT_RANGE, "-2,2,0.001"), "set_texture_mipmap_bias", "get_texture_mipmap_bias");
  	ADD_PROPERTY(PropertyInfo(Variant::INT, "anisotropic_filtering_level", PROPERTY_HINT_ENUM, String::utf8("Disabled (Fastest),2× (Faster),4× (Fast),8× (Average),16x (Slow)")), "set_anisotropic_filtering_level", "get_anisotropic_filtering_level");
-@@ -5486,6 +5486,7 @@ void Viewport::_bind_methods() {
+@@ -5486,6 +5486,8 @@ void Viewport::_bind_methods() {
  	BIND_ENUM_CONSTANT(SCALING_3D_MODE_METALFX_SPATIAL);
  	BIND_ENUM_CONSTANT(SCALING_3D_MODE_METALFX_TEMPORAL);
  	BIND_ENUM_CONSTANT(SCALING_3D_MODE_NEAREST);
 +	BIND_ENUM_CONSTANT(SCALING_3D_MODE_PMNDRS_SPATIAL);
++	BIND_ENUM_CONSTANT(SCALING_3D_MODE_PMNDRS_TEMPORAL);
  	BIND_ENUM_CONSTANT(SCALING_3D_MODE_MAX);
  
  	BIND_ENUM_CONSTANT(MSAA_DISABLED);
 diff --git a/scene/main/viewport.h b/scene/main/viewport.h
-index 46d432daab..bc93d027ab 100644
+index 46d432daab..4e80d8da46 100644
 --- a/scene/main/viewport.h
 +++ b/scene/main/viewport.h
-@@ -106,6 +106,7 @@ public:
+@@ -106,6 +106,8 @@ public:
  		SCALING_3D_MODE_METALFX_SPATIAL,
  		SCALING_3D_MODE_METALFX_TEMPORAL,
  		SCALING_3D_MODE_NEAREST,
 +		SCALING_3D_MODE_PMNDRS_SPATIAL,
++		SCALING_3D_MODE_PMNDRS_TEMPORAL,
  		SCALING_3D_MODE_MAX
  	};
  
@@ -85358,6 +85368,2447 @@ index 5c1d1fc434..3684b429ec 100644
  	struct {
  		Fsr2DepthClipPassShaderRD depth_clip;
  		Fsr2ReconstructPreviousDepthPassShaderRD reconstruct_previous_depth;
+diff --git a/servers/rendering/renderer_rd/effects/pmndrs_temporal.cpp b/servers/rendering/renderer_rd/effects/pmndrs_temporal.cpp
+new file mode 100644
+index 0000000000..6b886c5323
+--- /dev/null
++++ b/servers/rendering/renderer_rd/effects/pmndrs_temporal.cpp
+@@ -0,0 +1,1146 @@
++/**************************************************************************/
++/*  pmndrs_temporal.cpp                                                   */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#include "pmndrs_temporal.h"
++
++#include "pmndrs_temporal_wgsl.h"
++
++#include <cstring> // memset() for the constants payload mirror.
++
++#include "core/math/math_funcs.h"
++#include "core/string/print_string.h"
++#include "core/templates/local_vector.h"
++#include "servers/rendering/renderer_rd/uniform_set_cache_rd.h"
++#include "servers/rendering/rendering_device.h"
++
++// Milestone 2 of the pmndrs/upscaler port: the *temporal* upscaler.
++//
++// Contract: docs/PMNDRS_TEMPORAL_PORT.md (pass graph §2, per-pass binding tables
++// §7, FsrConstants layout §4, jitter/velocity conversions §5.6, resources §6,
++// reset semantics §9, raw-WGSL requirements §12, minimal slice §14).
++// Raw-WGSL RD API: docs/WGSL_COMPUTE_PATH.md §11.
++//
++// Implemented mandatory slice (execution order):
++//
++//   1. reconstruct_hardware : 3x3 nearest-depth dilate (motion from the closest
++//                             texel), linearized depth, 3x3 depth relief in
++//                             dilatedMotion.z, and the atomic reconstructed-
++//                             previous-depth scatter.
++//   2. depth_clip           : 4-tap disocclusion confidence from the scattered
++//                             previous depth; clears the *other* scatter buffer
++//                             for the next frame (ping-pong, no clear dispatch).
++//   3. exposure_taps        : one 8x8 workgroup, 1024 bilinear log-luma taps,
++//                             eye adaptation (1/16-stop dead band), publishes
++//                             the GPU-resolved reset in .a.
++//   4. accumulate           : jitter-aware Lanczos2 upsample of the render-res
++//                             color, Catmull-Rom reprojected history, YCoCg
++//                             variance AABB clip, thin-feature locks, alpha.
++//   5. rcas_temporal        : display-resolution RCAS on the conditioned
++//                             tonemap-space history, tonemap-inverted and
++//                             exposure-divided back to linear HDR, alpha from
++//                             the locks buffer. Always runs (the upstream core
++//                             would blit at sharpness <= 0; see the note in
++//                             upscale()).
++//
++// Deferred (flag-cleared / dummy-bound; hooks are marked "TODO(deferred)"):
++//   - generate_reactive  : no opaque-color input exists on the engine seam yet;
++//                          `Parameters.reactive` is bound directly when non-null
++//                          (FLAG_REACTIVE), otherwise a 1x1 zero dummy is bound
++//                          and the flag is clear.
++//   - shading_change     : not dispatched, FLAG_SHADING_CHANGE stays clear and
++//                          a 1x1 zero dummy is bound. This means animated
++//                          lighting/material shading ghosts until the detector
++//                          is added (documented quality risk, port doc §13.7).
++//   - exposure every-texel: taps form only (multi-entry-point modules are not
++//                          supported by the raw-WGSL path, Gap C).
++//   - debug view        : debugMode is written as 0; the engine-side debug view
++//                          is not wired.
++//   - linear depth mode : hardware depth only.
++//   - moments           : standalone primitive, not part of the graph.
++//   - split frame       : one monolithic upscale() per view per frame.
++//   - multi-view layers : one context holds single-layer (2D) history; the
++//                          renderer must create one context per view (or only
++//                          use view_count == 1). Documented in the report.
++//
++// Resource lifetime: the per-viewport PmndrsTemporalContext owns every working
++// texture/buffer; it is created by create_context(), recreated transparently on
++// a size change, and freed by free_context()/the destructor. Shaders, compute
++// pipelines, the linear sampler and the constants ring are effect-global.
++
++namespace {
++
++// FsrConstants payload and 256-byte allocation (port doc §4.1/§4.2). Every pass
++// binds one 256-byte uniform buffer with `length = 96` in the reflection.
++// The two constants *stages* of the upstream core ("early": reconstruct + depth
++// clip, "late": exposure + accumulate + RCAS) are kept as separate buffers, and
++// each stage has a ring of slots (port doc §4.1, §11.4): upscale() runs once per
++// viewport per frame and previously-recorded dispatches may still be in flight,
++// so a slot is never rewritten while a recorded pass could read it.
++constexpr uint32_t FS_CONSTANTS_SIZE = 96;
++constexpr uint32_t FS_CONSTANTS_BUFFER_SIZE = 256;
++constexpr uint32_t CONSTANTS_RING_SIZE = 64; // Per stage; milestone 1 used 64 total.
++
++// Upstream defaults we do not expose through the seam yet (port doc §4.5).
++constexpr float MAX_ACCUMULATION = 24.0f;
++constexpr uint32_t EXPOSURE_TAPS = 32; // Must be 32; the shader's `y < C.exposureTaps` loop assumes it.
++constexpr float DEFAULT_DELTA_TIME = 1.0f / 60.0f;
++constexpr float FIXED_CONDITIONING_EXPOSURE = 1.0f; // Only used when FLAG_AUTO_EXPOSURE is clear.
++
++// FLAG_* bits (port doc §4.4, mirrored verbatim in the vendored WGSL).
++enum FsrFlag : uint32_t {
++	FLAG_RESET = 1u << 0, // Camera cut / resize / first frame: drop all history.
++	FLAG_REVERSED_DEPTH = 1u << 1, // Scene depth is reversed-Z.
++	FLAG_PERSPECTIVE = 1u << 2, // Perspective camera (linearizeDepth branch).
++	FLAG_INPUT_REINHARD = 1u << 3, // History is in conditioned invertible-tonemap space.
++	FLAG_INPUT_DISPLAY = 1u << 4, // Dead bit, reserved (never set; port doc §4.4).
++	FLAG_LOCKS = 1u << 5, // Thin-feature luminance locks (default on upstream).
++	FLAG_AUTO_EXPOSURE = 1u << 6, // Meter the scene (no external exposure supplied).
++	FLAG_SHADING_CHANGE = 1u << 7, // Detector output present (deferred: always clear).
++	FLAG_REACTIVE = 1u << 8, // Reactive mask bound (Parameters.reactive non-null).
++	FLAG_RCAS_DENOISE = 1u << 9, // RCAS denoise (port doc §14.2: deferred, clear).
++	FLAG_EXTERNAL_EXPOSURE = 1u << 10, // Parameters.exposure overrides metering.
++};
++
++// Byte-exact CPU mirror of the WGSL `FsrConstants` struct (port doc §4.2).
++// WGSL uniform layout: vec2f align 8, so the 96-byte payload packs exactly.
++// Do NOT add alignas(16), bool or size_t; do not reorder.
++struct FsrConstants {
++	float render_size[2]; // offset   0: jittered render resolution in px.
++	float display_size[2]; // offset   8: output resolution in px.
++	float render_size_inv[2]; // offset  16: 1/renderSize.
++	float display_size_inv[2]; // offset  24: 1/displaySize.
++	float jitter[2]; // offset  32: current sub-pixel offset, render px, x right / y down (pmndrs convention).
++	float jitter_prev[2]; // offset  40: previous frame's offset (shading change only; deferred).
++	float motion_scale[2]; // offset  48: velocity -> UV delta conversion (see upscale()).
++	float depth_near_far[2]; // offset  56: camera near/far for hardware-depth linearization.
++	float sharpness; // offset  64: RCAS attenuation 0..1 (1 = sharpest).
++	float max_accumulation; // offset  68: history age cap in frames.
++	float exposure; // offset  72: fixed conditioning exposure (only when auto-exposure is off).
++	float delta_time; // offset  76: seconds (eye-adaptation rate).
++	uint32_t flags; // offset  80: FsrFlag bits.
++	uint32_t frame_index; // offset  84: completed temporal frames (no shader reads it).
++	uint32_t debug_mode; // offset  88: debug view (deferred; always 0 = None).
++	uint32_t exposure_taps; // offset  92: must be 32 (`exposureTaps` in the exposure WGSL).
++};
++static_assert(sizeof(FsrConstants) == FS_CONSTANTS_SIZE, "FsrConstants must match the WGSL struct layout (96 bytes).");
++
++// --- RD::WGSLUniform helpers -------------------------------------------------
++//
++// Binding numbers are the *authored* WGSL numbers: the WebGPU shader container
++// rewrites @binding(N) -> @binding(2N) internally while the RD reflection keeps
++// N (docs/WGSL_COMPUTE_PATH.md §11.2), so both WGSLUniform::binding here and
++// RD::Uniform::binding at bind time use the authored numbers.
++//
++// `texture_format` is only validated by RD (and only used by the WebGPU driver)
++// for storage images. For sampled textures it is informational here; the
++// driver's BGL sample type comes from its WGSL scan (Gap A: an f32 texture that
++// is only textureLoad()-ed on the raw-WGSL path becomes UnfilterableFloat, one
++// statically paired with a sampler stays Float). We still record the intended
++// format so the declarations document themselves.
++
++RD::WGSLUniform _wgsl_uniform_buffer(uint32_t p_binding) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
++	u.binding = p_binding;
++	u.length = FS_CONSTANTS_SIZE;
++	return u;
++}
++
++RD::WGSLUniform _wgsl_sampled_texture(uint32_t p_binding, RD::DataFormat p_format) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_TEXTURE;
++	u.binding = p_binding;
++	u.length = 1;
++	u.texture_type = RD::TEXTURE_TYPE_2D;
++	u.texture_format = p_format;
++	return u;
++}
++
++// `texture_depth_2d` binding for the engine's scene depth (reconstruct b1).
++//
++// The engine depth is a *combined* depth-stencil format (D24S8 on WebGPU without
++// the depth32float-stencil8 feature), so the bind group needs a depth-only view;
++// the driver creates and caches that view when the BGL sample type is Depth,
++// which it derives from the WGSL `texture_depth_2d` declaration (Gap B,
++// docs/PMNDRS_TEMPORAL_PORT.md §12.3). The format recorded here is therefore a
++// nominal depth format (the actual one is only known per viewport and is
++// D24S8/D32S8 depending on the device); sampled `texture_format` is not
++// validated by RD and the depth view choice is driven by the WGSL scan.
++RD::WGSLUniform _wgsl_depth_texture(uint32_t p_binding) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_TEXTURE;
++	u.binding = p_binding;
++	u.length = 1;
++	u.texture_type = RD::TEXTURE_TYPE_2D;
++	u.texture_format = RD::DATA_FORMAT_D32_SFLOAT;
++	return u;
++}
++
++RD::WGSLUniform _wgsl_storage_image(uint32_t p_binding, RD::DataFormat p_format) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_IMAGE;
++	u.binding = p_binding;
++	u.length = 1;
++	u.texture_type = RD::TEXTURE_TYPE_2D;
++	u.texture_format = p_format;
++	// Every storage image in the temporal graph is `write` only (port doc §12.4);
++	// writable also drives RD's read/write tracking for the binding.
++	u.writable = true;
++	return u;
++}
++
++RD::WGSLUniform _wgsl_storage_buffer(uint32_t p_binding, bool p_writable) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
++	u.binding = p_binding;
++	// A raw-WGSL runtime-sized array has no compile-time byte size: 0 makes RD
++	// skip its exact-size validation (port doc §12.3 gap D).
++	u.length = 0;
++	u.writable = p_writable;
++	return u;
++}
++
++RD::WGSLUniform _wgsl_sampler(uint32_t p_binding) {
++	RD::WGSLUniform u;
++	u.type = RD::UNIFORM_TYPE_SAMPLER;
++	u.binding = p_binding;
++	u.length = 1;
++	return u;
++}
++
++// Local name table for the few formats this effect can see. RD's own
++// FORMAT_NAMES is a protected member of RenderingDeviceCommons, so renderer
++// code cannot use it in diagnostics.
++const char *_data_format_name(RD::DataFormat p_format) {
++	switch (p_format) {
++		case RD::DATA_FORMAT_R16G16B16A16_SFLOAT:
++			return "R16G16B16A16_SFLOAT";
++		case RD::DATA_FORMAT_R16G16_SFLOAT:
++			return "R16G16_SFLOAT";
++		case RD::DATA_FORMAT_R32_SFLOAT:
++			return "R32_SFLOAT";
++		case RD::DATA_FORMAT_R8G8B8A8_UNORM:
++			return "R8G8B8A8_UNORM";
++		case RD::DATA_FORMAT_R8_UNORM:
++			return "R8_UNORM";
++		case RD::DATA_FORMAT_D16_UNORM:
++			return "D16_UNORM";
++		case RD::DATA_FORMAT_D24_UNORM_S8_UINT:
++			return "D24_UNORM_S8_UINT";
++		case RD::DATA_FORMAT_D32_SFLOAT:
++			return "D32_SFLOAT";
++		case RD::DATA_FORMAT_D32_SFLOAT_S8_UINT:
++			return "D32_SFLOAT_S8_UINT";
++		default:
++			return "unknown";
++	}
++}
++
++// All f32 engine depth formats the temporal reconstruct pass can read as
++// `texture_depth_2d`. Mirrors RenderSceneBuffersRD::get_depth_format().
++bool _is_depth_data_format(RD::DataFormat p_format) {
++	return p_format == RD::DATA_FORMAT_D16_UNORM ||
++			p_format == RD::DATA_FORMAT_D24_UNORM_S8_UINT ||
++			p_format == RD::DATA_FORMAT_D32_SFLOAT ||
++			p_format == RD::DATA_FORMAT_D32_SFLOAT_S8_UINT;
++}
++
++// 96-byte constants payload shared by both stages of one frame.
++void _fill_constants(FsrConstants &r_constants, const Size2i &p_render_size, const Size2i &p_display_size,
++		const Vector2 &p_jitter_pm, const Vector2 &p_jitter_prev_pm, const float *p_depth_near_far,
++		float p_sharpness, float p_delta_time, uint32_t p_flags, uint32_t p_frame_index) {
++	memset(&r_constants, 0, sizeof(FsrConstants));
++	r_constants.render_size[0] = (float)p_render_size.x;
++	r_constants.render_size[1] = (float)p_render_size.y;
++	r_constants.display_size[0] = (float)p_display_size.x;
++	r_constants.display_size[1] = (float)p_display_size.y;
++	r_constants.render_size_inv[0] = 1.0f / (float)p_render_size.x;
++	r_constants.render_size_inv[1] = 1.0f / (float)p_render_size.y;
++	r_constants.display_size_inv[0] = 1.0f / (float)p_display_size.x;
++	r_constants.display_size_inv[1] = 1.0f / (float)p_display_size.y;
++	r_constants.jitter[0] = p_jitter_pm.x;
++	r_constants.jitter[1] = p_jitter_pm.y;
++	r_constants.jitter_prev[0] = p_jitter_prev_pm.x;
++	r_constants.jitter_prev[1] = p_jitter_prev_pm.y;
++	// The engine's velocity buffer is a texture-UV delta V = prevUV - curUV
++	// (jitter-free; render_forward_clustered subtracts taa_jitter from both
++	// endpoints). The pmndrs shaders compute `uvDelta = V * motionScale` and then
++	// `prevUV = uv - uvDelta`, so motionScale = (-1, -1) restores `prevUV`. This
++	// is the single knob for the velocity convention and is silent if wrong
++	// (smear/doubled edges, never a validation error): validate with a known pan
++	// (port doc §5.6 step 4).
++	r_constants.motion_scale[0] = -1.0f;
++	r_constants.motion_scale[1] = -1.0f;
++	r_constants.depth_near_far[0] = p_depth_near_far[0];
++	r_constants.depth_near_far[1] = p_depth_near_far[1];
++	r_constants.sharpness = p_sharpness;
++	r_constants.max_accumulation = MAX_ACCUMULATION;
++	r_constants.exposure = FIXED_CONDITIONING_EXPOSURE;
++	r_constants.delta_time = p_delta_time;
++	r_constants.flags = p_flags;
++	r_constants.frame_index = p_frame_index;
++	r_constants.debug_mode = 0; // DebugView.None; debug pass is deferred.
++	r_constants.exposure_taps = EXPOSURE_TAPS;
++}
++
++} // namespace
++
++namespace RendererRD {
++
++// Per-viewport temporal state (port doc §6.1/§6.2, §11.3). Owns:
++//
++//   display-res  history[2]       rgba16float  SAMPLING|STORAGE  (ping-pong)
++//                locks[2]         rgba16float  SAMPLING|STORAGE  (ping-pong)
++//                exposure[2]      1x1 rgba16float SAMPLING|STORAGE (ping-pong)
++//   render-res   dilated_depth[2] r32float     SAMPLING|STORAGE  (ping-pong)
++//                dilated_motion   rgba16float  SAMPLING|STORAGE
++//                masks            rgba8unorm   SAMPLING|STORAGE
++//                scatter[2]       4*rw*rh storage buffers, initial content +inf
++//   1x1          dummy_zero       r8unorm      SAMPLING (zeroed; "input absent")
++//
++// `output` is deliberately NOT owned: it is Parameters.output (the renderer's
++// upscaled texture). History/locks/exposure persist across frames; everything
++// else is frame-local but still ping-ponged where the graph semantics ask for it
++// (dilated depth is a published "previous depth" guide, the scatter buffers are
++// cleared by depth clip a frame ahead).
++//
++// Ping-pong indices replicate the upstream core exactly (port doc §6.2):
++//   history_index selects history[in]/locks[in]/exposure[prev];
++//   history[out]/locks[out]/exposure[cur] are the other half;
++//   depth_index selects dilated_depth[cur]; scatter_index selects the scatter
++//   target, and depth clip clears the other one for the next frame.
++class PmndrsTemporalContext {
++public:
++	Size2i internal_size;
++	Size2i target_size;
++
++	bool resources_ready = false;
++	bool warned_about_inputs = false;
++
++	// Frame state (port doc §11.3).
++	uint32_t history_index = 0;
++	uint32_t depth_index = 0;
++	uint32_t scatter_index = 0;
++	uint32_t frame_index = 0;
++	bool reset_pending = true; // First frame after create/resize is always a reset.
++
++	RID history[2];
++	RID locks[2];
++	RID exposure[2];
++	RID dilated_depth[2];
++	RID scatter[2];
++	RID dilated_motion;
++	RID masks;
++	RID dummy_zero;
++
++	bool ensure_resources(RenderingDevice *rd, Size2i p_internal_size, Size2i p_target_size) {
++		if (resources_ready && internal_size == p_internal_size && target_size == p_target_size) {
++			return true;
++		}
++		free_resources(rd);
++		internal_size = p_internal_size;
++		target_size = p_target_size;
++		if (!_allocate(rd)) {
++			free_resources(rd);
++			return false;
++		}
++		resources_ready = true;
++		// Size change / fresh context: contents are meaningless, force a reset
++		// frame. (upstream configure() + resetHistory(), port doc §9.2)
++		history_index = 0;
++		depth_index = 0;
++		scatter_index = 0;
++		frame_index = 0;
++		reset_pending = true;
++		return true;
++	}
++
++	void free_resources(RenderingDevice *rd) {
++		resources_ready = false;
++		if (rd == nullptr) {
++			_clear_rids();
++			return;
++		}
++		for (uint32_t i = 0; i < 2; i++) {
++			_free_rid(rd, history[i]);
++			_free_rid(rd, locks[i]);
++			_free_rid(rd, exposure[i]);
++			_free_rid(rd, dilated_depth[i]);
++			_free_rid(rd, scatter[i]);
++		}
++		_free_rid(rd, dilated_motion);
++		_free_rid(rd, masks);
++		_free_rid(rd, dummy_zero);
++	}
++
++private:
++	static void _free_rid(RenderingDevice *rd, RID &r_rid) {
++		if (r_rid.is_valid()) {
++			rd->free_rid(r_rid);
++			r_rid = RID();
++		}
++	}
++
++	void _clear_rids() {
++		for (uint32_t i = 0; i < 2; i++) {
++			history[i] = RID();
++			locks[i] = RID();
++			exposure[i] = RID();
++			dilated_depth[i] = RID();
++			scatter[i] = RID();
++		}
++		dilated_motion = RID();
++		masks = RID();
++		dummy_zero = RID();
++	}
++
++	static RID _create_2d(RenderingDevice *rd, RD::DataFormat p_format, Size2i p_size, uint32_t p_usage_bits) {
++		RD::TextureFormat tf;
++		tf.format = p_format;
++		tf.width = p_size.x;
++		tf.height = p_size.y;
++		tf.usage_bits = p_usage_bits;
++		return rd->texture_create(tf, RD::TextureView());
++	}
++
++	bool _allocate(RenderingDevice *rd) {
++		const uint32_t sampling_storage = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT;
++		const RD::DataFormat rgba16f = RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
++		const RD::DataFormat r32f = RD::DATA_FORMAT_R32_SFLOAT;
++		const RD::DataFormat rgba8 = RD::DATA_FORMAT_R8G8B8A8_UNORM;
++
++		for (uint32_t i = 0; i < 2; i++) {
++			// Display-res history color: .rgb accumulated color in conditioned
++			// invertible-tonemap space, .a age (0..1). Sampled with a linear
++			// sampler by accumulate/RCAS, written as a storage image.
++			history[i] = _create_2d(rd, rgba16f, target_size, sampling_storage);
++			ERR_FAIL_COND_V_MSG(history[i].is_null(), false, "pmndrs temporal upscaler: failed to create the history color texture.");
++			// Display-res locks: .r lifetime, .g locked luma, .b shading-change
++			// factor (debug only), .a resolved caller alpha.
++			locks[i] = _create_2d(rd, rgba16f, target_size, sampling_storage);
++			ERR_FAIL_COND_V_MSG(locks[i].is_null(), false, "pmndrs temporal upscaler: failed to create the locks texture.");
++			// 1x1 exposure pair: .r conditioning exposure, .g metered luma,
++			// .b host pre-exposure, .a resolved reset.
++			exposure[i] = _create_2d(rd, rgba16f, Size2i(1, 1), sampling_storage);
++			ERR_FAIL_COND_V_MSG(exposure[i].is_null(), false, "pmndrs temporal upscaler: failed to create the exposure texture.");
++			// Render-res dilated linear view depth (r32float is NOT filterable:
++			// textureLoad-only in every pass, hence UnfilterableFloat on the BGL
++			// via the driver's raw-WGSL sample-type inference, port doc §12.3 A).
++			dilated_depth[i] = _create_2d(rd, r32f, internal_size, sampling_storage);
++			ERR_FAIL_COND_V_MSG(dilated_depth[i].is_null(), false, "pmndrs temporal upscaler: failed to create the dilated depth texture.");
++		}
++
++		// Render-res dilated motion: .xy = UV motion delta after motionScale,
++		// .z = 3x3 depth relief in view units (depth clip tolerance), .w unused.
++		dilated_motion = _create_2d(rd, rgba16f, internal_size, sampling_storage);
++		ERR_FAIL_COND_V_MSG(dilated_motion.is_null(), false, "pmndrs temporal upscaler: failed to create the dilated motion texture.");
++
++		// Render-res disocclusion mask, .r = 0 stable .. 1 fresh.
++		masks = _create_2d(rd, rgba8, internal_size, sampling_storage);
++		ERR_FAIL_COND_V_MSG(masks.is_null(), false, "pmndrs temporal upscaler: failed to create the disocclusion mask texture.");
++
++		// Reconstructed-previous-depth scatter, ping-ponged: reconstruct
++		// atomicMin()s f32-bits of the linear depth, depth clip reads it and
++		// clears the other buffer for the next frame. Empty = +inf bits, which is
++		// why these cannot be zero-initialized like every other resource; the
++		// initial content is written through storage_buffer_create() (port doc
++		// §6.1 notes / §12.3 D). One word per render texel.
++		const uint64_t words64 = (uint64_t)internal_size.x * (uint64_t)internal_size.y;
++		const uint32_t words = (uint32_t)words64;
++		ERR_FAIL_COND_V_MSG(words64 == 0 || words64 > 0x3FFFFFFFu, false, "pmndrs temporal upscaler: render size is too large for the depth scatter buffer.");
++		const uint32_t scatter_bytes = words * sizeof(uint32_t);
++		Vector<uint8_t> inf_bits;
++		inf_bits.resize(scatter_bytes);
++		uint8_t *inf_ptr = inf_bits.ptrw();
++		for (uint32_t i = 0; i < words; i++) {
++			// Little-endian f32 bits of +inf: 0x7f800000. Positive floats order
++			// like their u32 bits, which is what the atomicMin encoding relies on.
++			inf_ptr[i * 4 + 0] = 0x00;
++			inf_ptr[i * 4 + 1] = 0x00;
++			inf_ptr[i * 4 + 2] = 0x80;
++			inf_ptr[i * 4 + 3] = 0x7f;
++		}
++		for (uint32_t i = 0; i < 2; i++) {
++			scatter[i] = rd->_storage_buffer_create(scatter_bytes, inf_bits);
++			ERR_FAIL_COND_V_MSG(scatter[i].is_null(), false, "pmndrs temporal upscaler: failed to create the depth scatter storage buffer.");
++		}
++
++		// 1x1 zero dummy for "input absent" bindings that are still statically
++		// declared: depth clip's resetSignal, exposure's external/host
++		// pre-exposure/reset signal, accumulate's reactive mask and shading-change
++		// texture. All of them are read with textureLoad() only, and every read is
++		// flag-gated except hostPreExposure, where a zero texel means "not
++		// supplied" and publishes host = 1.0 (the ratio correction stays inert).
++		// Upstream uses r8unorm; a zero-initialized 1x1 is all we need.
++		{
++			RD::TextureFormat tf;
++			tf.format = RD::DATA_FORMAT_R8_UNORM;
++			tf.width = 1;
++			tf.height = 1;
++			tf.usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT;
++			Vector<uint8_t> zero;
++			zero.resize(1);
++			zero.write[0] = 0;
++			Vector<Vector<uint8_t>> zero_data;
++			zero_data.push_back(zero);
++			dummy_zero = rd->texture_create(tf, RD::TextureView(), zero_data);
++			ERR_FAIL_COND_V_MSG(dummy_zero.is_null(), false, "pmndrs temporal upscaler: failed to create the 1x1 zero dummy texture.");
++		}
++
++		return true;
++	}
++};
++
++namespace {
++
++// Effect-global state: shaders, pipelines, sampler and the two-stage constants
++// ring. `PmndrsTemporal::_internal` points at this.
++struct PmndrsTemporalImpl {
++	RID reconstruct_shader;
++	RID depth_clip_shader;
++	RID exposure_shader;
++	RID accumulate_shader;
++	RID rcas_shader;
++
++	RID reconstruct_pipeline;
++	RID depth_clip_pipeline;
++	RID exposure_pipeline;
++	RID accumulate_pipeline;
++	RID rcas_pipeline;
++
++	// Filtering, clamp-to-edge: exposure_taps samples the render-res color with
++	// it; accumulate samples historyIn/locksIn with it (Catmull-Rom + lock
++	// reprojection). r32float bindings never touch a sampler (textureLoad only).
++	RID linear_sampler;
++
++	// Two stages x CONSTANTS_RING_SIZE 256-byte uniform buffers. See the comment
++	// at the top: early = reconstruct + depth clip, late = exposure + accumulate +
++	// RCAS. A slot index is shared by both stages of one frame and advances once
++	// per upscale() so a second viewport/frame never overwrites the values a
++	// recorded dispatch still reads.
++	RID constants_early[CONSTANTS_RING_SIZE];
++	RID constants_late[CONSTANTS_RING_SIZE];
++	uint32_t constants_ring_index = 0;
++
++	bool announced_running = false;
++	bool warned_uniform_set = false;
++};
++
++// Creates one raw-WGSL compute shader + its compute pipeline for an 8x8 pass.
++bool _create_pass(RenderingDevice *rd, const char *p_name, const char *p_wgsl,
++		const Vector<RD::WGSLUniform> &p_uniforms, RID &r_shader, RID &r_pipeline) {
++	RD::WGSLShaderData data;
++	data.name = p_name;
++	data.code = p_wgsl;
++	data.workgroup_size[0] = 8;
++	data.workgroup_size[1] = 8;
++	data.workgroup_size[2] = 1;
++	data.uniform_sets.resize(1);
++	data.uniform_sets.write[0] = p_uniforms;
++
++	r_shader = rd->shader_create_from_wgsl(data);
++	if (r_shader.is_null()) {
++		WARN_PRINT(vformat("pmndrs temporal upscaler: failed to create the %s WGSL shader.", String(p_name)));
++		return false;
++	}
++	// Entry point is hard-coded to "main" by the WebGPU driver; every vendored
++	// module already names it `main` with @workgroup_size(8, 8).
++	r_pipeline = rd->compute_pipeline_create(r_shader);
++	if (r_pipeline.is_null()) {
++		WARN_PRINT(vformat("pmndrs temporal upscaler: failed to create the %s compute pipeline.", String(p_name)));
++		return false;
++	}
++	return true;
++}
++
++// Frees the effect-global impl (shaders, pipelines, sampler, constants ring) and
++// the impl object itself. Safe against a destroyed RenderingDevice: the RIDs are
++// dropped without touching the device in that case, which only happens during
++// shutdown.
++void _destroy_impl(PmndrsTemporalImpl *p_impl) {
++	if (p_impl == nullptr) {
++		return;
++	}
++	RenderingDevice *rd = RD::get_singleton();
++	if (rd != nullptr) {
++		if (p_impl->reconstruct_pipeline.is_valid()) {
++			rd->free_rid(p_impl->reconstruct_pipeline);
++		}
++		if (p_impl->depth_clip_pipeline.is_valid()) {
++			rd->free_rid(p_impl->depth_clip_pipeline);
++		}
++		if (p_impl->exposure_pipeline.is_valid()) {
++			rd->free_rid(p_impl->exposure_pipeline);
++		}
++		if (p_impl->accumulate_pipeline.is_valid()) {
++			rd->free_rid(p_impl->accumulate_pipeline);
++		}
++		if (p_impl->rcas_pipeline.is_valid()) {
++			rd->free_rid(p_impl->rcas_pipeline);
++		}
++		if (p_impl->reconstruct_shader.is_valid()) {
++			rd->free_rid(p_impl->reconstruct_shader);
++		}
++		if (p_impl->depth_clip_shader.is_valid()) {
++			rd->free_rid(p_impl->depth_clip_shader);
++		}
++		if (p_impl->exposure_shader.is_valid()) {
++			rd->free_rid(p_impl->exposure_shader);
++		}
++		if (p_impl->accumulate_shader.is_valid()) {
++			rd->free_rid(p_impl->accumulate_shader);
++		}
++		if (p_impl->rcas_shader.is_valid()) {
++			rd->free_rid(p_impl->rcas_shader);
++		}
++		if (p_impl->linear_sampler.is_valid()) {
++			rd->free_rid(p_impl->linear_sampler);
++		}
++		for (uint32_t i = 0; i < CONSTANTS_RING_SIZE; i++) {
++			if (p_impl->constants_early[i].is_valid()) {
++				rd->free_rid(p_impl->constants_early[i]);
++			}
++			if (p_impl->constants_late[i].is_valid()) {
++				rd->free_rid(p_impl->constants_late[i]);
++			}
++		}
++	}
++	memdelete(p_impl);
++}
++
++} // namespace
++
++PmndrsTemporal::PmndrsTemporal() {
++	// The raw-WGSL compute path only exists on WebGPU. On every other driver
++	// (or an older build without the feature) stay inert: the renderer keeps its
++	// previous upscaler (FSR1 for the FSR2-style slot).
++	ERR_FAIL_NULL(RD::get_singleton());
++	RenderingDevice *rd = RD::get_singleton();
++	if (!rd->has_feature(RD::SUPPORTS_RAW_WGSL_COMPUTE)) {
++		return;
++	}
++
++	// Formats/usages the graph requires. Every texture except the 1x1 dummy is a
++	// storage image as well as a sampled texture; r32float/rgba8unorm/rgba16f are
++	// core WebGPU storage formats (port doc §6.1, §12.3 G).
++	const uint32_t sampling_storage = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT;
++	const bool formats_ok =
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R16G16B16A16_SFLOAT, sampling_storage) &&
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R32_SFLOAT, sampling_storage) &&
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R8G8B8A8_UNORM, sampling_storage) &&
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R8_UNORM, RD::TEXTURE_USAGE_SAMPLING_BIT);
++	if (!formats_ok) {
++		WARN_PRINT("pmndrs temporal upscaler: required texture formats/usages are not supported; the temporal path is unavailable and the renderer will fall back.");
++		return;
++	}
++	// Scene depth must be readable as texture_depth_2d. The engine allocates a
++	// combined depth-stencil format, so at least one of these must be samplable;
++	// the per-frame check in upscale() validates the concrete format.
++	const bool depth_format_ok =
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_D32_SFLOAT_S8_UINT, RD::TEXTURE_USAGE_SAMPLING_BIT) ||
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_D24_UNORM_S8_UINT, RD::TEXTURE_USAGE_SAMPLING_BIT) ||
++			rd->texture_is_format_supported_for_usage(RD::DATA_FORMAT_D32_SFLOAT, RD::TEXTURE_USAGE_SAMPLING_BIT);
++	if (!depth_format_ok) {
++		WARN_PRINT("pmndrs temporal upscaler: no supported depth format can be sampled; the temporal path is unavailable and the renderer will fall back.");
++		return;
++	}
++
++	PmndrsTemporalImpl *impl = memnew(PmndrsTemporalImpl);
++	_internal = impl;
++
++	// Pass 1 - reconstruct (hardware depth). Bindings per port doc §7.1:
++	//   0 FsrConstants(early) | 1 sceneDepth(texture_depth_2d) | 2 sceneVelocity |
++	//   3 dilatedDepth(storage r32float) | 4 dilatedMotion(storage rgba16float) |
++	//   5 reconstructedDepth(storage read_write atomic<u32>)
++	Vector<RD::WGSLUniform> reconstruct_uniforms;
++	reconstruct_uniforms.push_back(_wgsl_uniform_buffer(0));
++	reconstruct_uniforms.push_back(_wgsl_depth_texture(1));
++	reconstruct_uniforms.push_back(_wgsl_sampled_texture(2, RD::DATA_FORMAT_R16G16_SFLOAT));
++	reconstruct_uniforms.push_back(_wgsl_storage_image(3, RD::DATA_FORMAT_R32_SFLOAT));
++	reconstruct_uniforms.push_back(_wgsl_storage_image(4, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	reconstruct_uniforms.push_back(_wgsl_storage_buffer(5, true));
++
++	// Pass 2 - depth clip. Bindings per port doc §7.2:
++	//   0 FsrConstants(early) | 1 dilatedDepth | 2 dilatedMotion |
++	//   3 reconstructedDepth(read) | 4 maskOutput(storage rgba8unorm) |
++	//   5 nextReconstructedDepth(read_write) | 6 resetSignal
++	Vector<RD::WGSLUniform> depth_clip_uniforms;
++	depth_clip_uniforms.push_back(_wgsl_uniform_buffer(0));
++	depth_clip_uniforms.push_back(_wgsl_sampled_texture(1, RD::DATA_FORMAT_R32_SFLOAT));
++	depth_clip_uniforms.push_back(_wgsl_sampled_texture(2, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	depth_clip_uniforms.push_back(_wgsl_storage_buffer(3, false));
++	depth_clip_uniforms.push_back(_wgsl_storage_image(4, RD::DATA_FORMAT_R8G8B8A8_UNORM));
++	depth_clip_uniforms.push_back(_wgsl_storage_buffer(5, true));
++	depth_clip_uniforms.push_back(_wgsl_sampled_texture(6, RD::DATA_FORMAT_R8_UNORM));
++
++	// Pass 3 - exposure (taps form). Bindings per port doc §7.4:
++	//   0 FsrConstants(late) | 1 inputColor | 2 linearSampler | 3 prevExposure |
++	//   4 exposureOut(storage rgba16float) | 5 externalExposure |
++	//   6 hostPreExposure | 7 resetSignal
++	Vector<RD::WGSLUniform> exposure_uniforms;
++	exposure_uniforms.push_back(_wgsl_uniform_buffer(0));
++	exposure_uniforms.push_back(_wgsl_sampled_texture(1, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	exposure_uniforms.push_back(_wgsl_sampler(2));
++	exposure_uniforms.push_back(_wgsl_sampled_texture(3, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	exposure_uniforms.push_back(_wgsl_storage_image(4, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	exposure_uniforms.push_back(_wgsl_sampled_texture(5, RD::DATA_FORMAT_R8_UNORM));
++	exposure_uniforms.push_back(_wgsl_sampled_texture(6, RD::DATA_FORMAT_R8_UNORM));
++	exposure_uniforms.push_back(_wgsl_sampled_texture(7, RD::DATA_FORMAT_R8_UNORM));
++
++	// Pass 4 - accumulate. Bindings per port doc §7.6 (13 bindings, the largest
++	// set): 0 FsrConstants(late) | 1 inputColor | 2 dilatedMotion | 3 masks |
++	// 4 historyIn | 5 linearSampler | 6 historyOut(storage) | 7 locksIn |
++	// 8 locksOut(storage) | 9 exposureTex | 10 reactiveMask |
++	// 11 exposurePrevTex | 12 shadingChangeTex
++	Vector<RD::WGSLUniform> accumulate_uniforms;
++	accumulate_uniforms.push_back(_wgsl_uniform_buffer(0));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(1, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(2, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(3, RD::DATA_FORMAT_R8G8B8A8_UNORM));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(4, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampler(5));
++	accumulate_uniforms.push_back(_wgsl_storage_image(6, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(7, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_storage_image(8, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(9, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(10, RD::DATA_FORMAT_R8_UNORM));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(11, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	accumulate_uniforms.push_back(_wgsl_sampled_texture(12, RD::DATA_FORMAT_R8_UNORM));
++
++	// Pass 5 - RCAS temporal. Bindings per port doc §7.7:
++	//   0 FsrConstants(late) | 1 inputColor(history[out]) | 2 exposureTex |
++	//   3 outputColor(storage rgba16float, display res) | 4 alphaSource(locks[out])
++	Vector<RD::WGSLUniform> rcas_uniforms;
++	rcas_uniforms.push_back(_wgsl_uniform_buffer(0));
++	rcas_uniforms.push_back(_wgsl_sampled_texture(1, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	rcas_uniforms.push_back(_wgsl_sampled_texture(2, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	rcas_uniforms.push_back(_wgsl_storage_image(3, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++	rcas_uniforms.push_back(_wgsl_sampled_texture(4, RD::DATA_FORMAT_R16G16B16A16_SFLOAT));
++
++	bool ok = true;
++	ok = ok && _create_pass(rd, "PMNDRS_TEMPORAL_RECONSTRUCT", pmndrs_reconstruct_hardware_wgsl, reconstruct_uniforms, impl->reconstruct_shader, impl->reconstruct_pipeline);
++	ok = ok && _create_pass(rd, "PMNDRS_TEMPORAL_DEPTH_CLIP", pmndrs_depth_clip_wgsl, depth_clip_uniforms, impl->depth_clip_shader, impl->depth_clip_pipeline);
++	// TODO(deferred) generate_reactive pass (port doc §7.3): needs an opaque-only
++	// color input that the engine seam does not expose yet.
++	ok = ok && _create_pass(rd, "PMNDRS_TEMPORAL_EXPOSURE", pmndrs_exposure_taps_wgsl, exposure_uniforms, impl->exposure_shader, impl->exposure_pipeline);
++	// TODO(deferred) shading_change pass (port doc §7.5): FLAG_SHADING_CHANGE is
++	// kept clear and a zero dummy is bound to accumulate b12 meanwhile.
++	ok = ok && _create_pass(rd, "PMNDRS_TEMPORAL_ACCUMULATE", pmndrs_accumulate_wgsl, accumulate_uniforms, impl->accumulate_shader, impl->accumulate_pipeline);
++	ok = ok && _create_pass(rd, "PMNDRS_TEMPORAL_RCAS", pmndrs_rcas_temporal_wgsl, rcas_uniforms, impl->rcas_shader, impl->rcas_pipeline);
++	if (!ok) {
++		_destroy_impl(impl);
++		_internal = nullptr;
++		return;
++	}
++
++	RD::SamplerState sampler_state;
++	sampler_state.mag_filter = RD::SAMPLER_FILTER_LINEAR;
++	sampler_state.min_filter = RD::SAMPLER_FILTER_LINEAR;
++	sampler_state.mip_filter = RD::SAMPLER_FILTER_LINEAR;
++	sampler_state.repeat_u = RD::SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE;
++	sampler_state.repeat_v = RD::SAMPLER_REPEAT_MODE_CLAMP_TO_EDGE;
++	impl->linear_sampler = rd->sampler_create(sampler_state);
++	if (impl->linear_sampler.is_null()) {
++		WARN_PRINT("pmndrs temporal upscaler: failed to create the linear clamp sampler.");
++		_destroy_impl(impl);
++		_internal = nullptr;
++		return;
++	}
++
++	for (uint32_t i = 0; i < CONSTANTS_RING_SIZE; i++) {
++		impl->constants_early[i] = rd->uniform_buffer_create(FS_CONSTANTS_BUFFER_SIZE);
++		impl->constants_late[i] = rd->uniform_buffer_create(FS_CONSTANTS_BUFFER_SIZE);
++		if (impl->constants_early[i].is_null() || impl->constants_late[i].is_null()) {
++			WARN_PRINT("pmndrs temporal upscaler: failed to create the constants uniform buffer ring.");
++			_destroy_impl(impl);
++			_internal = nullptr;
++			return;
++		}
++	}
++
++	supported = true;
++
++	static bool announced = false;
++	if (!announced) {
++		announced = true;
++		print_line("[PMNDRS] temporal upscaler active (reconstruct/clip/exposure/accumulate/RCAS, raw WGSL)");
++	}
++}
++
++PmndrsTemporal::~PmndrsTemporal() {
++	if (_internal != nullptr) {
++		_destroy_impl((PmndrsTemporalImpl *)_internal);
++		_internal = nullptr;
++	}
++	supported = false;
++}
++
++PmndrsTemporalContext *PmndrsTemporal::create_context(Size2i p_internal_size, Size2i p_target_size) {
++	if (!supported || p_internal_size.x <= 0 || p_internal_size.y <= 0 || p_target_size.x <= 0 || p_target_size.y <= 0) {
++		return nullptr;
++	}
++	RenderingDevice *rd = RD::get_singleton();
++	if (rd == nullptr) {
++		return nullptr;
++	}
++	PmndrsTemporalContext *context = memnew(PmndrsTemporalContext);
++	if (!context->ensure_resources(rd, p_internal_size, p_target_size)) {
++		memdelete(context);
++		WARN_PRINT("pmndrs temporal upscaler: failed to allocate the per-viewport temporal resources.");
++		return nullptr;
++	}
++	return context;
++}
++
++void PmndrsTemporal::free_context(PmndrsTemporalContext *p_context) {
++	if (p_context == nullptr) {
++		return;
++	}
++	p_context->free_resources(RD::get_singleton());
++	memdelete(p_context);
++}
++
++void PmndrsTemporal::upscale(PmndrsTemporalContext *p_context, const Parameters &p_params) {
++	if (!supported || p_context == nullptr || _internal == nullptr) {
++		return;
++	}
++	RenderingDevice *rd = RD::get_singleton();
++	ERR_FAIL_NULL(rd);
++	UniformSetCacheRD *uniform_set_cache = UniformSetCacheRD::get_singleton();
++	ERR_FAIL_NULL(uniform_set_cache);
++	PmndrsTemporalImpl *impl = (PmndrsTemporalImpl *)_internal;
++
++	const Size2i render_size = p_params.internal_size;
++	const Size2i display_size = p_params.target_size;
++	if (render_size.x <= 0 || render_size.y <= 0 || display_size.x <= 0 || display_size.y <= 0) {
++		return;
++	}
++
++	// Defensive: the renderer is expected to recreate the context when the render
++	// buffers are recreated, but a size mismatch is cheap to absorb here (and
++	// forces the reset frame the new size needs).
++	if (!p_context->ensure_resources(rd, render_size, display_size)) {
++		return;
++	}
++
++	// --- Frame inputs ---------------------------------------------------------
++	// Required: render-res pre-tonemap color (rgba16f), *hardware* scene depth
++	// (sampled as texture_depth_2d), jitter-free UV motion vectors (rg16float),
++	// and a display-res storage-capable rgba16f output. The shape of these engine
++	// resources is fixed by the FSR2 slot this effect mirrors (port doc §11.1),
++	// so a mismatch means the renderer fed the wrong slot: warn once and leave
++	// the frame untouched rather than recording an invalid bind group.
++	// NOTE: hardware-depth mode requires MSAA off. With MSAA the engine's
++	// RB_TEX_DEPTH is a R32F *color* resolve target (a linear/z value, not a
++	// depth-aspect texture), which cannot bind as texture_depth_2d; the linear
++	// depth mode is deferred (port doc §14.2), so the check below rejects it.
++	if (p_params.color.is_null() || p_params.depth.is_null() ||
++			p_params.velocity.is_null() || p_params.output.is_null()) {
++		if (!p_context->warned_about_inputs) {
++			p_context->warned_about_inputs = true;
++			WARN_PRINT("pmndrs temporal upscaler: color/depth/velocity/output texture is missing; skipping the temporal upscale.");
++		}
++		return;
++	}
++	const RD::TextureFormat color_format = rd->texture_get_format(p_params.color);
++	const RD::TextureFormat depth_format = rd->texture_get_format(p_params.depth);
++	const RD::TextureFormat velocity_format = rd->texture_get_format(p_params.velocity);
++	const RD::TextureFormat output_format = rd->texture_get_format(p_params.output);
++	const bool inputs_ok =
++			color_format.format == RD::DATA_FORMAT_R16G16B16A16_SFLOAT &&
++			(color_format.usage_bits & RD::TEXTURE_USAGE_SAMPLING_BIT) &&
++			_is_depth_data_format(depth_format.format) &&
++			(depth_format.usage_bits & RD::TEXTURE_USAGE_SAMPLING_BIT) &&
++			(velocity_format.usage_bits & RD::TEXTURE_USAGE_SAMPLING_BIT) &&
++			output_format.format == RD::DATA_FORMAT_R16G16B16A16_SFLOAT &&
++			(output_format.usage_bits & RD::TEXTURE_USAGE_STORAGE_BIT);
++	if (!inputs_ok) {
++		if (!p_context->warned_about_inputs) {
++			p_context->warned_about_inputs = true;
++			WARN_PRINT(vformat("pmndrs temporal upscaler: unsupported frame textures (color %s, depth %s, velocity %s, output %s); expected sampled rgba16f color, hardware depth (MSAA must be off), sampled velocity and a storage-capable rgba16f output. Skipping the temporal upscale.",
++					String(_data_format_name(color_format.format)), String(_data_format_name(depth_format.format)),
++					String(_data_format_name(velocity_format.format)), String(_data_format_name(output_format.format))));
++		}
++		return;
++	}
++
++	// Optional inputs. If present but not sampleable, treat as absent (the
++	// matching flag is cleared and the zero dummy is bound instead of risking an
++	// invalid bind group).
++	const bool has_reactive = !p_params.reactive.is_null() && (rd->texture_get_format(p_params.reactive).usage_bits & RD::TEXTURE_USAGE_SAMPLING_BIT);
++	const bool has_external_exposure = !p_params.exposure.is_null() && (rd->texture_get_format(p_params.exposure).usage_bits & RD::TEXTURE_USAGE_SAMPLING_BIT);
++
++	// --- Constants ------------------------------------------------------------
++	// Jitter conversion (port doc §5.6, and the Parameters contract in the
++	// header): Parameters.jitter/jitter_prev are render-pixel offsets in the
++	// engine's convention (x right, y up) - i.e. the offset actually applied to
++	// the camera projection, converted to render pixels. The pmndrs shaders use
++	// x right / y down, so negate y here. This is the other silent failure mode
++	// (ghosting/blur instead of a validation error): if a still camera shows the
++	// accumulation "swimming" or moving edges ghost, the sign to A/B is this one.
++	const Vector2 jitter_pm = Vector2(p_params.jitter.x, -p_params.jitter.y);
++	const Vector2 jitter_prev_pm = Vector2(p_params.jitter_prev.x, -p_params.jitter_prev.y);
++
++	// Hardware depth linearization range. The engine's cameras are perspective
++	// with positive, finite near/far; if the seam passes garbage the depth clip
++	// tolerance and the dilated depth are meaningless, so clamp to something
++	// usable (the reconvergence is still driven by the velocity, so the frame
++	// degrades to ghosting rather than failing).
++	float depth_near_far[2] = { p_params.z_near, p_params.z_far };
++	if (!(depth_near_far[0] > 0.0f) || !(depth_near_far[1] > depth_near_far[0])) {
++		WARN_PRINT_ONCE("pmndrs temporal upscaler: invalid camera z_near/z_far; falling back to a plausible depth range (disocclusion quality will be degraded).");
++		depth_near_far[0] = 0.05f;
++		depth_near_far[1] = 4000.0f;
++	}
++
++	const bool reset = p_params.reset_accumulation || p_context->reset_pending;
++	uint32_t flags = FLAG_INPUT_REINHARD | FLAG_LOCKS;
++	if (reset) {
++		flags |= FLAG_RESET;
++	}
++	if (p_params.reversed_depth) {
++		flags |= FLAG_REVERSED_DEPTH;
++	}
++	// Parameters has no explicit perspective flag (the header shape is fixed by
++	// the renderer seam); use the fovy the seam supplies for perspective cameras
++	// only. An orthographic camera must pass fovy <= 0, otherwise linearizeDepth
++	// takes the perspective branch and disocclusion is wrong (ghosting).
++	if (p_params.fovy > 0.0f) {
++		flags |= FLAG_PERSPECTIVE;
++	}
++	if (has_reactive) {
++		flags |= FLAG_REACTIVE;
++	}
++	if (has_external_exposure) {
++		// An app/host conditioning exposure overrides metering entirely: the
++		// exposure pass publishes it without running the 1024-tap reduction, and
++		// accumulate history-corrects across changes (port doc §8.7). It is
++		// divided back out at RCAS, so it never changes output brightness.
++		flags |= FLAG_EXTERNAL_EXPOSURE;
++	} else {
++		flags |= FLAG_AUTO_EXPOSURE;
++	}
++	// FLAG_SHADING_CHANGE is deliberately left clear (detector deferred), as is
++	// FLAG_RCAS_DENOISE (settings.rcasDenoise default false) and FLAG_INPUT_DISPLAY.
++
++	const float sharpness = CLAMP(p_params.sharpness, 0.0f, 1.0f);
++	const float delta_time = p_params.delta_time > 0.0f ? p_params.delta_time : DEFAULT_DELTA_TIME;
++
++	FsrConstants constants_early;
++	FsrConstants constants_late;
++	_fill_constants(constants_early, render_size, display_size, jitter_pm, jitter_prev_pm,
++			depth_near_far, sharpness, delta_time, flags, p_context->frame_index);
++	// Monolithic frame: both stages get identical values (port doc §4.1/§4.3).
++	// A future split-frame API would build the early stage from guide inputs (it
++	// would then not need FLAG_REACTIVE/FLAG_EXTERNAL_EXPOSURE, which the early
++	// passes never read) - TODO(deferred) split frame.
++	constants_late = constants_early;
++
++	// Take a fresh ring slot and write BOTH stage buffers before any compute list
++	// opens: buffer_update() is illegal while a list is recording, and a shared
++	// slot would let another viewport/frame overwrite the values an
++	// already-recorded dispatch reads.
++	const uint32_t ring_slot = impl->constants_ring_index;
++	impl->constants_ring_index = (impl->constants_ring_index + 1) % CONSTANTS_RING_SIZE;
++	RID constants_early_buffer = impl->constants_early[ring_slot];
++	RID constants_late_buffer = impl->constants_late[ring_slot];
++	ERR_FAIL_COND(rd->buffer_update(constants_early_buffer, 0, sizeof(FsrConstants), &constants_early) != OK);
++	ERR_FAIL_COND(rd->buffer_update(constants_late_buffer, 0, sizeof(FsrConstants), &constants_late) != OK);
++
++	// --- Per-frame resource views (ping-pong, port doc §6.2) ------------------
++	const uint32_t h_in = p_context->history_index;
++	const uint32_t h_out = 1 - h_in;
++	RID history_in = p_context->history[h_in];
++	RID history_out = p_context->history[h_out];
++	RID locks_in = p_context->locks[h_in];
++	RID locks_out = p_context->locks[h_out];
++	// exposure[prev] travels with history[in]; exposure[cur] is its other half.
++	RID exposure_prev = p_context->exposure[h_in];
++	RID exposure_cur = p_context->exposure[h_out];
++	RID dilated_depth_cur = p_context->dilated_depth[p_context->depth_index];
++	RID scatter_cur = p_context->scatter[p_context->scatter_index];
++	RID scatter_next = p_context->scatter[1 - p_context->scatter_index];
++
++	// Absent optional inputs are bound to the 1x1 zero dummy (the bindings are
++	// statically present in the WGSL and only their reads are flag-gated).
++	RID reactive = has_reactive ? p_params.reactive : p_context->dummy_zero;
++	RID external_exposure = has_external_exposure ? p_params.exposure : p_context->dummy_zero;
++	RID zero_dummy = p_context->dummy_zero;
++
++	// --- Bind groups ----------------------------------------------------------
++	// One uniform set per pass (binding sets differ, so they cannot be shared).
++	// UniformSetCacheRD keys on shader + set + resource ids, so repeated frames
++	// with the same ring slot reuse the created set.
++	LocalVector<RD::Uniform> reconstruct_uniforms;
++	reconstruct_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_early_buffer));
++	reconstruct_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, p_params.depth));
++	reconstruct_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 2, p_params.velocity));
++	reconstruct_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 3, dilated_depth_cur));
++	reconstruct_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 4, p_context->dilated_motion));
++	reconstruct_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 5, scatter_cur));
++	RID reconstruct_set = uniform_set_cache->get_cache_vec(impl->reconstruct_shader, 0, reconstruct_uniforms);
++
++	LocalVector<RD::Uniform> depth_clip_uniforms;
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_early_buffer));
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, dilated_depth_cur));
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 2, p_context->dilated_motion));
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 3, scatter_cur));
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 4, p_context->masks));
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_STORAGE_BUFFER, 5, scatter_next));
++	depth_clip_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 6, zero_dummy));
++	RID depth_clip_set = uniform_set_cache->get_cache_vec(impl->depth_clip_shader, 0, depth_clip_uniforms);
++
++	LocalVector<RD::Uniform> exposure_uniforms;
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_late_buffer));
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, p_params.color));
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_SAMPLER, 2, impl->linear_sampler));
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 3, exposure_prev));
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 4, exposure_cur));
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 5, external_exposure));
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 6, zero_dummy)); // host pre-exposure: absent -> host = 1.
++	exposure_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 7, zero_dummy)); // CPU reset signal: FLAG_RESET carries it.
++	RID exposure_set = uniform_set_cache->get_cache_vec(impl->exposure_shader, 0, exposure_uniforms);
++
++	LocalVector<RD::Uniform> accumulate_uniforms;
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_late_buffer));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, p_params.color));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 2, p_context->dilated_motion));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 3, p_context->masks));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 4, history_in));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_SAMPLER, 5, impl->linear_sampler));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 6, history_out));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 7, locks_in));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 8, locks_out));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 9, exposure_cur));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 10, reactive));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 11, exposure_prev));
++	accumulate_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 12, zero_dummy)); // shadingChangeTex; FLAG_SHADING_CHANGE clear.
++	RID accumulate_set = uniform_set_cache->get_cache_vec(impl->accumulate_shader, 0, accumulate_uniforms);
++
++	LocalVector<RD::Uniform> rcas_uniforms;
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_UNIFORM_BUFFER, 0, constants_late_buffer));
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 1, history_out));
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 2, exposure_cur));
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_IMAGE, 3, p_params.output));
++	rcas_uniforms.push_back(RD::Uniform(RD::UNIFORM_TYPE_TEXTURE, 4, locks_out));
++	RID rcas_set = uniform_set_cache->get_cache_vec(impl->rcas_shader, 0, rcas_uniforms);
++
++	if (reconstruct_set.is_null() || depth_clip_set.is_null() || exposure_set.is_null() ||
++			accumulate_set.is_null() || rcas_set.is_null()) {
++		if (!impl->warned_uniform_set) {
++			impl->warned_uniform_set = true;
++			WARN_PRINT("pmndrs temporal upscaler: failed to create a compute uniform set; skipping the temporal upscale.");
++		}
++		return;
++	}
++
++	// One-time proof-of-use log: the constructor's announcement only says the
++	// effect is *available*. This fires the first time it actually upscales a
++	// frame (the browser verification recipe keys on this line, mirroring
++	// milestone 1's "[PMNDRS] spatial upscaler running").
++	if (!impl->announced_running) {
++		impl->announced_running = true;
++		print_line(vformat("[PMNDRS] temporal upscaler running (reconstruct/clip/exposure/accumulate/RCAS) %dx%d -> %dx%d, frame %d%s",
++				render_size.x, render_size.y, display_size.x, display_size.y, (int)p_context->frame_index,
++				String(reset ? " (reset)" : "")));
++	}
++
++	// Dispatch grid (port doc Appendix B): all five passes are 8x8.
++	const uint32_t render_groups_x = MAX(1u, ((uint32_t)render_size.x + 7u) / 8u);
++	const uint32_t render_groups_y = MAX(1u, ((uint32_t)render_size.y + 7u) / 8u);
++	const uint32_t display_groups_x = MAX(1u, ((uint32_t)display_size.x + 7u) / 8u);
++	const uint32_t display_groups_y = MAX(1u, ((uint32_t)display_size.y + 7u) / 8u);
++
++	// --- Dispatch graph -------------------------------------------------------
++	// Barrier policy (port doc §11.2): one barrier between every dependent pair.
++	// The reconstruct -> depth clip barrier is mandatory (storage buffer
++	// write -> read, which is not a texture hazard and therefore not covered by
++	// the driver's usage guard); the others keep the dependency chain explicit
++	// and deterministic.
++	RD::ComputeListID compute_list = rd->compute_list_begin();
++
++	// 1. reconstruct: scene depth + velocity -> dilated depth/motion, scatter.
++	rd->compute_list_bind_compute_pipeline(compute_list, impl->reconstruct_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, reconstruct_set, 0);
++	rd->compute_list_dispatch(compute_list, render_groups_x, render_groups_y, 1);
++	rd->compute_list_add_barrier(compute_list);
++
++	// 2. depth clip: disocclusion mask + next-frame scatter clear.
++	rd->compute_list_bind_compute_pipeline(compute_list, impl->depth_clip_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, depth_clip_set, 0);
++	rd->compute_list_dispatch(compute_list, render_groups_x, render_groups_y, 1);
++	rd->compute_list_add_barrier(compute_list);
++
++	// TODO(deferred) generate_reactive (render groups) would run here, between
++	// depth clip and exposure (port doc §2.3).
++	// TODO(deferred) every-texel exposure replaces this single 1x1 dispatch
++	// (two entry points + two bind groups; Gap C).
++
++	// 3. exposure: exactly one 8x8 workgroup; writes this frame's 1x1 exposure
++	// and the GPU-resolved reset in .a.
++	rd->compute_list_bind_compute_pipeline(compute_list, impl->exposure_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, exposure_set, 0);
++	rd->compute_list_dispatch(compute_list, 1, 1, 1);
++	rd->compute_list_add_barrier(compute_list);
++
++	// TODO(deferred) shading_change (half-res grid) would run here, before
++	// accumulate (port doc §2.3), with FLAG_SHADING_CHANGE set.
++
++	// 4. accumulate: display grid; writes history[out] and locks[out].
++	rd->compute_list_bind_compute_pipeline(compute_list, impl->accumulate_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, accumulate_set, 0);
++	rd->compute_list_dispatch(compute_list, display_groups_x, display_groups_y, 1);
++	rd->compute_list_add_barrier(compute_list);
++
++	// 5. RCAS: display grid; conditioned history -> linear/HDR output.
++	// NOTE: this always runs, including at sharpness <= 0. Upstream would use
++	// blit_temporal.wgsl at sharpness == 0 (port doc §2.1/§14.1); at sharpness 0
++	// the RCAS lobe is exactly 0 and the shader is a conditioned tonemap-invert +
++	// exposure divide, i.e. a correct (if not byte-identical to blit) resolve.
++	// TODO(deferred) blit_temporal fallback at sharpness <= 0 / debug view
++	// replacement.
++	rd->compute_list_bind_compute_pipeline(compute_list, impl->rcas_pipeline);
++	rd->compute_list_bind_uniform_set(compute_list, rcas_set, 0);
++	rd->compute_list_dispatch(compute_list, display_groups_x, display_groups_y, 1);
++
++	rd->compute_list_end();
++
++	// --- Frame-end state (port doc §6.3) --------------------------------------
++	p_context->history_index = h_out;
++	p_context->depth_index = 1 - p_context->depth_index;
++	// depth clip cleared this frame's "next" scatter buffer; the next frame
++	// scatters into it (upstream flips scatter_index at the start of the guides
++	// stage, which is equivalent to flipping it here at frame end).
++	p_context->scatter_index = 1 - p_context->scatter_index;
++	p_context->frame_index++;
++	p_context->reset_pending = false;
++}
++
++} // namespace RendererRD
+diff --git a/servers/rendering/renderer_rd/effects/pmndrs_temporal.h b/servers/rendering/renderer_rd/effects/pmndrs_temporal.h
+new file mode 100644
+index 0000000000..93522dd8ba
+--- /dev/null
++++ b/servers/rendering/renderer_rd/effects/pmndrs_temporal.h
+@@ -0,0 +1,103 @@
++/**************************************************************************/
++/*  pmndrs_temporal.h                                                     */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#pragma once
++
++#include "core/os/memory.h"
++#include "core/templates/rid.h"
++#include "core/variant/variant.h"
++
++namespace RendererRD {
++
++class PmndrsTemporalContext;
++
++// Milestone 2 of the pmndrs/upscaler port: the temporal upscaler
++// (reconstruct/depth-clip/exposure/accumulate/RCAS, hand-written WGSL compute
++// on the raw-WGSL RenderingDevice path). Unlike PmndrsSpatial it is a *temporal*
++// upscaler: it runs in the same slot as FSR2 (pre-tonemap, inside
++// RenderForwardClustered), consumes camera jitter + motion vectors + depth and
++// keeps per-viewport history across frames.
++//
++// Contract references:
++//   docs/PMNDRS_TEMPORAL_PORT.md               (pass graph, bindings, constants)
++//   docs/GODOT_TEMPORAL_UPSCALER_INTEGRATION.md (engine seam, jitter/velocity)
++//   docs/WGSL_COMPUTE_PATH.md                  (raw-WGSL RD API)
++class PmndrsTemporal {
++public:
++	// Parameters handed to upscale() once per viewport per frame. All jitter
++	// values are in *render pixels* with the engine/FSR2 convention
++	// (x right, y up; the effect converts to pmndrs' x right / y down itself).
++	struct Parameters {
++		Size2i internal_size; // Render (upscaled-from) resolution.
++		Size2i target_size; // Display (upscaled-to) resolution.
++
++		RID color; // Render-res pre-tonemap color (RGBA16F, sampled).
++		RID depth; // Render-res scene depth (hardware depth, sampled/void).
++		RID velocity; // Render-res motion vectors (UV delta, sampled).
++		RID reactive; // Optional reactive mask (may be null RID).
++		RID exposure; // Optional host exposure (luminance buffer; may be null RID).
++		RID output; // Target-res upscaled color (RGBA16F, storage write).
++
++		float z_near = 0.0f;
++		float z_far = 0.0f;
++		float fovy = 0.0f;
++
++		Vector2 jitter; // Current-frame jitter, render pixels (engine convention).
++		Vector2 jitter_prev; // Previous-frame jitter, same units.
++		float delta_time = 0.0f;
++		float sharpness = 0.0f; // RCAS, 1 = sharpest (same convention as FSR2/pmndrs).
++		bool reset_accumulation = false; // Camera cut / resize / first frame.
++		bool reversed_depth = false; // Scene depth is reversed-Z.
++	};
++
++	PmndrsTemporal();
++	~PmndrsTemporal();
++
++	// True when the raw-WGSL compute path is available and the shaders/pipelines
++	// were created. When false the renderer keeps its previous upscaler (FSR1).
++	bool is_supported() const { return supported; }
++
++	// Per-viewport state (history buffers, jitter phase, reset state). Create once
++	// per RenderSceneBuffers; free with free_context()/when the render buffers are
++	// destroyed. Returns nullptr when unsupported.
++	PmndrsTemporalContext *create_context(Size2i p_internal_size, Size2i p_target_size);
++	void free_context(PmndrsTemporalContext *p_context);
++
++	// Runs the temporal upscale for one viewport into p_params.output. Records its
++	// own compute lists; must be called after the scene color/depth/velocity are
++	// final and before tonemapping reads the upscaled texture.
++	void upscale(PmndrsTemporalContext *p_context, const Parameters &p_params);
++
++private:
++	bool supported = false;
++	void *_internal = nullptr; // Implementation-private shader/pipeline state.
++};
++
++} // namespace RendererRD
+diff --git a/servers/rendering/renderer_rd/effects/pmndrs_temporal_wgsl.h b/servers/rendering/renderer_rd/effects/pmndrs_temporal_wgsl.h
+new file mode 100644
+index 0000000000..c2bf04bbb2
+--- /dev/null
++++ b/servers/rendering/renderer_rd/effects/pmndrs_temporal_wgsl.h
+@@ -0,0 +1,1174 @@
++/**************************************************************************/
++/*  pmndrs_temporal_wgsl.h                                                */
++/**************************************************************************/
++/*                         This file is part of:                          */
++/*                             GODOT ENGINE                               */
++/*                        https://godotengine.org                         */
++/**************************************************************************/
++/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
++/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
++/*                                                                        */
++/* Permission is hereby granted, free of charge, to any person obtaining  */
++/* a copy of this software and associated documentation files (the        */
++/* "Software"), to deal in the Software without restriction, including    */
++/* without limitation the rights to use, copy, modify, merge, publish,    */
++/* distribute, sublicense, and/or sell copies of the Software, and to     */
++/* permit persons to whom the Software is furnished to do so, subject to  */
++/* the following conditions:                                              */
++/*                                                                        */
++/* The above copyright notice and this permission notice shall be         */
++/* included in all copies or substantial portions of the Software.        */
++/*                                                                        */
++/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
++/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
++/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
++/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
++/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
++/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
++/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
++/**************************************************************************/
++
++#pragma once
++
++/*
++ * GENERATED FILE - do not edit the WGSL by hand.
++ *
++ * Verbatim WGSL for the pmndrs/upscaler *temporal* upscaler (milestone 2 of
++ * the port: reconstruct -> depth clip -> exposure -> accumulate -> RCAS),
++ * embedded as C++ raw string literals so no shader files need to be packed
++ * into the export and no runtime file IO is involved.
++ *
++ * Upstream: https://github.com/pmndrs/upscaler
++ * Pinned commit: f6e52098edffb66e16298a30c53b4da37b4b7d7f (v0.6.0)
++ * Vendor tree: /tmp/pmndrs-vendor-temporal/ (wgsl/, manifest.json,
++ * PROVENANCE.md); the five modules below are the fingerprint-verified ones
++ * used by the mandatory temporal slice, byte-identical to the vendored
++ * files. Every module is a complete translation unit with entry point
++ * `main` and @workgroup_size(8, 8); no #include, no enable directives, no
++ * subgroups/f16, no push constants.
++ *
++ * Provenance / SHA-256 of the vendored source of each module:
++ *   reconstruct_hardware.wgsl    sha256 a88e522c5a6ebf19c1e8f3e98a71d835c8be3740e93bc4b167cf860c17e0483a
++ *   depth_clip.wgsl              sha256 66313508cab30cbc9250b20ef75267f6533b7cc474dbe50e63c09090a009d77f
++ *   exposure_taps.wgsl           sha256 18b1125b80e8c896e309c3ec296da1d9c98eb9832958b4a7a0149bf99dda9fc1
++ *   accumulate.wgsl              sha256 2e36ab1f6d85c8a53e684059531d60c67250903ebc0f1c886a883febbf3b1d6a
++ *   rcas_temporal.wgsl           sha256 e68ac0f91e40d86b2afb9feb8333c81bf989198bce441532e3b20995b29cae7f
++ *
++ * IMPORTANT: these are CANONICAL copies. Do not hand-edit the WGSL or its
++ * @binding(N) numbers: the WebGPU raw-WGSL shader container applies the
++ * driver's binding-doubling convention (@binding(N) -> @binding(2*N)) when
++ * the module is created (drivers/webgpu/rendering_shader_container_webgpu.cpp
++ * _double_wgsl_bindings). The RD reflection (pmndrs_temporal.cpp) keeps the
++ * authored binding numbers 0..12.
++ *
++ * Vendor provenance and per-file validation: /tmp/pmndrs-vendor-temporal/
++ * PROVENANCE.md (assembled from the upstream TypeScript shader templates by
++ * tools/extract-shaders.mjs and checked against the upstream repo's own
++ * FNV-1a BASELINE_FINGERPRINTS).
++ *
++ * --- License / attribution -------------------------------------------------
++ * MIT License (pmndrs/upscaler)
++ *
++ * Copyright (c) 2026 Dennis Smolek
++ *
++ * Permission is hereby granted, free of charge, to any person obtaining a copy
++ * of this software and associated documentation files (the "Software"), to deal
++ * in the Software without restriction, including without limitation the rights
++ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++ * copies of the Software, and to permit persons to whom the Software is
++ * furnished to do so, subject to the following conditions:
++ *
++ * The above copyright notice and this permission notice shall be included in all
++ * copies or substantial portions of the Software.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ *
++ * -----------------------------------------------------------------------------
++ * The EASU/RCAS shaders are derived from AMD FidelityFX (ffx_fsr1.h), and the
++ * temporal pipeline follows FSR 2/3's architecture:
++ *
++ * Copyright (c) 2021-2023 Advanced Micro Devices, Inc.
++ *
++ * MIT License - see thirdparty/amd-fsr2/LICENSE or
++ * https://github.com/GPUOpen-Effects/FidelityFX-FSR2/blob/main/LICENSE.txt
++ * -----------------------------------------------------------------------------
++ */
++
++// Pass 1 - reconstruct (hardware depth): 3x3 nearest-depth dilate + atomic
++// reconstructed-previous-depth scatter.
++// vendored: reconstruct_hardware.wgsl
++static const char pmndrs_reconstruct_hardware_wgsl[] = R"PMT(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    _pad            : u32,    // offset 92
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++fn linearizeDepth(d : f32) -> f32 {
++    let near = C.depthNearFar.x;
++    let far = C.depthNearFar.y;
++    if (!hasFlag(FLAG_PERSPECTIVE)) {
++        let t = select(d, 1.0 - d, hasFlag(FLAG_REVERSED_DEPTH));
++        return near + t * (far - near);
++    }
++    if (hasFlag(FLAG_REVERSED_DEPTH)) {
++        return (far * near) / (near + d * (far - near));
++    }
++    return (far * near) / (far - d * (far - near));
++}
++
++@group(0) @binding(1) var sceneDepth : texture_depth_2d;
++@group(0) @binding(2) var sceneVelocity : texture_2d<f32>;
++@group(0) @binding(3) var dilatedDepth : texture_storage_2d<r32float, write>;
++@group(0) @binding(4) var dilatedMotion : texture_storage_2d<rgba16float, write>;
++@group(0) @binding(5) var<storage, read_write> reconstructedDepth : array<atomic<u32>>;
++
++// Bilinear taps lighter than this neither scatter nor vote (matches the
++// reference; the depth clip uses the same floor so the footprints agree).
++const DEPTH_TAP_WEIGHT_FLOOR : f32 = 6.1e-4;
++
++@compute @workgroup_size(8, 8)
++fn main(@builtin(global_invocation_id) gid : vec3u) {
++    if (any(vec2f(gid.xy) >= C.renderSize)) { return; }
++    let center = vec2i(gid.xy);
++    let maxCoord = vec2i(C.renderSize) - 1;
++
++    //* Nearest Depth Search (dilate)
++    // With a reversed depth buffer larger values are nearer; otherwise smaller.
++    let reversed = hasFlag(FLAG_REVERSED_DEPTH);
++    var bestDepth = textureLoad(sceneDepth, center, 0);
++    var farthestDepth = bestDepth;
++    var bestCoord = center;
++    for (var y = -1; y <= 1; y++) {
++        for (var x = -1; x <= 1; x++) {
++            if (x == 0 && y == 0) { continue; }
++            let p = clamp(center + vec2i(x, y), vec2i(0), maxCoord);
++            let d = textureLoad(sceneDepth, p, 0);
++            // Parenthesize the comparisons: WGSL otherwise parses the
++            // '<' ... '>' as a template argument list and fails to compile.
++            let nearer = select((d < bestDepth), (d > bestDepth), reversed);
++            if (nearer) {
++                bestDepth = d;
++                bestCoord = p;
++            }
++            let farther = select((d > farthestDepth), (d < farthestDepth), reversed);
++            if (farther) { farthestDepth = d; }
++        }
++    }
++
++    let curDepth = linearizeDepth(bestDepth);
++    // The neighborhood's own depth relief in view units — how much the local
++    // surface slopes across one texel ring. Neighbors on a slope scatter into
++    // overlapping footprints, so a tap can legitimately read a depth up to
++    // this much nearer without being a different surface.
++    let localRelief = max(linearizeDepth(farthestDepth) - curDepth, 0.0);
++    let uvDelta = textureLoad(sceneVelocity, bestCoord, 0).xy * C.motionScale;
++    textureStore(dilatedDepth, gid.xy, vec4f(curDepth, 0.0, 0.0, 0.0));
++    textureStore(dilatedMotion, gid.xy, vec4f(uvDelta, localRelief, 0.0));
++
++    //* Scatter — reconstructed previous depth
++    // Motion-only previous position: the depth clip gathers the same
++    // footprint, so any common offset (the jitter delta) cancels.
++    let prevUV = (vec2f(gid.xy) + 0.5) * C.renderSizeInv - uvDelta;
++    let samplePosition = prevUV * C.renderSize - 0.5;
++    let base = vec2i(floor(samplePosition));
++    let fraction = fract(samplePosition);
++    let weights = vec4f(
++        (1.0 - fraction.x) * (1.0 - fraction.y),
++        fraction.x * (1.0 - fraction.y),
++        (1.0 - fraction.x) * fraction.y,
++        fraction.x * fraction.y
++    );
++    let offsets = array<vec2i, 4>(vec2i(0, 0), vec2i(1, 0), vec2i(0, 1), vec2i(1, 1));
++    let encoded = bitcast<u32>(max(curDepth, 0.0));
++    let width = i32(C.renderSize.x);
++    for (var index = 0; index < 4; index++) {
++        if (weights[index] <= DEPTH_TAP_WEIGHT_FLOOR) { continue; }
++        let p = base + offsets[index];
++        if (any(p < vec2i(0)) || any(p > maxCoord)) { continue; }
++        atomicMin(&reconstructedDepth[u32(p.y * width + p.x)], encoded);
++    }
++}
++)PMT";
++
++// Pass 2 - depth clip: disocclusion mask from the scattered previous depth +
++// ping-pong scatter clear.
++// vendored: depth_clip.wgsl
++static const char pmndrs_depth_clip_wgsl[] = R"PMT(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    _pad            : u32,    // offset 92
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++@group(0) @binding(1) var dilatedDepth : texture_2d<f32>;
++@group(0) @binding(2) var dilatedMotion : texture_2d<f32>;
++@group(0) @binding(3) var<storage, read> reconstructedDepth : array<u32>;
++@group(0) @binding(4) var maskOutput : texture_storage_2d<rgba8unorm, write>;
++@group(0) @binding(5) var<storage, read_write> nextReconstructedDepth : array<u32>;
++@group(0) @binding(6) var resetSignal : texture_2d<f32>;
++
++// AMD's separation tolerance (ffx_fsr2_depth_clip.h): the minimum view-depth
++// gap that reads as a different surface scales with viewport resolution and
++// scene depth, absorbing depth-buffer quantization without a scene-tuned guess.
++const DEPTH_SEPARATION_CONSTANT : f32 = 1.37e-5;
++const DEPTH_TAP_WEIGHT_FLOOR : f32 = 6.1e-4;
++// +inf bits: an empty slot reads as farther than any surface.
++const EMPTY_DEPTH : u32 = 0x7f800000u;
++
++@compute @workgroup_size(8, 8)
++fn main(@builtin(global_invocation_id) gid : vec3u) {
++    if (any(vec2f(gid.xy) >= C.renderSize)) { return; }
++    let center = vec2i(gid.xy);
++    let maxCoord = vec2i(C.renderSize) - 1;
++    let width = i32(C.renderSize.x);
++    // Ping-pong clear: one texel per slot, so every slot of the buffer the
++    // next frame scatters into is emptied without a clear dispatch.
++    nextReconstructedDepth[u32(center.y * width + center.x)] = EMPTY_DEPTH;
++    // Reset: no history survives this frame, so none of it is the same surface.
++    // Applied at the store rather than as an early return, so the signal's
++    // fetch overlaps the pass's own loads instead of gating them.
++    let reset = hasFlag(FLAG_RESET) || textureLoad(resetSignal, vec2i(0), 0).r > 0.5;
++
++    let curDepth = textureLoad(dilatedDepth, center, 0).r;
++    let motion = textureLoad(dilatedMotion, center, 0);
++    let uvDelta = motion.xy;
++    let localRelief = motion.z;
++
++    let uv = (vec2f(gid.xy) + 0.5) * C.renderSizeInv;
++    let prevUV = uv - uvDelta;
++    if (any(prevUV < vec2f(0.0)) || any(prevUV > vec2f(1.0))) {
++        textureStore(maskOutput, gid.xy, vec4f(1.0, 0.0, 0.0, 1.0));
++        return;
++    }
++    let samplePosition = prevUV * C.renderSize - 0.5;
++    let base = vec2i(floor(samplePosition));
++    let fraction = fract(samplePosition);
++    let offsets = array<vec2i, 4>(vec2i(0, 0), vec2i(1, 0), vec2i(0, 1), vec2i(1, 1));
++    let weights = vec4f(
++        (1.0 - fraction.x) * (1.0 - fraction.y),
++        fraction.x * (1.0 - fraction.y),
++        (1.0 - fraction.x) * fraction.y,
++        fraction.x * fraction.y
++    );
++    let halfViewportWidth = length(C.renderSize * 0.5);
++    var surfaceConfidence = 0.0;
++    var sawValidTap = false;
++    for (var index = 0; index < 4; index++) {
++        let weight = weights[index];
++        if (weight <= DEPTH_TAP_WEIGHT_FLOOR) { continue; }
++        let p = clamp(base + offsets[index], vec2i(0), maxCoord);
++        // This pixel scattered into its own footprint, so a tap reads its own
++        // depth unless something nearer reprojects there too (empty slots
++        // only occur at the clamped border and read as +inf).
++        let tapDepth = bitcast<f32>(reconstructedDepth[u32(p.y * width + p.x)]);
++        let difference = curDepth - tapDepth;
++        // A tap at or behind the current surface: nothing in front — full
++        // confidence. Taps in front witness an occluder that moved off this
++        // point, with confidence falling as the separation exceeds tolerance.
++        var tapConfidence = 1.0;
++        if (difference > 0.0) {
++            // Tolerance: the viewport/depth-scaled quantization term
++            // (reference formulation), widened by the neighborhood's own
++            // relief so a slope's per-texel depth change is not separation.
++            let required = max(
++                DEPTH_SEPARATION_CONSTANT * halfViewportWidth * max(curDepth, tapDepth),
++                localRelief,
++            );
++            tapConfidence = clamp(required / max(difference, 1.0e-7), 0.0, 1.0);
++        }
++        // MAX vote, not a weighted mean: if ANY footprint tap recognizes the
++        // current surface it is the same surface; a genuine disocclusion has
++        // every tap covered by the occluder that moved away.
++        surfaceConfidence = max(surfaceConfidence, tapConfidence);
++        sawValidTap = true;
++    }
++    let disocclusion = select(0.0, clamp(1.0 - surfaceConfidence, 0.0, 1.0), sawValidTap);
++    textureStore(maskOutput, gid.xy, vec4f(select(disocclusion, 1.0, reset), 0.0, 0.0, 1.0));
++}
++)PMT";
++
++// Pass 4 - exposure (taps form): one 8x8 workgroup, 1024 bilinear log-luma
++// taps, eye adaptation, GPU-resolved reset in .a.
++// vendored: exposure_taps.wgsl
++static const char pmndrs_exposure_taps_wgsl[] = R"PMT(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    exposureTaps    : u32,    // offset 92 — fixed metering grid, uniform loop bound
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++fn luma(c : vec3f) -> f32 {
++    return dot(c, vec3f(0.2126, 0.7152, 0.0722));
++}
++
++fn rgbToYCoCg(c : vec3f) -> vec3f {
++    return vec3f(
++         0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
++         0.5  * c.r             - 0.5  * c.b,
++        -0.25 * c.r + 0.5 * c.g - 0.25 * c.b,
++    );
++}
++
++fn yCoCgToRgb(c : vec3f) -> vec3f {
++    return vec3f(
++        c.x + c.y - c.z,
++        c.x       + c.z,
++        c.x - c.y - c.z,
++    );
++}
++
++@group(0) @binding(1) var inputColor : texture_2d<f32>;
++@group(0) @binding(2) var linearSampler : sampler;
++@group(0) @binding(3) var prevExposure : texture_2d<f32>;
++@group(0) @binding(4) var exposureOut : texture_storage_2d<rgba16float, write>;
++@group(0) @binding(5) var externalExposure : texture_2d<f32>;
++@group(0) @binding(6) var hostPreExposure : texture_2d<f32>;
++@group(0) @binding(7) var resetSignal : texture_2d<f32>;
++
++// 32×32 = 1024 bilinear taps across the whole frame — a coarse but stable
++// average for exposure (each tap already averages 4 texels).
++const EXPOSURE_TAPS : u32 = 32u;
++// Middle-grey target: the exposure maps average scene luma to this.
++const EXPOSURE_KEY : f32 = 0.18;
++// Clamp so a pitch-black or fully blown-out frame can't drive exposure to
++// infinity/zero and destabilize the accumulation it is meant to steady.
++const EXPOSURE_MIN : f32 = 0.02;
++// The brightening cap is also the dark-scene highlight ceiling. History is
++// stored in f16 as x/(1+x), x the pre-exposed color, and tonemapInvert clamps
++// at 0.999: nothing resolves above 999 / exposure, and below that a stored
++// value moves in relative steps of ~(1 + x)/2048. A mostly-black frame drives the
++// log-average to its floor, so the old cap (80) put every highlight above
++// ~12.5 linear on the ceiling and averaged sub-pixel ones to the same value
++// whatever their brightness (issue #49). 8 (three stops) lifts the ceiling to
++// ~125 and stays above every bench scene's metered target (2.4–6.8), so
++// ordinary scenes are unchanged. Highlights can't key the exposure instead:
++// the 32×32 taps miss small and sub-pixel lights. See bench/docs/NEXT-STEPS.md.
++const EXPOSURE_MAX : f32 = 8.0;
++// Eye-adaptation rate (per second) toward the target exposure.
++const ADAPT_SPEED : f32 = 2.5;
++// Adaptation dead-band, in stops. The metering taps read the JITTERED input, so
++// on a still scene the log-average wobbles with the jitter phase (edges and
++// sub-pixel detail land on different texels each phase). Easing toward that
++// moving target re-conditions the stored history every frame (plus f16 storage
++// rounding of the exposure itself), which reads as low-level contour shimmer
++// across smooth gradients. Holding the stored exposure exactly while the target
++// stays within 1/16 stop (~4.4%) freezes a still scene's conditioning
++// bit-for-bit; genuine lighting changes are far larger and adapt as before.
++// Exposure is divided back out before display, so resting up to 1/16 stop off
++// target changes nothing visible.
++const ADAPT_DEADBAND_STOPS : f32 = 0.0625;
++
++// Lanes per axis of the 8×8 workgroup that shares the metering grid.
++const EXPOSURE_LANES : u32 = 8u;
++// One partial log-sum per lane; the tree below folds them into slot 0.
++var<workgroup> laneLogSums : array<f32, 64>;
++
++// Provided exposure (issue #98): with auto-exposure off or an app-supplied
++// exposure, the epilogue would override the metered value, so nothing is
++// metered. Publishes the epilogue's .r, .b and .a exactly; .g, the metered
++// average luma that no shader reads, is 0 for "not metered".
++fn publishProvidedExposure() {
++    let hostRaw = textureLoad(hostPreExposure, vec2i(0), 0).r;
++    let host = select(1.0, hostRaw, hostRaw > 0.0);
++    let reset = hasFlag(FLAG_RESET) || textureLoad(resetSignal, vec2i(0), 0).r > 0.5;
++    let ext = textureLoad(externalExposure, vec2i(0), 0).r;
++    let exposure = select(C.exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));
++    textureStore(exposureOut, vec2i(0), vec4f(exposure, 0.0, host, select(0.0, 1.0, reset)));
++}
++
++@compute @workgroup_size(8, 8)
++fn main(
++    @builtin(global_invocation_id) gid : vec3u,
++    @builtin(local_invocation_index) lane : u32,
++) {
++    // The flags are uniform, so this return leaves the barriers below in
++    // uniform control flow. UpscalerCore dispatches this form, not the
++    // every-texel reduction, whenever the metering is unused.
++    if (!hasFlag(FLAG_AUTO_EXPOSURE) || hasFlag(FLAG_EXTERNAL_EXPOSURE)) {
++        if (lane == 0u) { publishProvidedExposure(); }
++        return;
++    }
++
++    // Geometric mean of luminance (average in log space) resists a few bright
++    // pixels dragging the whole exposure, matching FSR2's log-average.
++    // The 64 lanes split the 32×32 grid: lane (x, y) takes rows y, y + 8, …
++    // and in each row columns x, x + 8, x + 16, x + 24, so 16 taps a lane with
++    // the serial form's UVs and per-tap math. Only the summation order differs
++    // (16-tap lane sums, then a 64-way tree). The row loop keeps the uniform
++    // bound that holds DXC's compile time down (docs/windows-followups.md); the
++    // column loop is 4 constant steps. gid is the local id: one workgroup runs.
++    var logSum = 0.0;
++    for (var y = gid.y; y < C.exposureTaps; y = y + EXPOSURE_LANES) {
++        for (var i = 0u; i < EXPOSURE_TAPS / EXPOSURE_LANES; i = i + 1u) {
++            let x = gid.x + i * EXPOSURE_LANES;
++            let uv = (vec2f(f32(x), f32(y)) + 0.5) / f32(EXPOSURE_TAPS);
++            let c = textureSampleLevel(inputColor, linearSampler, uv, 0.0).rgb;
++            logSum = logSum + log2(max(luma(c), 1.0e-4));
++        }
++    }
++    laneLogSums[lane] = logSum;
++    workgroupBarrier();
++    for (var stride = 32u; stride > 0u; stride = stride >> 1u) {
++        if (lane < stride) {
++            laneLogSums[lane] = laneLogSums[lane] + laneLogSums[lane + stride];
++        }
++        workgroupBarrier();
++    }
++
++    // Both returns come after the last barrier, which every lane must reach.
++    if (any(vec2f(gid.xy) >= C.displaySize)) { return; }
++    if (lane != 0u) { return; }
++    logSum = laneLogSums[0];
++
++    // Meter host-invariantly (FSR2 divides pre-exposure out of every input
++    // load): the app already metered what it baked in, so a host pre-exposure
++    // step must not send auto-exposure re-adapting — that multi-frame
++    // conditioning drift would desynchronize history from the current frame
++    // and read as a full-screen shading change.
++    let hostRaw = textureLoad(hostPreExposure, vec2i(0), 0).r;
++    let host = select(1.0, hostRaw, hostRaw > 0.0);
++    let avgLum = exp2(logSum / f32(EXPOSURE_TAPS * EXPOSURE_TAPS)) / host;
++
++    let targetExposure = clamp(EXPOSURE_KEY / max(avgLum, 1.0e-4), EXPOSURE_MIN, EXPOSURE_MAX);
++
++    // This frame's resolved reset: the CPU flag or the app's GPU signal.
++    let reset = hasFlag(FLAG_RESET) || textureLoad(resetSignal, vec2i(0), 0).r > 0.5;
++
++    // Ease toward the target for eye-adaptation; snap on reset so a stale value
++    // doesn't slowly fade in after a camera cut / resize.
++    let prev = textureLoad(prevExposure, vec2i(0), 0).r;
++    var exposure = targetExposure;
++    if (!reset && prev > 0.0) {
++        exposure = prev;
++        if (abs(log2(targetExposure / prev)) > ADAPT_DEADBAND_STOPS) {
++            let rate = clamp(1.0 - exp2(-C.deltaTime * ADAPT_SPEED), 0.0, 1.0);
++            exposure = prev + (targetExposure - prev) * rate;
++        }
++    }
++
++    // Manual override: when auto-exposure is off, publish the fixed setting so
++    // downstream passes read exposure from one place regardless of mode.
++    exposure = select(C.exposure, exposure, hasFlag(FLAG_AUTO_EXPOSURE));
++
++    // App-supplied exposure wins over both: a pipeline that already computes
++    // exposure (its own metering pass) feeds it here, and every downstream
++    // pass keeps reading this one 1×1 value. That includes the shading-change
++    // detector, which scales both frames by this conditioning exposure (.r).
++    // avgLum (.g) stays our own measurement, but no shader reads it.
++    let ext = textureLoad(externalExposure, vec2i(0), 0).r;
++    exposure = select(exposure, ext, hasFlag(FLAG_EXTERNAL_EXPOSURE));
++
++    // Host pre-exposure rides along in .b: 0 (the dummy) means "not supplied"
++    // and publishes as 1.0 so the accumulate-side ratio correction is inert.
++    // .a is the resolved reset, read by shading change and accumulate.
++    textureStore(exposureOut, vec2i(0), vec4f(exposure, avgLum, host, select(0.0, 1.0, reset)));
++}
++)PMT";
++
++// Pass 6 - accumulate: jitter-aware Lanczos2 upsample, Catmull-Rom history,
++// YCoCg variance clip, thin-feature locks, alpha resolve.
++// vendored: accumulate.wgsl
++static const char pmndrs_accumulate_wgsl[] = R"PMT(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    _pad            : u32,    // offset 92
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++fn luma(c : vec3f) -> f32 {
++    return dot(c, vec3f(0.2126, 0.7152, 0.0722));
++}
++
++fn rgbToYCoCg(c : vec3f) -> vec3f {
++    return vec3f(
++         0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
++         0.5  * c.r             - 0.5  * c.b,
++        -0.25 * c.r + 0.5 * c.g - 0.25 * c.b,
++    );
++}
++
++fn yCoCgToRgb(c : vec3f) -> vec3f {
++    return vec3f(
++        c.x + c.y - c.z,
++        c.x       + c.z,
++        c.x - c.y - c.z,
++    );
++}
++
++fn tonemapInvertible(c : vec3f) -> vec3f {
++    return c / (1.0 + max(max(c.r, c.g), max(c.b, 0.0)));
++}
++
++fn tonemapInvert(c : vec3f) -> vec3f {
++    let m = min(max(max(c.r, c.g), max(c.b, 0.0)), 0.999);
++    return c / (1.0 - m);
++}
++
++@group(0) @binding(1) var inputColor : texture_2d<f32>;
++@group(0) @binding(2) var dilatedMotion : texture_2d<f32>;
++@group(0) @binding(3) var masks : texture_2d<f32>;
++@group(0) @binding(4) var historyIn : texture_2d<f32>;
++@group(0) @binding(5) var linearSampler : sampler;
++@group(0) @binding(6) var historyOut : texture_storage_2d<rgba16float, write>;
++@group(0) @binding(7) var locksIn : texture_2d<f32>;
++@group(0) @binding(8) var locksOut : texture_storage_2d<rgba16float, write>;
++@group(0) @binding(9) var exposureTex : texture_2d<f32>;
++@group(0) @binding(10) var reactiveMask : texture_2d<f32>;
++@group(0) @binding(11) var exposurePrevTex : texture_2d<f32>;
++@group(0) @binding(12) var shadingChangeTex : texture_2d<f32>;
++
++const PI : f32 = 3.14159265358979;
++// How hard a fully-reactive pixel snaps to the current frame in the blend.
++const REACTIVE_STRENGTH : f32 = 0.9;
++// Variance-clip gamma: how many standard deviations of the current
++// neighborhood the history may stray before being clipped.
++const CLIP_GAMMA : f32 = 1.0;
++
++//* Luminance-stability lock tuning (FSR2/3's thin-feature protection).
++// A "lock" marks a stable sub-pixel luminance outlier (a wire, a fence
++// picket) and shields it from the variance clip that would otherwise drag its
++// bright/dark history toward the darker/brighter neighborhood — the exact
++// cause of thin features dimming and shimmering under motion.
++const LOCK_DECAY : f32 = 0.08;         // lifetime lost per frame when no feature present
++const LOCK_GROW : f32 = 0.5;           // lifetime gained per frame while a feature is present
++const LOCK_CONTRAST_LO : f32 = 0.02;   // YCoCg-Y contrast to start treating a pixel as a thin feature
++const LOCK_CONTRAST_HI : f32 = 0.12;
++const LOCK_PEAK_LO : f32 = 0.6;        // how many neighborhood std-devs marks an outlier
++const LOCK_PEAK_HI : f32 = 2.0;
++const LOCK_CLAMP_RELAX : f32 = 12.0;   // how much a full lock widens the variance AABB
++const LOCK_HISTORY_BOOST : f32 = 0.7;  // how much a full lock favors history in the blend
++
++//* Still-scene convergence relax.
++// The variance AABB is built from ONE jitter phase's 3×3 taps, so on
++// high-frequency content (sub-texel grid lines, moiré regions) the CONVERGED
++// supersampled mean falls outside some phases' boxes — and because the blend
++// stores the clipped history back, the buffer is re-snapped to each phase's
++// box forever: the still image never stops churning no matter how small alpha
++// gets (measured on Q1: disabling the clip drops the same-phase frame diff
++// from 0.18 to 0.005). Where rectification has nothing legitimate to catch —
++// no motion, converged history, no disocclusion/shading-change/reactivity —
++// widen the box so the converged mean survives; any of those signals returns
++// the pixel to full rectification. This is the locks mechanism generalized
++// (softly, ×9 vs the locks' ×13) from thin features to everywhere.
++// Q1-measured (consecutive / same-phase diff): no relax 0.116/0.038 at ×4,
++// 0.112/0.018 at ×8, rectification fully off 0.109/0.005.
++const STILL_CLAMP_RELAX : f32 = 8.0;   // box widening at full stillness + convergence
++const STILL_MOTION_LO : f32 = 0.05;    // render-texel motion where the relax starts fading
++const STILL_MOTION_HI : f32 = 0.5;     // ...and where it is fully off
++
++//* Shading-change aging (FSR2/3's "luminance instability").
++// The detection itself lives in the dedicated signed-difference pyramid pass
++// (shadingChange.ts) — a coarse-mip signal that fires on coherent regional luma
++// changes and cancels alias flicker. Where it fires, history is aged so the
++// surface re-converges to its new shading instead of ghosting the old.
++const SHADING_AGE : f32 = 0.75;        // max fraction of accumulation dropped on a full change
++
++// Lanczos2 kernel (the same window FSR2 uses for its upsample taps).
++fn lanczos2(x : f32) -> f32 {
++    let ax = abs(x);
++    if (ax < 1.0e-4) { return 1.0; }
++    if (ax >= 2.0) { return 0.0; }
++    let px = PI * ax;
++    return 2.0 * sin(px) * sin(px * 0.5) / (px * px);
++}
++
++// Catmull-Rom history sampling via 5 bilinear fetches (Jimenez SIGGRAPH'16).
++// Bicubic keeps reprojected history crisp where bilinear would smear it.
++fn sampleHistoryCatmullRom(uv : vec2f) -> vec4f {
++    let samplePos = uv * C.displaySize;
++    let texPos1 = floor(samplePos - 0.5) + 0.5;
++    let f = samplePos - texPos1;
++
++    let w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
++    let w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
++    let w2 = f * (0.5 + f * (2.0 - 1.5 * f));
++    let w3 = f * f * (-0.5 + 0.5 * f);
++    let w12 = w1 + w2;
++    let offset12 = w2 / w12;
++
++    let texPos0 = (texPos1 - 1.0) * C.displaySizeInv;
++    let texPos3 = (texPos1 + 2.0) * C.displaySizeInv;
++    let texPos12 = (texPos1 + offset12) * C.displaySizeInv;
++
++    var result =
++        textureSampleLevel(historyIn, linearSampler, vec2f(texPos0.x, texPos12.y), 0.0) * (w0.x * w12.y) +
++        textureSampleLevel(historyIn, linearSampler, vec2f(texPos12.x, texPos0.y), 0.0) * (w12.x * w0.y) +
++        textureSampleLevel(historyIn, linearSampler, texPos12, 0.0) * (w12.x * w12.y) +
++        textureSampleLevel(historyIn, linearSampler, vec2f(texPos3.x, texPos12.y), 0.0) * (w3.x * w12.y) +
++        textureSampleLevel(historyIn, linearSampler, vec2f(texPos12.x, texPos3.y), 0.0) * (w12.x * w3.y);
++    // Corner taps are dropped, so renormalize by the weight actually used.
++    let wSum = w0.x * w12.y + w12.x * w0.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y;
++    result = result / wSum;
++
++    //* De-ring (issue #118)
++    // The negative lobes overshoot next to a bright texel. Near 1 in tonemap
++    // space (an HDR highlight lifted by pre-exposure) a few percent over hits
++    // tonemapInvert's 0.999 cap and decodes to ~1000 / exposure. The variance
++    // clip does not catch it: on a skewed 3x3 (a few bright taps) mean + sigma
++    // lies above the brightest tap, so the box itself reaches past 1. Bound the
++    // colour by the 2x2 texels the sample sits between (the Catmull-Rom
++    // interpolation interval). The five bilinear taps would bound it for free,
++    // but they are blurrier than the texels and cost 0.1–0.3 dB in motion plus
++    // +1.3 % warp error (bench/docs/NEXT-STEPS.md §21); these four loads hit
++    // the cache lines the taps just read. The age (.a) keeps its unclamped
++    // resample: it is never tonemapped, and its exact reprojection is measured.
++    let texel = vec2i(texPos1 - 0.5);
++    let texelMax = vec2i(C.displaySize) - 1;
++    let t00 = textureLoad(historyIn, clamp(texel, vec2i(0), texelMax), 0).rgb;
++    let t10 = textureLoad(historyIn, clamp(texel + vec2i(1, 0), vec2i(0), texelMax), 0).rgb;
++    let t01 = textureLoad(historyIn, clamp(texel + vec2i(0, 1), vec2i(0), texelMax), 0).rgb;
++    let t11 = textureLoad(historyIn, clamp(texel + vec2i(1, 1), vec2i(0), texelMax), 0).rgb;
++    let texelLo = min(min(t00, t10), min(t01, t11));
++    let texelHi = max(max(t00, t10), max(t01, t11));
++    return vec4f(clamp(result.rgb, texelLo, texelHi), max(result.a, 0.0));
++}
++
++// Clips a color toward the AABB center (Playdead's variance clipping) —
++// gentler than a hard clamp, no hue snapping at box corners.
++// The epsilon sits on the extents too (Playdead's form): an axis with zero
++// extent AND zero offset must not constrain the clip. Without it a perfectly
++// achromatic 3×3 (Co/Cg variance exactly 0 — black backgrounds, empty canvas,
++// greyscale content) gave t = 0/1e-6 = 0 on the chroma axes, snapping history
++// to the box mean every frame however wide the luma box was: no accumulation
++// at all there, just the current frame's 3×3 average (issue #51).
++fn clipToAABB(center : vec3f, extents : vec3f, color : vec3f) -> vec3f {
++    let dir = color - center;
++    let scale = (extents + 1.0e-6) / max(abs(dir), vec3f(1.0e-6));
++    let t = min(1.0, min(scale.x, min(scale.y, scale.z)));
++    return center + dir * t;
++}
++
++@compute @workgroup_size(8, 8)
++fn main(@builtin(global_invocation_id) gid : vec3u) {
++    if (any(vec2f(gid.xy) >= C.displaySize)) { return; }
++
++    let uv = (vec2f(gid.xy) + 0.5) * C.displaySizeInv;
++    let renderCoord = clamp(vec2i(uv * C.renderSize), vec2i(0), vec2i(C.renderSize) - 1);
++    let motion = textureLoad(dilatedMotion, renderCoord, 0).xy;
++    let disocclusion = textureLoad(masks, renderCoord, 0).r;
++    // Pre-exposure for this frame (auto or manual) — divided back out at output.
++    // .b carries the app's host pre-exposure (1.0 when none is supplied).
++    let frameInfo = textureLoad(exposureTex, vec2i(0), 0);
++    let exposure = max(frameInfo.r, 1.0e-4);
++    // Reactive mask: pixels the caller flags (particles, transparents) should
++    // lean on the current frame instead of ghosting through history.
++    var reactivity = 0.0;
++    if (hasFlag(FLAG_REACTIVE)) {
++        let rdim = vec2i(textureDimensions(reactiveMask));
++        reactivity = clamp(textureLoad(reactiveMask, clamp(renderCoord, vec2i(0), rdim - 1), 0).r, 0.0, 1.0);
++    }
++
++    //* Current Frame Upsample (jitter-aware Lanczos2)
++    // srcPos is the display pixel in render texel-index space, shifted by
++    // the jitter so distances are measured to where samples actually landed.
++    let srcPos = uv * C.renderSize - 0.5 - C.jitter;
++    let baseTexel = vec2i(round(srcPos));
++    let maxCoord = vec2i(C.renderSize) - 1;
++
++    var colorSum = vec3f(0.0);
++    var alphaSum = 0.0;
++    var weightSum = 0.0;
++    var m1 = vec3f(0.0); // YCoCg first moment
++    var m2 = vec3f(0.0); // YCoCg second moment
++    var boxMin = vec3f(1.0e5);
++    var boxMax = vec3f(-1.0e5);
++    var alphaMin = 1.0e5;
++    var alphaMax = -1.0e5;
++
++    for (var y = -1; y <= 1; y++) {
++        for (var x = -1; x <= 1; x++) {
++            let coord = clamp(baseTexel + vec2i(x, y), vec2i(0), maxCoord);
++            let d = srcPos - vec2f(coord);
++            let w = lanczos2(d.x) * lanczos2(d.y);
++            let src = textureLoad(inputColor, coord, 0);
++            let c = tonemapInvertible(src.rgb * exposure);
++            colorSum += c * w;
++            // Alpha takes the same weights but none of the conditioning — it is
++            // already bounded, and tonemapping a coverage value is meaningless.
++            alphaSum += src.a * w;
++            weightSum += w;
++
++            let ycc = rgbToYCoCg(c);
++            m1 += ycc;
++            m2 += ycc * ycc;
++            boxMin = min(boxMin, ycc);
++            boxMax = max(boxMax, ycc);
++            alphaMin = min(alphaMin, src.a);
++            alphaMax = max(alphaMax, src.a);
++        }
++    }
++
++    // Lanczos lobes go negative — dering by clamping into the local box.
++    var current = yCoCgToRgb(clamp(
++        rgbToYCoCg(colorSum / max(weightSum, 1.0e-4)),
++        boxMin, boxMax,
++    ));
++    let currentAlpha = clamp(alphaSum / max(weightSum, 1.0e-4), alphaMin, alphaMax);
++
++    // Confidence in the current sample: 1 when a jittered sample landed on
++    // this display pixel, lower when we're interpolating between samples.
++    let sampleDist = length(srcPos - vec2f(baseTexel));
++    let confidence = clamp(1.0 - sampleDist, 0.25, 1.0);
++
++    //* History Reprojection
++    let prevUV = uv - motion;
++    let offscreen = any(prevUV < vec2f(0.0)) || any(prevUV > vec2f(1.0));
++
++    // Reset: the CPU flag, or the exposure pass's resolved reset (.a), which
++    // folds in the app's GPU reset signal (a cut detector) without a readback.
++    if (hasFlag(FLAG_RESET) || frameInfo.a > 0.5 || offscreen) {
++        textureStore(historyOut, gid.xy, vec4f(current, 1.0 / C.maxAccumulation));
++        textureStore(locksOut, gid.xy, vec4f(0.0, 0.0, 0.0, currentAlpha));
++        return;
++    }
++
++    var history = sampleHistoryCatmullRom(prevUV);
++
++    //* History Exposure Delta (FSR3's DeltaPreExposure)
++    // If the app changed the pre-exposure baked into its render since last
++    // frame, the reprojected history is in the old brightness domain and would
++    // read as a full-screen shading change — ratio-correct it in linear space.
++    // Without a preExposureTexture input both texels publish 1.0 and this is
++    // skipped, leaving the pass bit-identical.
++    // A fixed or app-supplied CONDITIONING exposure is corrected the same way
++    // (issue #99): history was encoded under last frame's value (.r), and an
++    // app can step it in one frame, which decoded as a 15–160 % brightness pop
++    // that took 50+ frames to fade. Auto-exposure is deliberately left
++    // uncorrected: it tracks the scene's own brightness, so decoding old
++    // history at the new exposure moves it toward the new lighting, and
++    // correcting it measured 55 % more drift lag (bench/docs/NEXT-STEPS.md §23).
++    let framePrev = textureLoad(exposurePrevTex, vec2i(0), 0);
++    var historyRatio = 1.0;
++    if (framePrev.b > 1.0e-4 && frameInfo.b > 1.0e-4) { historyRatio = frameInfo.b / framePrev.b; }
++    if ((!hasFlag(FLAG_AUTO_EXPOSURE) || hasFlag(FLAG_EXTERNAL_EXPOSURE)) && framePrev.r > 1.0e-4) {
++        historyRatio = historyRatio * (exposure / framePrev.r);
++    }
++    if (abs(historyRatio - 1.0) > 1.0e-3) {
++        history = vec4f(tonemapInvertible(tonemapInvert(history.rgb) * historyRatio), history.a);
++    }
++
++    var sampleCount = history.a * C.maxAccumulation;
++
++    //* Neighborhood Statistics (YCoCg)
++    let mean = m1 / 9.0;
++    let variance = max(m2 / 9.0 - mean * mean, vec3f(0.0));
++    let curY = rgbToYCoCg(current).x;
++    let contrast = boxMax.x - boxMin.x;
++
++    //* Shading Change (from the signed-difference pyramid pass)
++    // Half-render-resolution response in [0,1]; a zero dummy is bound when the
++    // detector is disabled.
++    var shadingChange = 0.0;
++    if (hasFlag(FLAG_SHADING_CHANGE)) {
++        let scDim = vec2i(textureDimensions(shadingChangeTex));
++        let scCoord = clamp(renderCoord / 2, vec2i(0), scDim - 1);
++        shadingChange = clamp(textureLoad(shadingChangeTex, scCoord, 0).r, 0.0, 1.0);
++    }
++
++    //* Luminance-Stability Lock
++    // Detect a thin feature (a luminance outlier vs the neighborhood) that is
++    // temporally stable, and grow a lock on it; the lock then shields the
++    // feature from rectification below. Locks reproject through motion just
++    // like the color history.
++    //
++    // The fetch is hoisted out of the branch because the alpha history shares
++    // it (locks .a); with locks on — the default — that costs nothing new.
++    let lockPrev = textureSampleLevel(locksIn, linearSampler, prevUV, 0.0);
++    var lockLife = 0.0;
++    var lockedLuma = curY;
++    if (hasFlag(FLAG_LOCKS)) {
++        // Thin feature = a luminance outlier vs its neighborhood with real
++        // local contrast. Creation does NOT require frame-to-frame stability
++        // (thin features alias under motion); instability is what breaks it.
++        let peakiness = abs(curY - mean.x) / max(sqrt(variance.x), 1.0e-3);
++        let featureStrength =
++            smoothstep(LOCK_PEAK_LO, LOCK_PEAK_HI, peakiness) *
++            smoothstep(LOCK_CONTRAST_LO, LOCK_CONTRAST_HI, contrast);
++
++        lockedLuma = select(lockPrev.g, curY, lockPrev.r < 0.05);
++        // Grow the lock while a feature is present, decay it otherwise.
++        lockLife = lockPrev.r + select(-LOCK_DECAY, LOCK_GROW * featureStrength, featureStrength > 0.1);
++        // Break on disocclusion or a shading change measured against the lock's
++        // OWN tracked luma — not the neighborhood-mean detector, which on a thin
++        // bright feature always disagrees with the (background-dominated) mean
++        // and would break every lock. The mean-based detector only ages
++        // non-locked history below.
++        let lockShading = smoothstep(max(contrast, 1.0e-3), max(contrast, 1.0e-3) * 2.0, abs(curY - lockedLuma));
++        lockLife = clamp(lockLife * (1.0 - disocclusion) * (1.0 - lockShading), 0.0, 1.0);
++        // Reactive pixels (particles/transparents) are not stable thin features
++        // to protect — don't let them form locks.
++        lockLife = lockLife * (1.0 - reactivity);
++    }
++
++    //* History Rectification
++    // Variance AABB of the current neighborhood in YCoCg; clip history into
++    // it so shading changes cannot ghost. A lock widens the box so a protected
++    // thin feature keeps its accumulated value instead of being pulled toward
++    // the (darker/brighter) neighborhood mean.
++    let motionTexels = length(motion * C.renderSize);
++    let stillRelax = STILL_CLAMP_RELAX *
++        (1.0 - smoothstep(STILL_MOTION_LO, STILL_MOTION_HI, motionTexels)) *
++        clamp(sampleCount / C.maxAccumulation, 0.0, 1.0) *
++        (1.0 - disocclusion) * (1.0 - shadingChange) * (1.0 - reactivity);
++    let extents = sqrt(variance) * CLIP_GAMMA *
++        (1.0 + lockLife * LOCK_CLAMP_RELAX + stillRelax);
++    let historyYcc = rgbToYCoCg(history.rgb);
++    let clippedYcc = clipToAABB(mean, extents, historyYcc);
++    let rectifiedHistory = yCoCgToRgb(clippedYcc);
++
++    // Disocclusion discards history outright. Deliberately NO aging by clip
++    // magnitude (an earlier form aged by clipAmount): the neighborhood box is
++    // built from the current jitter phase's taps, so at any contrasty edge the
++    // CONVERGED history sits outside some phases' boxes and a clip-driven age
++    // makes convergence unreachable — sample count saturates at a low
++    // equilibrium and the still-scene output shimmers forever (consumer
++    // report 3's rolling accumulation age). Stale shading is already handled
++    // by the clip itself plus the shading-change detector's SHADING_AGE path;
++    // this matches FSR2, which never ages history on rectification strength.
++    sampleCount *= (1.0 - disocclusion);
++    // A detected shading change ages history so the new shading converges fast;
++    // a lock protects its thin feature from this (aliasing there is not a change).
++    sampleCount *= (1.0 - SHADING_AGE * shadingChange * (1.0 - lockLife));
++    // Reactive pixels keep almost no history so fast transparent motion doesn't
++    // smear a trail behind it.
++    sampleCount *= (1.0 - REACTIVE_STRENGTH * reactivity);
++
++    //* Blend — locked features lean on the accumulated history so sub-pixel
++    //* detail persists under motion instead of dimming.
++    let newCount = min(sampleCount + 1.0, C.maxAccumulation);
++    let baseAlpha = clamp(confidence / newCount, 1.0 / C.maxAccumulation, 1.0);
++    var alpha = max(baseAlpha * (1.0 - LOCK_HISTORY_BOOST * lockLife), 1.0 / (C.maxAccumulation * 2.0));
++    // Snap reactive pixels toward the current frame regardless of accumulation.
++    alpha = mix(alpha, 1.0, REACTIVE_STRENGTH * reactivity);
++    let result = mix(rectifiedHistory, current, alpha);
++
++    //* Alpha Resolve
++    // Alpha gets the color blend weight, so a coverage edge converges on the
++    // same schedule as the color it belongs to. Its rectification is the local
++    // 3x3 alpha range rather than a variance AABB: at a coverage edge the
++    // jittered taps span the whole 0..1 range, so history passes untouched and
++    // accumulates; on a flat region the range collapses and stale alpha cannot
++    // ghost.
++    // Still-scene relax, as for color: a feature thinner than a render texel
++    // leaves some jitter phases with an all-0 (or all-1) 3x3, which would
++    // re-snap the converged coverage every cycle. Where the color box is
++    // widened because rectification has nothing legitimate to catch (still,
++    // converged, no disocclusion / shading change / reactivity), the alpha
++    // history passes unclamped; any of those signals restores the clamp.
++    // The max() keeps this defined when the relax is tuned to 0 (stillRelax
++    // is then 0 too, so the clamp stays hard); for any positive constant it
++    // folds to the constant itself.
++    let alphaRelax = stillRelax / max(STILL_CLAMP_RELAX, 1.0e-6);
++    let rectifiedAlpha = mix(clamp(lockPrev.a, alphaMin, alphaMax), lockPrev.a, alphaRelax);
++    let resultAlpha = clamp(mix(rectifiedAlpha, currentAlpha, alpha), 0.0, 1.0);
++
++    textureStore(historyOut, gid.xy, vec4f(result, newCount / C.maxAccumulation));
++    // b = shading-change factor (for the debug view); a = resolved alpha.
++    textureStore(locksOut, gid.xy, vec4f(lockLife, lockedLuma, shadingChange, resultAlpha));
++}
++)PMT";
++
++// Pass 7 - RCAS temporal: display-resolution sharpen of the conditioned
++// tonemap-space history, written to the linear/HDR output.
++// vendored: rcas_temporal.wgsl
++static const char pmndrs_rcas_temporal_wgsl[] = R"PMT(struct FsrConstants {
++    renderSize      : vec2f,  // offset  0 — jittered render resolution (px)
++    displaySize     : vec2f,  // offset  8 — output resolution (px)
++    renderSizeInv   : vec2f,  // offset 16
++    displaySizeInv  : vec2f,  // offset 24
++    jitter          : vec2f,  // offset 32 — current sub-pixel offset (render px, top-left origin)
++    jitterPrev      : vec2f,  // offset 40
++    motionScale     : vec2f,  // offset 48 — NDC velocity delta -> UV delta (0.5, -0.5)
++    depthNearFar    : vec2f,  // offset 56 — camera near/far for linearization
++    sharpness       : f32,    // offset 64 — RCAS attenuation 0..1 (1 = sharpest)
++    maxAccumulation : f32,    // offset 68 — max history sample count
++    exposure        : f32,    // offset 72 — pre-exposure before invertible tonemap
++    deltaTime       : f32,    // offset 76 — seconds
++    flags           : u32,    // offset 80 — FLAG_* bits
++    frameIndex      : u32,    // offset 84
++    debugMode       : u32,    // offset 88 — DebugView
++    _pad            : u32,    // offset 92
++}
++@group(0) @binding(0) var<uniform> C : FsrConstants;
++
++const FLAG_RESET : u32 = 1u;
++const FLAG_REVERSED_DEPTH : u32 = 2u;
++const FLAG_PERSPECTIVE : u32 = 4u;
++const FLAG_INPUT_REINHARD : u32 = 8u;
++const FLAG_INPUT_DISPLAY : u32 = 16u;
++const FLAG_LOCKS : u32 = 32u;
++const FLAG_AUTO_EXPOSURE : u32 = 64u;
++const FLAG_SHADING_CHANGE : u32 = 128u;
++const FLAG_REACTIVE : u32 = 256u;
++const FLAG_RCAS_DENOISE : u32 = 512u;
++const FLAG_EXTERNAL_EXPOSURE : u32 = 1024u;
++
++fn hasFlag(bit : u32) -> bool { return (C.flags & bit) != 0u; }
++
++fn tonemapInvertible(c : vec3f) -> vec3f {
++    return c / (1.0 + max(max(c.r, c.g), max(c.b, 0.0)));
++}
++
++fn tonemapInvert(c : vec3f) -> vec3f {
++    let m = min(max(max(c.r, c.g), max(c.b, 0.0)), 0.999);
++    return c / (1.0 - m);
++}
++
++@group(0) @binding(1) var inputColor : texture_2d<f32>;
++@group(0) @binding(2) var exposureTex : texture_2d<f32>;
++@group(0) @binding(3) var outputColor : texture_storage_2d<rgba16float, write>;
++@group(0) @binding(4) var alphaSource : texture_2d<f32>;
++
++// Maximum sharpening lobe magnitude — set so a single tap cannot exceed the
++// local contrast ring (0.25 - 1/16 in the reference).
++const RCAS_LIMIT : f32 = 0.25 - (1.0 / 16.0);
++
++// Loads a display-resolution texel as-is: conditioned tonemap-space history on
++// the temporal path, the caller's linear domain on the spatial path (main
++// conditions those taps itself).
++fn rcasLoad(p : vec2i) -> vec3f {
++    let clamped = clamp(p, vec2i(0), vec2i(C.displaySize) - 1);
++    return textureLoad(inputColor, clamped, 0).rgb;
++}
++
++@compute @workgroup_size(8, 8)
++fn main(@builtin(global_invocation_id) gid : vec3u) {
++    if (any(vec2f(gid.xy) >= C.displaySize)) { return; }
++    let sp = vec2i(gid.xy);
++
++    //* Cross Neighborhood
++    //   b
++    // d e f
++    //   h
++    let bIn = rcasLoad(sp + vec2i(0, -1));
++    let dIn = rcasLoad(sp + vec2i(-1, 0));
++    let eIn = rcasLoad(sp);
++    let fIn = rcasLoad(sp + vec2i(1, 0));
++    let hIn = rcasLoad(sp + vec2i(0, 1));
++    // The limiter below assumes [0,1]. Accumulate history already arrives
++    // conditioned; the spatial path's linear/HDR taps get the same invertible
++    // tonemap here, so both paths sharpen in one bounded space. A uniform
++    // branch, not select(), so the temporal path pays nothing for it.
++    var b = bIn;
++    var d = dIn;
++    var e = eIn;
++    var f = fIn;
++    var h = hIn;
++    if (!hasFlag(FLAG_INPUT_REINHARD)) {
++        b = tonemapInvertible(bIn);
++        d = tonemapInvertible(dIn);
++        e = tonemapInvertible(eIn);
++        f = tonemapInvertible(fIn);
++        h = tonemapInvertible(hIn);
++    }
++
++    // FSR's inexpensive luma is scaled by two; the scale cancels in ratios.
++    let bL = 0.5 * b.r + b.g + 0.5 * b.b;
++    let dL = 0.5 * d.r + d.g + 0.5 * d.b;
++    let eL = 0.5 * e.r + e.g + 0.5 * e.b;
++    let fL = 0.5 * f.r + f.g + 0.5 * f.b;
++    let hL = 0.5 * h.r + h.g + 0.5 * h.b;
++
++
++    //* Sharpening Lobe
++    // Min/max ring per channel bounds how strong the negative lobe may be
++    // before the output would exceed local contrast.
++    let mn4 = min(min(b, d), min(f, h));
++    let mx4 = max(max(b, d), max(f, h));
++
++    let lowerLimiterMultiplier = clamp(
++        eL / min(min(bL, dL), min(fL, hL)),
++        0.0,
++        1.0
++    );
++
++    let hitMin = mn4 / (4.0 * mx4) * lowerLimiterMultiplier;
++    let hitMax = (vec3f(1.0) - mx4) / (4.0 * mn4 - 4.0);
++    let lobeRGB = max(-hitMin, hitMax);
++    // C.sharpness 1 -> 0 attenuation stops (sharpest), 0 -> 2 stops.
++    let peak = exp2(-2.0 * (1.0 - C.sharpness));
++    var lobe = max(-RCAS_LIMIT, min(max(lobeRGB.r, max(lobeRGB.g, lobeRGB.b)), 0.0)) * peak;
++
++    //* Denoise (FSR1's FSR_RCAS_DENOISE)
++    // A lone luma outlier vs its cross-neighborhood, normalized by the local
++    // range, reads as noise; attenuate the lobe there (up to 50%) so RCAS
++    // doesn't amplify grain from noisy inputs (e.g. reduced-res SSR/GI).
++    if (hasFlag(FLAG_RCAS_DENOISE)) {
++
++        let mn = min(min(min(bL, dL), eL), min(fL, hL));
++        let mx = max(max(max(bL, dL), eL), max(fL, hL));
++        var nz = 0.25 * (bL + dL + fL + hL) - eL;
++        nz = clamp(abs(nz) / max(mx - mn, 1.0e-4), 0.0, 1.0);
++        lobe *= 1.0 - 0.5 * nz;
++
++    }
++
++    //* Resolve
++    let rcpL = 1.0 / (4.0 * lobe + 1.0);
++
++    var pix = (lobe * b + lobe * d + lobe * h + lobe * f + e) * rcpL;
++    // Both paths cap the inverted result at the same lobe applied in linear
++    // space against the darkest ring tap:
++    //   center + 4 * |lobe| * rcpL * (center - ring min).
++    // The limiter keeps the result inside the conditioned range, but that
++    // range ends at linear infinity: near 1 a conditioned step of 0.008
++    // doubles the value. Uncapped, an isolated peak became a ~1000x firefly
++    // (issue #32) and a converged 64 plateau corner read 127 at sharpness 1,
++    // against 64-67 for linear RCAS (issue #50). With a non-negative ring min
++    // the cap is at most center / (1 - 4 * RCAS_LIMIT * peak), linear RCAS's
++    // own maximum gain, so it is never looser than the #32 gain cap it
++    // replaces. A uniform ring makes it exactly linear RCAS's result for the
++    // same lobe, and any brighter ring tap loosens it, so it binds on HDR
++    // edges and isolated peaks and leaves ordinary edges bit-exact.
++    if (hasFlag(FLAG_INPUT_REINHARD)) {
++        // Undo the accumulate conditioning once on the sharpened result: invert
++        // the tonemap, then divide out the baked-in pre-exposure. The ring
++        // minimum is inverted once: the inversion is monotone, so the
++        // per-channel min of the conditioned taps is at or below every
++        // inverted ring tap.
++        let exposure = max(textureLoad(exposureTex, vec2i(0), 0).r, 1.0e-4);
++        let eLin = tonemapInvert(e);
++        let mnLin = tonemapInvert(max(mn4, vec3f(0.0)));
++        let ceiling = eLin - 4.0 * lobe * rcpL * max(eLin - mnLin, vec3f(0.0));
++        pix = min(tonemapInvert(max(pix, vec3f(0.0))) / exposure, ceiling / exposure);
++    } else {
++        // Spatial: invert the tap conditioning once, anchored on the exact
++        // linear center: an unsharpened pixel passes through bit-exact, and
++        // values beyond tonemapInvert's clamp (linear ~1000) are not flattened
++        // to it. This input has no pre-exposure bounding it, so isolated peaks
++        // overshoot the conditioned range easily (a lone 0.5 on near-black
++        // became 1303 at sharpness 1 in GPU probes). The linear taps are at
++        // hand, so the cap needs no inversion.
++        let mnIn = max(min(min(bIn, dIn), min(fIn, hIn)), vec3f(0.0));
++        let ceiling = max(eIn, vec3f(0.0)) - 4.0 * lobe * rcpL * max(eIn - mnIn, vec3f(0.0));
++        pix = clamp(
++            eIn + tonemapInvert(max(pix, vec3f(0.0))) - tonemapInvert(e),
++            vec3f(0.0),
++            ceiling
++        );
++    }
++
++    textureStore(outputColor, gid.xy, vec4f(pix, textureLoad(alphaSource, sp, 0).a));
++}
++)PMT";
++
++static_assert(sizeof(pmndrs_reconstruct_hardware_wgsl) > 1, "pmndrs temporal WGSL module must be embedded");
++static_assert(sizeof(pmndrs_depth_clip_wgsl) > 1, "pmndrs temporal WGSL module must be embedded");
++static_assert(sizeof(pmndrs_exposure_taps_wgsl) > 1, "pmndrs temporal WGSL module must be embedded");
++static_assert(sizeof(pmndrs_accumulate_wgsl) > 1, "pmndrs temporal WGSL module must be embedded");
++static_assert(sizeof(pmndrs_rcas_temporal_wgsl) > 1, "pmndrs temporal WGSL module must be embedded");
 diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
 new file mode 100644
 index 0000000000..abb280bbc5
@@ -86534,11 +88985,63 @@ index 3130c76648..a1c6c6431c 100644
  				u.append_id(buffer);
  				uniforms.push_back(u);
  			}
+diff --git a/servers/rendering/renderer_rd/environment/gi.h b/servers/rendering/renderer_rd/environment/gi.h
+index 496e7ac359..03cbc2d2a7 100644
+--- a/servers/rendering/renderer_rd/environment/gi.h
++++ b/servers/rendering/renderer_rd/environment/gi.h
+@@ -651,6 +651,7 @@ public:
+ 		RID lightprobe_data;
+ 		RID occlusion_texture;
+ 		RID occlusion_data;
++		RID occlusion_dummy;
+ 		RID ambient_texture; //integrates with volumetric fog
+ 
+ 		RID lightprobe_history_scroll; //used for scrolling lightprobes
 diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
-index d8a0620034..9a491a7948 100644
+index d8a0620034..3f2982a9bd 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 +++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
-@@ -1867,7 +1867,14 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+@@ -96,6 +96,17 @@ void RenderForwardClustered::RenderBufferDataForwardClustered::ensure_fsr2(Rende
+ 	}
+ }
+ 
++void RenderForwardClustered::RenderBufferDataForwardClustered::ensure_pmndrs_temporal(RendererRD::PmndrsTemporal *p_effect) {
++	if (pmndrs_temporal_context == nullptr && p_effect != nullptr) {
++		pmndrs_temporal_owner = p_effect;
++		pmndrs_temporal_context = p_effect->create_context(render_buffers->get_internal_size(), render_buffers->get_target_size());
++		if (pmndrs_temporal_context == nullptr) {
++			// Allocation failure: forget the owner so a later frame retries.
++			pmndrs_temporal_owner = nullptr;
++		}
++	}
++}
++
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ bool RenderForwardClustered::RenderBufferDataForwardClustered::ensure_mfx_temporal(RendererRD::MFXTemporalEffect *p_effect) {
+ 	if (mfx_temporal_context == nullptr) {
+@@ -136,6 +147,16 @@ void RenderForwardClustered::RenderBufferDataForwardClustered::free_data() {
+ 		fsr2_context = nullptr;
+ 	}
+ 
++	if (pmndrs_temporal_context) {
++		// Render buffers are normally released (viewport free / reconfigure) while
++		// the renderer still owns the effect, so the owner is alive here.
++		if (pmndrs_temporal_owner != nullptr) {
++			pmndrs_temporal_owner->free_context(pmndrs_temporal_context);
++		}
++		pmndrs_temporal_context = nullptr;
++		pmndrs_temporal_owner = nullptr;
++	}
++
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ 	if (mfx_temporal_context) {
+ 		memdelete(mfx_temporal_context);
+@@ -1863,11 +1884,39 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+ 		SCALE_NONE,
+ 		SCALE_FSR2,
+ 		SCALE_MFX,
++		SCALE_PMNDRS_TEMPORAL,
+ 	} scale_type = SCALE_NONE;
  
  	switch (rb->get_scaling_3d_mode()) {
  		case RSE::VIEWPORT_SCALING_3D_MODE_FSR2:
@@ -86551,10 +89054,112 @@ index d8a0620034..9a491a7948 100644
 +			} else {
 +				WARN_PRINT_ONCE("FSR2 is not supported by the current rendering device. Falling back to no 3D upscaling.");
 +			}
++			break;
++		case RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL:
++			// Mode 7 runs on the raw-WGSL compute path; the viewport layer already
++			// falls back when the device lacks it. This is the last line of defence:
++			// if the effect failed to initialise, prefer writing the upscaled texture
++			// through FSR2 (the presentation path samples it for mode 7), and only
++			// give up when neither temporal upscaler is usable.
++			if (pmndrs_temporal_effect && pmndrs_temporal_effect->is_supported()) {
++				if (rb->get_view_count() == 1) {
++					scale_type = SCALE_PMNDRS_TEMPORAL;
++				} else {
++					// One context holds single-layer history: v1 is single-view only.
++					WARN_PRINT_ONCE("pmndrs temporal upscaling does not support multiview/XR. Falling back to no 3D upscaling.");
++				}
++			} else if (fsr2_effect && fsr2_effect->is_supported()) {
++				scale_type = SCALE_FSR2;
++				WARN_PRINT_ONCE("pmndrs temporal upscaling is not supported by the current rendering device. Falling back to FSR 2.");
++			} else {
++				WARN_PRINT_ONCE("pmndrs temporal upscaling is not supported by the current rendering device. Falling back to no 3D upscaling.");
++			}
  			break;
  		case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
  #ifdef METAL_MFXTEMPORAL_ENABLED
-@@ -3271,7 +3278,26 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
+@@ -2325,7 +2374,11 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+ 						p_render_data->scene_data->prev_cam_projection, p_render_data->scene_data->prev_cam_transform);
+ 			} else {
+ 				Vector<Color> motion_vector_clear_colors;
+-				motion_vector_clear_colors.push_back(Color(-1, -1, 0, 0));
++				// FSR2 uses (-1,-1) as its "invalid motion" sentinel and reconstructs
++				// those pixels from depth + reprojection. The pmndrs temporal shaders
++				// consume motion vectors as a raw UV delta with no such reconstruction,
++				// so mode 7 must clear them to zero instead.
++				motion_vector_clear_colors.push_back(scale_type == SCALE_PMNDRS_TEMPORAL ? Color(0, 0, 0, 0) : Color(-1, -1, 0, 0));
+ 				RD::get_singleton()->draw_list_begin(rb_data->get_velocity_only_fb(), RD::DRAW_CLEAR_ALL, motion_vector_clear_colors);
+ 				RD::get_singleton()->draw_list_end();
+ 			}
+@@ -2609,6 +2662,68 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
+ 			}
+ 
+ 			RD::get_singleton()->draw_command_end_label();
++		} else if (scale_type == SCALE_PMNDRS_TEMPORAL) {
++			rb_data->ensure_pmndrs_temporal(pmndrs_temporal_effect);
++
++			RendererRD::PmndrsTemporalContext *temporal_context = rb_data->get_pmndrs_temporal_context();
++			if (temporal_context == nullptr) {
++				WARN_PRINT_ONCE("pmndrs temporal upscaler failed to allocate its per-viewport resources; the upscaled texture is left untouched.");
++			} else {
++				RID exposure;
++				if (RSG::camera_attributes->camera_attributes_uses_auto_exposure(p_render_data->camera_attributes)) {
++					exposure = luminance->get_current_luminance_buffer(rb);
++				}
++
++				RD::get_singleton()->draw_command_begin_label("PMNDRS Temporal");
++				RENDER_TIMESTAMP("PMNDRS Temporal");
++
++				// The engine stores taa_jitter as a post-divide clip-space offset
++				// (RenderSceneDataRD::update_ubo adds it to the projection w column),
++				// so the FSR2-style render-pixel value is that offset scaled by half
++				// the internal size, exactly what FSR2 receives above. The pmndrs
++				// effect converts these render-pixel values to its own sample-offset
++				// convention (x right / y down) internally.
++				const Size2i internal_size = rb->get_internal_size();
++				for (uint32_t v = 0; v < rb->get_view_count(); v++) {
++					real_t fov = p_render_data->scene_data->cam_projection.get_fov();
++					real_t aspect = p_render_data->scene_data->cam_projection.get_aspect();
++					real_t fovy = p_render_data->scene_data->cam_projection.get_fovy(fov, 1.0 / aspect);
++
++					Vector2 jitter = p_render_data->scene_data->taa_jitter * Vector2(internal_size) * 0.5f;
++					Vector2 jitter_prev = p_render_data->scene_data->prev_taa_jitter * Vector2(internal_size) * 0.5f;
++
++					RendererRD::PmndrsTemporal::Parameters params;
++					params.internal_size = internal_size;
++					params.target_size = rb->get_target_size();
++					params.color = rb->get_internal_texture(v);
++					params.depth = rb->get_depth_texture(v);
++					params.velocity = rb->get_velocity_buffer(false, v);
++					// The alpha-swizzled reactive view is a no-op on WebGPU (no
++					// component swizzles), so v1 passes no reactive mask.
++					params.reactive = RID();
++					params.exposure = exposure;
++					params.output = rb->get_upscaled_texture(v);
++					params.z_near = p_render_data->scene_data->z_near;
++					params.z_far = p_render_data->scene_data->z_far;
++					// The effect derives its depth-linearization mode from fovy: a
++					// perspective camera passes the vertical FOV (computed exactly like
++					// the FSR2 branch above), an orthographic camera must pass 0.
++					params.fovy = p_render_data->scene_data->cam_orthogonal ? 0.0f : fovy;
++					params.jitter = jitter;
++					params.jitter_prev = jitter_prev;
++					params.delta_time = float(time_step);
++					params.sharpness = CLAMP(1.0f - (rb->get_fsr_sharpness() / 2.0f), 0.0f, 1.0f);
++					// Recreating the per-render-buffer context (first use, resize,
++					// mode switch) already resets the effect's history; the engine
++					// has no camera-cut signal to feed this yet.
++					params.reset_accumulation = false;
++					params.reversed_depth = true; // Godot Forward+ is reversed-Z in [0, 1].
++
++					pmndrs_temporal_effect->upscale(temporal_context, params);
++				}
++
++				RD::get_singleton()->draw_command_end_label();
++			}
+ 		} else if (scale_type == SCALE_MFX) {
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ 			bool reset = rb_data->ensure_mfx_temporal(mfx_temporal_effect);
+@@ -3271,7 +3386,26 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
  
  		HashMap<Size2i, RID>::Iterator E = sdfgi_framebuffer_size_cache.find(fb_size);
  		if (!E) {
@@ -86582,7 +89187,7 @@ index d8a0620034..9a491a7948 100644
  			E = sdfgi_framebuffer_size_cache.insert(fb_size, fb);
  		}
  
-@@ -4652,6 +4678,20 @@ void RenderForwardClustered::_geometry_instance_update(RenderGeometryInstance *p
+@@ -4652,6 +4786,20 @@ void RenderForwardClustered::_geometry_instance_update(RenderGeometryInstance *p
  	ginstance->dirty_list_element.remove_from_list();
  }
  
@@ -86603,7 +89208,7 @@ index d8a0620034..9a491a7948 100644
  static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::DataFormat p_color_format, bool p_can_be_storage, RD::TextureSamples p_samples, bool p_specular, bool p_velocity, uint32_t p_view_count) {
  	const bool multisampling = p_samples > RD::TEXTURE_SAMPLES_1;
  	RD::AttachmentFormat attachment;
-@@ -4906,14 +4946,16 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
+@@ -4906,14 +5054,16 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
  	}
  
  	if (p_global.use_sdfgi) {
@@ -86627,7 +89232,7 @@ index d8a0620034..9a491a7948 100644
  	}
  
  	// The dedicated depth passes use a different version of the surface and the shader.
-@@ -5299,6 +5341,17 @@ RenderForwardClustered::RenderForwardClustered() {
+@@ -5299,6 +5449,17 @@ RenderForwardClustered::RenderForwardClustered() {
  		}
  #endif
  
@@ -86645,7 +89250,37 @@ index d8a0620034..9a491a7948 100644
  		scene_shader.init(defines);
  	}
  
-@@ -5462,4 +5515,8 @@ RenderForwardClustered::~RenderForwardClustered() {
+@@ -5390,6 +5551,17 @@ RenderForwardClustered::RenderForwardClustered() {
+ 
+ 	taa = memnew(RendererRD::TAA);
+ 	fsr2_effect = memnew(RendererRD::FSR2Effect);
++	// The pmndrs temporal upscaler (scaling mode 7) only exists on the raw-WGSL
++	// compute path (WebGPU). Do not even instantiate it elsewhere: constructing
++	// it compiles WGSL compute pipelines, which no other driver can run.
++	if (RD::get_singleton()->has_feature(RD::SUPPORTS_RAW_WGSL_COMPUTE)) {
++		RendererRD::PmndrsTemporal *effect = memnew(RendererRD::PmndrsTemporal);
++		if (effect->is_supported()) {
++			pmndrs_temporal_effect = effect;
++		} else {
++			memdelete(effect);
++		}
++	}
+ 	ss_effects = memnew(RendererRD::SSEffects);
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ 	motion_vectors_store = memnew(RendererRD::MotionVectorsStore);
+@@ -5413,6 +5585,11 @@ RenderForwardClustered::~RenderForwardClustered() {
+ 		fsr2_effect = nullptr;
+ 	}
+ 
++	if (pmndrs_temporal_effect) {
++		memdelete(pmndrs_temporal_effect);
++		pmndrs_temporal_effect = nullptr;
++	}
++
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ 	if (mfx_temporal_effect) {
+ 		memdelete(mfx_temporal_effect);
+@@ -5462,4 +5639,8 @@ RenderForwardClustered::~RenderForwardClustered() {
  		RD::get_singleton()->free_rid(sdfgi_framebuffer_size_cache.begin()->value);
  		sdfgi_framebuffer_size_cache.remove(sdfgi_framebuffer_size_cache.begin());
  	}
@@ -86655,10 +89290,41 @@ index d8a0620034..9a491a7948 100644
 +	}
  }
 diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
-index aff29be18d..5ff2fc6661 100644
+index aff29be18d..8c97bb4b79 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
 +++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
-@@ -495,6 +495,7 @@ private:
+@@ -35,6 +35,7 @@
+ #include "servers/rendering/renderer_rd/cluster_builder_rd.h"
+ #include "servers/rendering/renderer_rd/effects/fsr2.h"
+ #include "servers/rendering/renderer_rd/effects/motion_vectors_store.h"
++#include "servers/rendering/renderer_rd/effects/pmndrs_temporal.h"
+ #include "servers/rendering/renderer_rd/effects/ss_effects.h"
+ #include "servers/rendering/renderer_rd/effects/taa.h"
+ #include "servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.h"
+@@ -96,6 +97,12 @@ public:
+ 	private:
+ 		RenderSceneBuffersRD *render_buffers = nullptr;
+ 		RendererRD::FSR2Context *fsr2_context = nullptr;
++		// pmndrs temporal (scaling mode 7) runs in the same FSR2 slot, so it also
++		// keeps one context per render buffer. PmndrsTemporalContext is opaque in
++		// pmndrs_temporal.h and can only be freed through the effect that created
++		// it, so the effect pointer is latched next to it on first use.
++		RendererRD::PmndrsTemporalContext *pmndrs_temporal_context = nullptr;
++		RendererRD::PmndrsTemporal *pmndrs_temporal_owner = nullptr;
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ 		RendererRD::MFXTemporalContext *mfx_temporal_context = nullptr;
+ #endif
+@@ -146,6 +153,9 @@ public:
+ 		void ensure_fsr2(RendererRD::FSR2Effect *p_effect);
+ 		RendererRD::FSR2Context *get_fsr2_context() const { return fsr2_context; }
+ 
++		void ensure_pmndrs_temporal(RendererRD::PmndrsTemporal *p_effect);
++		RendererRD::PmndrsTemporalContext *get_pmndrs_temporal_context() const { return pmndrs_temporal_context; }
++
+ #ifdef METAL_MFXTEMPORAL_ENABLED
+ 		bool ensure_mfx_temporal(RendererRD::MFXTemporalEffect *p_effect);
+ 		RendererRD::MFXTemporalContext *get_mfx_temporal_context() const { return mfx_temporal_context; }
+@@ -495,6 +505,7 @@ private:
  	void _fill_render_list(RenderListType p_render_list, const RenderDataRD *p_render_data, PassMode p_pass_mode, bool p_using_sdfgi = false, bool p_using_opaque_gi = false, bool p_using_motion_pass = false, bool p_append = false);
  
  	HashMap<Size2i, RID> sdfgi_framebuffer_size_cache;
@@ -86666,6 +89332,16 @@ index aff29be18d..5ff2fc6661 100644
  
  	struct GeometryInstanceData;
  	class GeometryInstanceForwardClustered;
+@@ -763,6 +774,9 @@ private:
+ 
+ 	RendererRD::TAA *taa = nullptr;
+ 	RendererRD::FSR2Effect *fsr2_effect = nullptr;
++	// Mode 7 temporal upscaler (raw-WGSL compute, WebGPU only). Created only when
++	// the device exposes the raw-WGSL compute path and the effect initialised.
++	RendererRD::PmndrsTemporal *pmndrs_temporal_effect = nullptr;
+ 	RendererRD::SSEffects *ss_effects = nullptr;
+ 
+ #ifdef METAL_MFXTEMPORAL_ENABLED
 diff --git a/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
 index ab3a4a9f4b..68ea8b1a29 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
@@ -87114,7 +89790,7 @@ index 623c24fef5..9a522f25bc 100644
  
  	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
-index 38540f4396..badc760684 100644
+index 38540f4396..8fb9496969 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 @@ -442,9 +442,20 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
@@ -87140,7 +89816,16 @@ index 38540f4396..badc760684 100644
  			}
  		}
  	}
-@@ -475,6 +486,18 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+@@ -470,11 +481,26 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+ 	bool can_use_storage = _render_buffers_can_be_storage();
+ 
+ 	RSE::ViewportScaling3DMode scale_mode = rb->get_scaling_3d_mode();
+-	bool use_upscaled_texture = rb->has_upscaled_texture() && (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR2 || scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL);
++	// Mode 7 (pmndrs temporal) writes the upscaled texture from
++	// RenderForwardClustered, in the same pre-tonemap slot as FSR2; it is not a
++	// spatial upscaler and must never be routed through `spatial_upscaler`.
++	bool use_upscaled_texture = rb->has_upscaled_texture() && (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR2 || scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL || scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL);
+ 	SpatialUpscaler *spatial_upscaler = nullptr;
  	if (can_use_effects) {
  		if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR) {
  			spatial_upscaler = fsr;
@@ -87159,7 +89844,7 @@ index 38540f4396..badc760684 100644
  		} else if (scale_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
  #if METAL_ENABLED
  			spatial_upscaler = mfx_spatial;
-@@ -539,7 +562,11 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+@@ -539,7 +565,11 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
  
  			for (uint32_t i = 0; i < rb->get_view_count(); i++) {
  				buffers.base_texture = use_upscaled_texture ? rb->get_upscaled_texture(i) : rb->get_internal_texture(i);
@@ -87172,7 +89857,7 @@ index 38540f4396..badc760684 100644
  				buffers.base_fb = FramebufferCacheRD::get_singleton()->get_cache(buffers.base_texture); // TODO move this into bokeh_dof_raster, we can do this internally
  
  				// In stereo p_render_data->z_near and p_render_data->z_far can be offset for our combined frustum.
-@@ -871,7 +898,24 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
+@@ -871,7 +901,24 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
  				RID source_texture = rb->get_texture_slice(use_smaa ? SNAME("SMAA") : SNAME("Tonemapper"), SNAME("destination"), v, 0);
  				RID dest_texture = texture_storage->render_target_get_rd_texture_slice(render_target, v);
  
@@ -87198,7 +89883,7 @@ index 38540f4396..badc760684 100644
  			}
  		} else {
  			// If no spatial upscaler is set, we are using bilinear or nearest filtering for scaling.
-@@ -1167,6 +1211,9 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
+@@ -1167,6 +1214,9 @@ RD::DataFormat RendererSceneRenderRD::_render_buffers_get_preferred_color_format
  }
  
  bool RendererSceneRenderRD::_render_buffers_can_be_storage() {
@@ -87208,7 +89893,7 @@ index 38540f4396..badc760684 100644
  	return true;
  }
  
-@@ -1886,6 +1933,12 @@ void RendererSceneRenderRD::init() {
+@@ -1886,6 +1936,12 @@ void RendererSceneRenderRD::init() {
  	if (can_use_storage) {
  		fsr = memnew(RendererRD::FSR);
  	}
@@ -87221,7 +89906,7 @@ index 38540f4396..badc760684 100644
  #ifdef METAL_ENABLED
  	mfx_spatial = memnew(RendererRD::MFXSpatialEffect);
  #endif
-@@ -1903,6 +1956,7 @@ RendererSceneRenderRD::~RendererSceneRenderRD() {
+@@ -1903,6 +1959,7 @@ RendererSceneRenderRD::~RendererSceneRenderRD() {
  	memdelete(tone_mapper);
  	memdelete(vrs);
  	memdelete(fsr);
@@ -87765,6 +90450,20 @@ index 94bc126d91..0887503f51 100644
  layout(set = 0, binding = 4) uniform sampler2D history_buffer;
  layout(rgba16f, set = 0, binding = 5) uniform restrict writeonly image2D output_buffer;
  
+diff --git a/servers/rendering/renderer_rd/shaders/environment/gi.glsl b/servers/rendering/renderer_rd/shaders/environment/gi.glsl
+index 7ec95668e7..898f9a8731 100644
+--- a/servers/rendering/renderer_rd/shaders/environment/gi.glsl
++++ b/servers/rendering/renderer_rd/shaders/environment/gi.glsl
+@@ -675,6 +675,9 @@ void process_gi(ivec2 pos, vec3 vertex, inout vec4 ambient_light, inout vec4 ref
+ }
+ 
+ void main() {
++	if (sdfgi.grid_size.x < 0.0) {
++		uvec2 keep = texelFetch(usampler2D(voxel_gi_buffer, linear_sampler), ivec2(0), 0).rg;
++	}
+ 	ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+ 
+ 	uint vrs_x, vrs_y;
 diff --git a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl b/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
 index ea32726132..2e4db30035 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
@@ -87829,6 +90528,54 @@ index ea32726132..2e4db30035 100644
 +		imageStore(dst_light, ivec3(0), vec4(0.0));
 +		imageStore(dst_aniso0, ivec3(0), vec4(0.0));
 +		imageStore(dst_aniso1, ivec3(0), vec4(0.0));
++	}
++#endif
+ }
+diff --git a/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl b/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl
+index afd2db0e12..0dd82d9c2f 100644
+--- a/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl
++++ b/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl
+@@ -30,7 +30,11 @@ layout(set = 0, binding = 7, std140) uniform Cascades {
+ }
+ cascades;
+ 
+-layout(r32ui, set = 0, binding = 8) uniform restrict uimage2DArray lightprobe_texture_data;
++#ifdef SDFGI_LIGHT_FLOAT
++layout(rgba16f, set = 0, binding = 8) uniform restrict writeonly image2DArray lightprobe_texture_data;
++#else
++layout(r32ui, set = 0, binding = 8) uniform restrict writeonly uimage2DArray lightprobe_texture_data;
++#endif
+ layout(rgba16i, set = 0, binding = 9) uniform restrict iimage2DArray lightprobe_history_texture;
+ layout(rgba32i, set = 0, binding = 10) uniform restrict iimage2D lightprobe_average_texture;
+ 
+@@ -466,8 +470,13 @@ void main() {
+ 		if (copy_to[i] == ivec3(-2, -2, -2)) {
+ 			continue;
+ 		}
++#ifdef SDFGI_LIGHT_FLOAT
++		imageStore(lightprobe_texture_data, copy_to[i], vec4(irradiance, 1.0));
++		imageStore(lightprobe_texture_data, copy_to[i] + ivec3(0, 0, int(params.max_cascades)), vec4(radiance, 1.0));
++#else
+ 		imageStore(lightprobe_texture_data, copy_to[i], uvec4(irradiance_rgbe));
+ 		imageStore(lightprobe_texture_data, copy_to[i] + ivec3(0, 0, int(params.max_cascades)), uvec4(radiance_rgbe));
++#endif
+ 	}
+ 
+ #endif
+@@ -618,4 +627,16 @@ void main() {
+ 	}
+ 
+ #endif
++
++#ifdef SDFGI_LIGHT_FLOAT
++	if (params.grid_size.x < 0.0) {
++		imageStore(lightprobe_texture_data, ivec3(0, 0, 0), vec4(0.0));
++		imageStore(lightprobe_ambient_texture, ivec3(0, 0, 0), vec4(0.0));
++		imageStore(lightprobe_history_texture, ivec3(0, 0, 0), ivec4(0));
++		imageStore(lightprobe_average_texture, ivec2(0, 0), ivec4(0));
++		imageStore(lightprobe_history_scroll_texture, ivec3(0, 0, 0), ivec4(0));
++		imageStore(lightprobe_average_scroll_texture, ivec2(0, 0), ivec4(0));
++		imageStore(lightprobe_average_parent_texture, ivec2(0, 0), ivec4(0));
 +	}
 +#endif
  }
@@ -88770,10 +91517,21 @@ index a5157cbe50..41cdab933c 100644
  }
  
 diff --git a/servers/rendering/renderer_viewport.cpp b/servers/rendering/renderer_viewport.cpp
-index 60374910e2..1407f5b353 100644
+index 60374910e2..70adef8f9a 100644
 --- a/servers/rendering/renderer_viewport.cpp
 +++ b/servers/rendering/renderer_viewport.cpp
-@@ -168,6 +168,28 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
+@@ -159,15 +159,85 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
+ 				WARN_PRINT_ONCE("MetalFX and FSR upscaling are not supported in the Compatibility renderer. Falling back to bilinear scaling.");
+ 			}
+ 
+-			if ((scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR || scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR2 || scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) && OS::get_singleton()->get_current_rendering_method() == "mobile") {
++			if ((scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR || scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_FSR2 || scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL || scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL) && OS::get_singleton()->get_current_rendering_method() == "mobile") {
+ 				scaling_3d_mode = RSE::VIEWPORT_SCALING_3D_MODE_BILINEAR;
+ 				scaling_type = RSE::scaling_3d_mode_type(scaling_3d_mode);
+-				WARN_PRINT_ONCE("MetalFX temporal and FSR upscaling are not supported in the Mobile renderer. Falling back to bilinear scaling.");
++				WARN_PRINT_ONCE("MetalFX temporal, FSR, and pmndrs temporal upscaling are not supported in the Mobile renderer. Falling back to bilinear scaling.");
+ 			}
+ 
  			RenderingServerEnums::ViewportMSAA msaa_3d = p_viewport->msaa_3d;
  
  #ifdef RD_ENABLED
@@ -88799,23 +91557,85 @@ index 60374910e2..1407f5b353 100644
 +				scaling_type = RSE::scaling_3d_mode_type(scaling_3d_mode);
 +			}
 +
++			// The pmndrs temporal upscaler runs through the raw-WGSL compute path
++			// (WebGPU) and needs a fixed set of sampled/storage formats (see
++			// PmndrsTemporal's constructor: rgba16f history/output, r32f guides,
++			// rgba8unorm masks, r8unorm reset signal, hardware-sampled depth).
++			// Probe the device here so we never hand an unsupported mode to the
++			// renderer: RenderForwardClustered has no way to switch the presentation
++			// path back to a spatial upscaler, so falling back must happen before the
++			// render buffers are configured.
++			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL) {
++				const uint32_t sampling_storage = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_STORAGE_BIT;
++				const bool temporal_formats_ok =
++						RD::get_singleton()->has_feature(RD::SUPPORTS_RAW_WGSL_COMPUTE) &&
++						RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R16G16B16A16_SFLOAT, sampling_storage) &&
++						RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R32_SFLOAT, sampling_storage) &&
++						RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R8G8B8A8_UNORM, sampling_storage) &&
++						RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R8_UNORM, RD::TEXTURE_USAGE_SAMPLING_BIT) &&
++						(RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_D32_SFLOAT_S8_UINT, RD::TEXTURE_USAGE_SAMPLING_BIT) ||
++								RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_D24_UNORM_S8_UINT, RD::TEXTURE_USAGE_SAMPLING_BIT) ||
++								RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_D32_SFLOAT, RD::TEXTURE_USAGE_SAMPLING_BIT));
++				if (!temporal_formats_ok) {
++					const bool fsr2_available = RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_B10G11R11_UFLOAT_PACK32, RD::TEXTURE_USAGE_STORAGE_BIT);
++					const bool fsr_available = RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_R16G16B16A16_SFLOAT, RD::TEXTURE_USAGE_STORAGE_BIT);
++					// FSR 1.0 is spatial: at a 1.0 scale factor it would read and write
++					// the same texture in one dispatch (forbidden on WebGPU), so mirror
++					// the spatial-scale shortcut above when choosing it as a fallback.
++					if (fsr2_available) {
++						scaling_3d_mode = RSE::VIEWPORT_SCALING_3D_MODE_FSR2;
++						WARN_PRINT_ONCE("pmndrs temporal upscaling is not supported by this rendering device. Falling back to FSR 2.");
++					} else if (fsr_available && (scaling_3d_scale < 1.0f - EPSILON || scaling_3d_scale > 1.0f + EPSILON)) {
++						scaling_3d_mode = RSE::VIEWPORT_SCALING_3D_MODE_FSR;
++						WARN_PRINT_ONCE("pmndrs temporal upscaling is not supported by this rendering device. Falling back to FSR 1.");
++					} else {
++						scaling_3d_mode = RSE::VIEWPORT_SCALING_3D_MODE_OFF;
++						scaling_3d_scale = 1.0;
++						WARN_PRINT_ONCE("pmndrs temporal upscaling is not supported by this rendering device. Disabling 3D scaling.");
++					}
++					scaling_type = RSE::scaling_3d_mode_type(scaling_3d_mode);
++				}
++			}
++
++			// The pmndrs temporal upscaler needs single-sample color/depth inputs
++			// (its reconstruct/depth-clip graph has no MSAA path). Mirror MetalFX
++			// Temporal and disable 3D MSAA internally instead of dropping the mode.
++			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL && msaa_3d != RSE::VIEWPORT_MSAA_DISABLED) {
++				WARN_PRINT_ONCE("pmndrs temporal upscaling does not support 3D MSAA. Disabling 3D MSAA internally.");
++				msaa_3d = RSE::VIEWPORT_MSAA_DISABLED;
++			}
++
  			if (scaling_3d_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL && !RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_TEMPORAL)) {
  				if (RD::get_singleton()->has_feature(RD::SUPPORTS_METALFX_SPATIAL)) {
  					// Prefer MetalFX spatial if it is supported, which will be much more efficient than FSR2,
-@@ -251,6 +273,7 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
+@@ -230,7 +300,7 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
+ 			if (use_taa && scaling_type == RSE::VIEWPORT_SCALING_3D_TYPE_TEMPORAL) {
+ 				// Temporal upscalers can't be used with TAA.
+ 				// Turn it off and prefer using the temporal upscaler.
+-				WARN_PRINT_ONCE("FSR 2 or MetalFX Temporal is not compatible with TAA. Disabling TAA internally.");
++				WARN_PRINT_ONCE("FSR 2, MetalFX Temporal, or pmndrs Temporal is not compatible with TAA. Disabling TAA internally.");
+ 				use_taa = false;
+ 			}
+ 
+@@ -251,6 +321,8 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
  					break;
  				case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL:
  				case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
 +				case RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL:
++				case RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL:
  				case RSE::VIEWPORT_SCALING_3D_MODE_FSR:
  				case RSE::VIEWPORT_SCALING_3D_MODE_FSR2:
  					target_width = p_viewport->size.width;
-@@ -1059,6 +1082,10 @@ void RendererViewport::viewport_set_scaling_3d_mode(RID p_viewport, RSE::Viewpor
+@@ -1059,6 +1131,14 @@ void RendererViewport::viewport_set_scaling_3d_mode(RID p_viewport, RSE::Viewpor
  			WARN_PRINT_ONCE_ED("FSR2 3D scaling is only available when using the Forward+ renderer.");
  			return;
  		}
 +		if (p_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL) {
 +			WARN_PRINT_ONCE_ED("pmndrs spatial 3D scaling is only available when using the Forward+ renderer.");
++			return;
++		}
++		if (p_mode == RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL) {
++			WARN_PRINT_ONCE_ED("pmndrs temporal 3D scaling is only available when using the Forward+ renderer.");
 +			return;
 +		}
  		if (p_mode == RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) {
@@ -90403,18 +93223,19 @@ index 3c0215f14e..a587552186 100644
  	void add_draw_list_draw_indexed_indirect(RDD::BufferID p_buffer, uint32_t p_offset, uint32_t p_draw_count, uint32_t p_stride);
  	void add_draw_list_execute_commands(RDD::CommandBufferID p_command_buffer);
 diff --git a/servers/rendering/rendering_server.cpp b/servers/rendering/rendering_server.cpp
-index 319e83c72b..87e11ad176 100644
+index 319e83c72b..f9b75641ca 100644
 --- a/servers/rendering/rendering_server.cpp
 +++ b/servers/rendering/rendering_server.cpp
-@@ -2934,6 +2934,7 @@ void RenderingServer::_bind_methods() {
+@@ -2934,6 +2934,8 @@ void RenderingServer::_bind_methods() {
  	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL);
  	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL);
  	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_NEAREST);
 +	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL);
++	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL);
  	BIND_ENUM_CONSTANT(RSE::VIEWPORT_SCALING_3D_MODE_MAX);
  
  	BIND_ENUM_CONSTANT(RSE::VIEWPORT_UPDATE_DISABLED);
-@@ -3675,7 +3676,13 @@ void RenderingServer::init() {
+@@ -3675,7 +3677,13 @@ void RenderingServer::init() {
  	// import the texture formats that the host platform needs.
  	// See `const bool can_s3tc_bptc` in the resource importer.
  	GLOBAL_DEF_RST("rendering/textures/vram_compression/import_s3tc_bptc", false);
@@ -90428,18 +93249,18 @@ index 319e83c72b..87e11ad176 100644
  	GLOBAL_DEF("rendering/textures/vram_compression/compress_with_gpu", true);
  	GLOBAL_DEF("rendering/textures/vram_compression/cache_gpu_compressor", true);
  
-@@ -3778,11 +3785,11 @@ void RenderingServer::init() {
+@@ -3778,11 +3786,11 @@ void RenderingServer::init() {
  		String mode_hints;
  		String mode_hints_metal;
  		{
 -			Vector<String> mode_hints_arr = { "Nearest (Fastest):5", "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2" };
-+			Vector<String> mode_hints_arr = { "Nearest (Fastest):5", "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2", "pmndrs (Spatial - Fast):6" };
++			Vector<String> mode_hints_arr = { "Nearest (Fastest):5", "Bilinear (Fastest):0", "FSR 1.0 (Fast):1", "FSR 2.2 (Slow):2", "pmndrs (Spatial - Fast):6", "pmndrs (Temporal - Slow):7" };
  			mode_hints = String(",").join(mode_hints_arr);
  
 -			mode_hints_arr.push_back("MetalFX (Spatial - Fast):3");
 -			mode_hints_arr.push_back("MetalFX (Temporal - Slow):4");
-+			mode_hints_arr.insert(mode_hints_arr.size() - 1, "MetalFX (Spatial - Fast):3");
-+			mode_hints_arr.insert(mode_hints_arr.size() - 1, "MetalFX (Temporal - Slow):4");
++			mode_hints_arr.insert(4, "MetalFX (Spatial - Fast):3");
++			mode_hints_arr.insert(5, "MetalFX (Temporal - Slow):4");
  			mode_hints_metal = String(",").join(mode_hints_arr);
  		}
  
@@ -90487,10 +93308,10 @@ index 82eebf5e8d..3fb4e18bf9 100644
  #ifndef XR_DISABLED
  	if (xr_server != nullptr) {
 diff --git a/servers/rendering/rendering_server_enums.h b/servers/rendering/rendering_server_enums.h
-index eaa833a45b..3259b684d1 100644
+index eaa833a45b..eaf06b572e 100644
 --- a/servers/rendering/rendering_server_enums.h
 +++ b/servers/rendering/rendering_server_enums.h
-@@ -474,6 +474,10 @@ enum ViewportScaling3DMode {
+@@ -474,6 +474,15 @@ enum ViewportScaling3DMode {
  	VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL,
  	VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL,
  	VIEWPORT_SCALING_3D_MODE_NEAREST,
@@ -90498,20 +93319,28 @@ index eaa833a45b..3259b684d1 100644
 +	// with the raw-WGSL compute path (WebGPU); elsewhere the renderer falls back
 +	// to FSR 1.0. Appended after NEAREST so existing integer values stay stable.
 +	VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL,
++	// Fast Godot: pmndrs temporal upscaler (reconstruct/depth-clip/exposure/
++	// accumulate/RCAS) running in the FSR2 slot on the raw-WGSL compute path.
++	// WebGPU only; elsewhere the viewport layer falls back to FSR2/FSR1/OFF.
++	// Appended after PMNDRS_SPATIAL so existing integer values stay stable (7).
++	VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL,
  	VIEWPORT_SCALING_3D_MODE_MAX,
  	VIEWPORT_SCALING_3D_MODE_OFF = 255, // for internal use only
  };
-@@ -486,7 +490,7 @@ enum ViewportScaling3DType {
+@@ -486,9 +495,9 @@ enum ViewportScaling3DType {
  };
  
  inline ViewportScaling3DType scaling_3d_mode_type(ViewportScaling3DMode p_mode) {
 -	if (p_mode == VIEWPORT_SCALING_3D_MODE_NEAREST || p_mode == VIEWPORT_SCALING_3D_MODE_BILINEAR || p_mode == VIEWPORT_SCALING_3D_MODE_FSR || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
 +	if (p_mode == VIEWPORT_SCALING_3D_MODE_NEAREST || p_mode == VIEWPORT_SCALING_3D_MODE_BILINEAR || p_mode == VIEWPORT_SCALING_3D_MODE_FSR || p_mode == VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_SPATIAL) {
  		return VIEWPORT_SCALING_3D_TYPE_SPATIAL;
- 	} else if (p_mode == VIEWPORT_SCALING_3D_MODE_FSR2 || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) {
+-	} else if (p_mode == VIEWPORT_SCALING_3D_MODE_FSR2 || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) {
++	} else if (p_mode == VIEWPORT_SCALING_3D_MODE_FSR2 || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL || p_mode == VIEWPORT_SCALING_3D_MODE_PMNDRS_TEMPORAL) {
  		return VIEWPORT_SCALING_3D_TYPE_TEMPORAL;
+ 	}
+ 	return VIEWPORT_SCALING_3D_TYPE_NONE;
 diff --git a/servers/rendering/storage/render_scene_buffers.cpp b/servers/rendering/storage/render_scene_buffers.cpp
-index 3736709859..fac7584e33 100644
+index 3736709859..f221de5f9b 100644
 --- a/servers/rendering/storage/render_scene_buffers.cpp
 +++ b/servers/rendering/storage/render_scene_buffers.cpp
 @@ -52,7 +52,7 @@ void RenderSceneBuffersConfiguration::_bind_methods() {
@@ -90519,7 +93348,7 @@ index 3736709859..fac7584e33 100644
  	ClassDB::bind_method(D_METHOD("get_scaling_3d_mode"), &RenderSceneBuffersConfiguration::get_scaling_3d_mode);
  	ClassDB::bind_method(D_METHOD("set_scaling_3d_mode", "scaling_3d_mode"), &RenderSceneBuffersConfiguration::set_scaling_3d_mode);
 -	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4"), "set_scaling_3d_mode", "get_scaling_3d_mode"); // TODO VIEWPORT_SCALING_3D_MODE_OFF is possible here too, but we can't specify an enum string for it.
-+	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,pmndrs (Spatial - Fast):6"), "set_scaling_3d_mode", "get_scaling_3d_mode"); // TODO VIEWPORT_SCALING_3D_MODE_OFF is possible here too, but we can't specify an enum string for it.
++	ADD_PROPERTY(PropertyInfo(Variant::INT, "scaling_3d_mode", PROPERTY_HINT_ENUM, "Nearest (Fastest):5,Bilinear (Fastest):0,FSR 1.0 (Fast):1,FSR 2.2 (Slow):2,MetalFX (Spatial - Fast):3,MetalFX (Temporal - Slow):4,pmndrs (Spatial - Fast):6,pmndrs (Temporal - Slow):7"), "set_scaling_3d_mode", "get_scaling_3d_mode"); // TODO VIEWPORT_SCALING_3D_MODE_OFF is possible here too, but we can't specify an enum string for it.
  
  	ClassDB::bind_method(D_METHOD("get_msaa_3d"), &RenderSceneBuffersConfiguration::get_msaa_3d);
  	ClassDB::bind_method(D_METHOD("set_msaa_3d", "msaa_3d"), &RenderSceneBuffersConfiguration::set_msaa_3d);

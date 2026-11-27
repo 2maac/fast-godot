@@ -28,7 +28,8 @@ the raw-WGSL RenderingDevice path (`docs/WGSL_COMPUTE_PATH.md` §11). Selection
 is `Viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` (value
 6; `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` is the RSE
 counterpart) — a first-class mode appended after `SCALING_3D_MODE_NEAREST` so
-pre-existing values are unchanged (`*_MAX` = 7). There is **no bool project
+pre-existing values are unchanged (`*_MAX` is 8 since milestone 2 appended the
+temporal mode 7). There is **no bool project
 setting**: the earlier `rendering/scaling_3d/pmndrs_spatial` setting was removed,
 mode 1 is real AMD FSR1 again, and mode 6 is exposed as
 `rendering/scaling_3d/mode = "pmndrs (Spatial - Fast)"`. The TPS demo (external
@@ -47,6 +48,12 @@ is a 64-slot ring (not a single buffer), the `sharpness == 0` blit fallback was
 not implemented (RCAS runs at s=0 instead), the temporal bindings are stubbed as
 described, and the vendored WGSL is embedded as C++ strings rather than shipped
 as `.wgsl` assets.
+
+**Milestone 2 (temporal path) is now implemented as a second first-class mode,
+`Viewport.SCALING_3D_MODE_PMNDRS_TEMPORAL` = 7** — see
+`PMNDRS_TEMPORAL_PORT.md` and `GODOT_TEMPORAL_UPSCALER_INTEGRATION.md` for the
+temporal contract and its as-built status; the spatial notes below are unchanged
+by it.
 
 ---
 
