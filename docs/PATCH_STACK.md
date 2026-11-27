@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; pmndrs milestone-1 stack commit `d8b3d583ae` and first-class pmndrs scaling-mode commit `91a0a3e8e4` + docs refreshes on the branch, tag `529407b9fc` — the tag has not been moved to the pmndrs stack yet) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; branch tip `59b7ef60a9`, pmndrs milestone-1 stack commit `d8b3d583ae` and first-class pmndrs scaling-mode commit `91a0a3e8e4` below it; tag `4.8-beta5` = `91a0a3e8e4`, moved 2026-11-27) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -54,10 +54,13 @@ layer with its `layers/*.files` list reproduces **all 8 `patches/*.patch` files
 byte-identically** (`/tmp/applytest` holds the applied tree, 1,784 staged paths;
 `0005` = 5,936,829 B). Patch deltas: the committed pmndrs milestone 1 was
 `0004` `+247/−21`, `0005` `+1288/−32`; the first-class scaling mode adds
-`0005` `+174/−41` and six paths. Both are committed (`d8b3d583ae`,
-`91a0a3e8e4`); the branch is local-only (not pushed) and tag `529407b9fc` still
-points at the SDFGI/FSR stack — the tag must be moved (and the branch pushed) to
-ship the pmndrs driver/template to fresh toolchain installs.
+`0005` `+174/−41` and six paths. Both are committed and pushed (`d8b3d583ae`,
+`91a0a3e8e4`, branch tip `59b7ef60a9`), and tag `4.8-beta5` was moved to
+`91a0a3e8e4` on 2026-11-27 ~23:45 so fresh toolchain installs bootstrap the
+pmndrs driver/template. The moved tag archive was checked: it contains
+`patches/0004`/`0005` with the raw-WGSL + pmndrs scaling-mode changes,
+`patches/layers/0005-engine-renderer-patches.files` with 156 paths and the
+intent-to-add-aware `tools/make-patches.sh`.
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,
