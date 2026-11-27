@@ -551,18 +551,21 @@ this file's history.
     Remaining limitation: SDFGI is disabled because its packed UINT storage
     textures need float sample views that WebGPU does not allow (the
     attachment-less-pass blocker itself is fixed). An experimental WebGPU path
-    (RGBA16F light/probe textures, dummy occlusion binding) now gets past the
-    direct-light and SDF pass setup: the static direct-light variant's unused
-    3D storage images must be kept referenced so Tint does not drop their
-    declarations, and the SDF pipeline must be precompiled against a colour
-    framebuffer format with an explicit colour pass (the default empty-pass
-    format has no pass samples). The remaining blocker is the GI process
-    MODE_SDFGI variant: its bind group layout expects a float at
-    `voxel_gi_buffer` (doubled binding 28) while the shared uniform set binds
-    the integer default, i.e. the variant's Tint WGSL still loses the uint
-    declaration. Next step: keep/re-add that binding in the MODE_SDFGI WGSL or
-    split the GI uniform set per mode. Forward+ bake is ~1524 stages
-    (~3-6 min).
+    (RGBA16F light/probe textures, dummy occlusion binding, SDF pipelines
+    precompiled against a colour framebuffer with an explicit pass) now runs
+    with zero GPU validation errors in the TPS demo. The GI process
+    MODE_SDFGI bind group needed the integer `voxel_gi_buffer` default and a
+    driver-side pin of binding 28 to the integer sample type, because Tint
+    drops that unused declaration in the SDFGI variant. The remaining problem
+    is visual: comparing the native editor (Vulkan SDFGI, same fixed spawn and
+    FSR2 settings) with HTML5 at the same spawn shows the editor lighting the
+    scene warm/bright while HTML5 is dark, so the WebGPU SDFGI indirect light
+    is missing or much weaker. A `DEBUG_DRAW_SDFGI` debug capture is black in
+    both builds, and `RD::texture_get_data` returns empty for the 3D/array
+    SDFGI textures even with COPY_FROM usage, so the next step is a staging
+    2D copy/compute readback of the light cascade and lightprobe textures to
+    find which pass (sky/direct-light, integrate, or final probe) writes zero.
+    Forward+ bake is ~1524 stages (~3-6 min).
 11. **MSAA/depth sampler bindings + TAA (2026-11-27, later) — FIXED.** A
     real-Chrome run with MSAA enabled failed bind-group creation on
     `ResolveShaderRD` (`Filtering sampler ... NonFiltering`); combined
