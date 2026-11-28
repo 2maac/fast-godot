@@ -62,8 +62,8 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 The `4.8-rc1` branch and tag are created/pushed with the 2026-11-28 rebase;
 fresh toolchain boots fetch the `4.8-rc1` tag (the provisioner in patch `0001`
 now points its archive URL at it). The old `4.8-beta5` branch/tag remain as
-history and the repository **default branch is still `4.8-beta5` at the time of writing** —
-switching it to `4.8-rc1` is a follow-up.
+history, and the repository **default branch is now `4.8-rc1`** (switched
+2026-11-28).
 
 The `4.7.2` full-source branch is kept on the remote for history only (not
 maintained): `origin/4.7.2` = `d8cb1fd77c`. A leftover local branch `fresh`
