@@ -57,13 +57,13 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 | ref | Godot base |
 |---|---|
 | **`4.8-rc1`** branch + lightweight tag — current stack (self-contained bundle in `patches/`) | godot master **`7c97c29779`** (4.8-rc state: `version.py` status `rc`; no upstream `4.8-rc1` git tag — that is our name) |
-| `4.8-beta5` branch + tag — history | godot master `67421f36e5` (4.8.0-beta) |
+| `4.8-beta5` tag — history (branch deleted 2026-11-28) | godot master `67421f36e5` (4.8.0-beta) |
 
 The `4.8-rc1` branch and tag are created/pushed with the 2026-11-28 rebase;
 fresh toolchain boots fetch the `4.8-rc1` tag (the provisioner in patch `0001`
-now points its archive URL at it). The old `4.8-beta5` branch/tag remain as
-history, and the repository **default branch is now `4.8-rc1`** (switched
-2026-11-28).
+now points its archive URL at it). The `4.8-beta5` tag remains as history — its
+branch was deleted 2026-11-28, and its commits are ancestors of `4.8-rc1` — and
+the repository **default branch is now `4.8-rc1`** (switched 2026-11-28).
 
 The `4.7.2` full-source branch is kept on the remote for history only (not
 maintained): `origin/4.7.2` = `d8cb1fd77c`. A leftover local branch `fresh`

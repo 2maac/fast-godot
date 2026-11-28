@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| **`4.8-rc1`** (branch + lightweight tag, created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`** (with a docs commit above it)). The old `4.8-beta5` branch/tag are kept as history (tag = `a7a5aefbe2`, the threads fix; branch tip `5da498f468f`); the repo default branch was switched to `4.8-rc1` on 2026-11-28 | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
+| **`4.8-rc1`** (branch + lightweight tag, created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`** (with a docs commit above it)). The old `4.8-beta5` tag is kept as history (tag = `a7a5aefbe2`, the threads fix; its branch, tip `5da498f468f`, was deleted 2026-11-28); the repo default branch was switched to `4.8-rc1` on 2026-11-28 | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -174,8 +174,8 @@ now uses `PATCH_STACK_REF = "4.8-rc1"` and
 `PATCH_STACK_ARCHIVE_URL = …/archive/refs/tags/4.8-rc1.tar.gz` (was
 `4.8-beta5`), so fresh toolchain boots fetch the `4.8-rc1` stack tag. That tag
 must exist on stack commit `76d82e9993` (created/pushed with this change); the
-old `4.8-beta5` branch/tag stay as history. The repo default branch was
-switched from `4.8-beta5` to `4.8-rc1` on 2026-11-28.
+old `4.8-beta5` tag stays as history (its branch was deleted 2026-11-28). The
+repo default branch was switched from `4.8-beta5` to `4.8-rc1` on 2026-11-28.
 
 **Verified 2026-11-28 ~12:31 for the 4.8-rc1 rebase:** the regenerated stack
 (`0001` 508,734 B, `0002` 203,698, `0003` 46,094, `0004` **893,686**, `0005`
