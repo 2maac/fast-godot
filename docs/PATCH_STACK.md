@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| **`4.8-rc1`** (branch + lightweight tag, created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`** (with a docs commit above it)). The old `4.8-beta5` tag is kept as history (tag = `a7a5aefbe2`, the threads fix; its branch, tip `5da498f468f`, was deleted 2026-11-28); the repo default branch was switched to `4.8-rc1` on 2026-11-28 | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
+| **`4.8-rc1`** (branch + lightweight tag, created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`** (with a docs commit above it)). The old `4.8-beta5` branch and tag were both removed 2026-11-28 (last tag `a7a5aefbe2`, the threads fix; branch tip `5da498f468f`; their commits are ancestors of `4.8-rc1`); the repo default branch was switched to `4.8-rc1` on 2026-11-28 | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -111,7 +111,9 @@ byte-identically** (independently re-checked). Sizes: `0001` 508,662 B, `0002`
 15,131,334, `0007` 3,541,178, `0099` 29,700; layer list 159 paths. The revert
 was committed and pushed as the revert stack commit with a docs refresh above
 it, and tag `4.8-beta5` was force-moved from `cb0aa639c7` to it so fresh
-toolchain installs bootstrap the spatial-only driver/template. (History: that
+toolchain installs of that era bootstrapped the spatial-only driver/template
+(the beta5 tag was later removed 2026-11-28 and `4.8-rc1` is the current tag).
+(History: that
 revert stack's `0003` was 45,856 B; the web occlusion-culling change below grew
 it to 46,870 B.)
 
@@ -140,7 +142,8 @@ byte-identically** (independently re-checked), and coverage is **57/57**. The
 evidence build: threaded TPS export boots, loads and plays at 60 fps VSync with
 0 GPU/shader/worker errors (uncapped 137.3 vs 124 fps single-threaded). Stack
 commit **`a7a5aefbe2`**; a docs commit follows, the branch is pushed and tag
-`4.8-beta5` force-moved from `96a71a19bf` to `a7a5aefbe2`.
+`4.8-beta5` force-moved from `96a71a19bf` to `a7a5aefbe2` (tag since removed
+2026-11-28).
 
 **Rebased to Godot 4.8-rc1 (2026-11-28).** The stack now applies to upstream
 `godotengine/godot` master **`7c97c29779`** ("Bump version to 4.8-rc";
@@ -174,8 +177,9 @@ now uses `PATCH_STACK_REF = "4.8-rc1"` and
 `PATCH_STACK_ARCHIVE_URL = …/archive/refs/tags/4.8-rc1.tar.gz` (was
 `4.8-beta5`), so fresh toolchain boots fetch the `4.8-rc1` stack tag. That tag
 must exist on stack commit `76d82e9993` (created/pushed with this change); the
-old `4.8-beta5` tag stays as history (its branch was deleted 2026-11-28). The
-repo default branch was switched from `4.8-beta5` to `4.8-rc1` on 2026-11-28.
+old `4.8-beta5` branch and tag were removed 2026-11-28 (their commits are
+ancestors of `4.8-rc1`). The repo default branch was switched from `4.8-beta5`
+to `4.8-rc1` on 2026-11-28.
 
 **Verified 2026-11-28 ~12:31 for the 4.8-rc1 rebase:** the regenerated stack
 (`0001` 508,734 B, `0002` 203,698, `0003` 46,094, `0004` **893,686**, `0005`
