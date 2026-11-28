@@ -87125,6 +87125,32 @@ index 623c24fef5..9a522f25bc 100644
  	ERR_FAIL_COND(draw_list == RD::INVALID_ID);
  
  	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
+diff --git a/servers/rendering/renderer_rd/renderer_compositor_rd.h b/servers/rendering/renderer_rd/renderer_compositor_rd.h
+index 506190968a..4fa4514405 100644
+--- a/servers/rendering/renderer_rd/renderer_compositor_rd.h
++++ b/servers/rendering/renderer_rd/renderer_compositor_rd.h
+@@ -146,7 +146,20 @@ public:
+ 	_ALWAYS_INLINE_ virtual uint64_t get_frame_number() const override { return frame; }
+ 	_ALWAYS_INLINE_ virtual double get_frame_delta_time() const override { return delta; }
+ 	_ALWAYS_INLINE_ virtual double get_total_time() const override { return time; }
+-	_ALWAYS_INLINE_ virtual bool can_create_resources_async() const override { return true; }
++	_ALWAYS_INLINE_ virtual bool can_create_resources_async() const override {
++#ifdef WEBGPU_ENABLED
++		// Fast Godot (2026-11-28): on web/WebGPU the renderer may run with
++		// pthreads (threads=yes). The emdawnwebgpu JS objects (GPUDevice etc.)
++		// live in the main thread's module and cannot be used from a Worker, so
++		// resource creation (textures, buffers, ...) must go through the render
++		// server command queue instead of executing on the calling worker.
++		// Without this, loading a scene from a thread throws
++		// "Cannot read properties of undefined (reading 'createTexture')".
++		return false;
++#else
++		return true;
++#endif
++	}
+ 
+ 	virtual bool is_xr_enabled() const override { return RendererCompositor::is_xr_enabled(); }
+ 
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 index 38540f4396..badc760684 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp

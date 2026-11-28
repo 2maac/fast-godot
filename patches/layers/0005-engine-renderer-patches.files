@@ -82,6 +82,7 @@ servers/rendering/renderer_rd/pipeline_deferred_rd.h
 servers/rendering/renderer_rd/pipeline_hash_map_rd.h
 servers/rendering/renderer_rd/renderer_canvas_render_rd.cpp
 servers/rendering/renderer_rd/renderer_compositor_rd.cpp
+servers/rendering/renderer_rd/renderer_compositor_rd.h
 servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 servers/rendering/renderer_rd/renderer_scene_render_rd.h
 servers/rendering/renderer_rd/shader_rd.cpp

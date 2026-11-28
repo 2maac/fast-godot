@@ -1,5 +1,5 @@
 diff --git a/platform/web/detect.py b/platform/web/detect.py
-index 36aae28ee6..4cce6a39e0 100644
+index 36aae28ee6..850aac87a6 100644
 --- a/platform/web/detect.py
 +++ b/platform/web/detect.py
 @@ -81,8 +81,14 @@ def get_flags():
@@ -41,30 +41,20 @@ index 36aae28ee6..4cce6a39e0 100644
      if env["javascript_eval"]:
          env.Append(CPPDEFINES=["JAVASCRIPT_EVAL_ENABLED"])
  
-@@ -259,11 +273,18 @@ def configure(env: "SConsEnvironment"):
+@@ -258,6 +272,13 @@ def configure(env: "SConsEnvironment"):
+ 
      if env["threads"]:
          # Thread support (via SharedArrayBuffer).
++        # Fast Godot fix (2026-11-28): use the upstream Godot configuration again
++        # (`-pthread` plus a preallocated worker pool). The previous fork scheme
++        # (-sUSE_PTHREADS + PTHREAD_POOL_SIZE=0) compiled without the
++        # __EMSCRIPTEN_PTHREADS__ macro and spawned every pthread lazily during
++        # startup, which wedges the page while the main thread is inside the
++        # wasm entry point (observed with the TPS demo: engine logs start, then
++        # the main thread stops responding).
          env.Append(CPPDEFINES=["PTHREAD_NO_RENAME"])
--        env.Append(CCFLAGS=["-pthread"])
--        env.Append(LINKFLAGS=["-pthread"])
--        env.Append(LINKFLAGS=[f"-sDEFAULT_PTHREAD_STACK_SIZE={env['default_pthread_stack_size']}KB"])
--        env.Append(LINKFLAGS=["-sPTHREAD_POOL_SIZE=\"Module['emscriptenPoolSize']||8\""])
--        env.Append(LINKFLAGS=["-sMAXIMUM_MEMORY=2048MB"])
-+        env.Append(CCFLAGS=["-sUSE_PTHREADS=1"])
-+        env.Append(LINKFLAGS=["-sUSE_PTHREADS=1"])
-+        env.Append(LINKFLAGS=["-sDEFAULT_PTHREAD_STACK_SIZE=%sKB" % env["default_pthread_stack_size"]])
-+        # No preallocated workers: Godot's WorkerThreadPool creates exactly the
-+        # threads its project setting asks for (threading/worker_pool/max_threads,
-+        # -1 = the reported CPU count) and Emscripten spawns them on demand.
-+        env.Append(LINKFLAGS=["-sPTHREAD_POOL_SIZE=0", "-sPTHREAD_POOL_SIZE_STRICT=0"])
-+        env.Append(LINKFLAGS=["-sWASM_MEM_MAX=2048MB"])
-+        if not env["dlink_enabled"]:
-+            # Workaround https://github.com/emscripten-core/emscripten/issues/21844#issuecomment-2116936414.
-+            # Not needed (and potentially dangerous) when dlink_enabled=yes, since we set EXPORT_ALL=1 in that case.
-+            env["EXPORTED_FUNCTIONS"] += ["__emscripten_thread_crashed"]
- 
-     elif env["proxy_to_pthread"]:
-         print_warning('"threads=no" support requires "proxy_to_pthread=no", disabling proxy to pthread.')
+         env.Append(CCFLAGS=["-pthread"])
+         env.Append(LINKFLAGS=["-pthread"])
 @@ -306,6 +327,11 @@ def configure(env: "SConsEnvironment"):
      # us since we don't know requirements at compile-time.
      env.Append(LINKFLAGS=["-sALLOW_MEMORY_GROWTH=1"])
