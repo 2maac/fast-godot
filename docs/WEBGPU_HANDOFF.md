@@ -1,6 +1,6 @@
 # Fast Godot WebGPU handoff — 4.8-rc1 port
 
-Resume doc. Last updated 2026-11-28 ~13:38. **The stack is rebased onto Godot
+Resume doc. Last updated 2026-11-28 ~13:42. **The stack is rebased onto Godot
 4.8-rc1** — upstream `godotengine/godot` master **`7c97c29779`** ("Bump version
 to 4.8-rc", `version.py` status `rc`), 86 commits ahead of the previous
 4.8.0-beta pin `67421f36e5`. Upstream has **no git tag named `4.8-rc1`** (its
@@ -171,8 +171,10 @@ The repo is a **patch stack**, not a Godot fork checkout:
 - ~~`patches/4.7.2`~~ — the old 4.7.2 stack, **dropped and deleted 2026-11-26**
   from GitHub (as was `integrate/komm64-webgpu`). The project is consolidated on
   the 4.8 stack. The full-source `4.7.2` branch remains on the remote for
-  history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree); a leftover
-  local branch `fresh` still points at that same commit and can be deleted.
+  history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree). The stale
+  local branches `fresh`, `main`, `webgpu-4.8` and `port48` were deleted on
+  2026-11-28; only `4.8-rc1` remains locally (and the `/tmp/godot48` worktree
+  is kept as a detached checkout at `582d619026`).
 - The 4.8 stack (branch `4.8-rc1`; the repo is tag-free — the previous
   `4.8-beta5` branch/tag are **removed** and history is kept through
   `4.8-rc1` ancestry) is a
@@ -214,11 +216,11 @@ already have a toolchain are unaffected).
 |---|---|
 | patch stack repo | branch **`4.8-rc1`** = `origin/4.8-rc1` — created/pushed with the 4.8-rc1 rebase (stack commit `76d82e9993`; a docs commit sits above it). The repo is **tag-free** since 2026-11-28 (all tags deleted), so fresh toolchain installs fetch the stack archive from the **`4.8-rc1` branch** (`…/refs/heads/4.8-rc1.tar.gz`; patch `0001`'s provisioner names it). The old **`4.8-beta5` branch and tag were both removed 2026-11-28** (last tag `a7a5aefbe2`; branch tip `5da498f468f`; their commits are ancestors of `4.8-rc1`, so nothing was lost); the repo default branch is now `4.8-rc1` (switched 2026-11-28). Base/`upstream.lock`: upstream master **`7c97c29779`** (4.8-rc1 rc state; upstream has no git tag `4.8-rc1` — that is our name). Patch sizes: `0001` **508,875 B**, `0002` 203,698 B, `0003` 46,094 B, `0004` **893,686 B**, `0005` 5,941,786 B, `0006` 15,133,768 B, `0007` 3,541,650 B, `0099` 29,738 B; 1,790 layer paths total (`0004` 34, `0005` 160) |
 | engine base | Godot `master` @ **`7c97c29779`** ("Bump version to 4.8-rc"; `version.py` major 4 / minor 8 / patch 0 / status `"rc"`), pinned in `patches/upstream.lock` — **86 commits ahead** of the previous 4.8.0-beta pin `67421f36e5`. Upstream tags stop at `4.7.2-stable`: there is no `4.8-rc1` git tag upstream, so "4.8-rc1" is our name for this master rc-state commit |
-| object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
+| object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. The old local `port48` branch (deleted 2026-11-28; `/tmp/godot48` worktree kept detached) carried 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
 | build worktree | **`/tmp/godot48-rc1`** — detached at upstream `7c97c297793` with the whole stack applied as working-tree changes (**1,790 changed paths = the 1,790 layer-listed paths**; 161 modified / 1,615 added / 12 deleted / 2 added-then-modified at the index level after `git add`). The rebase was applied with `git apply --3way`; the patch stack was regenerated from it 2026-11-28 ~12:30, so a fresh checkout of `7c97c29779` + `tools/apply.sh` reproduces it. The old `/tmp/godot48` beta worktree (`port48` @ `582d619026`) is retained as history |
 | patch round-trip | 2026-11-28 ~12:31: applying the full regenerated rc1 stack to a pristine checkout of `7c97c29779` (`/tmp/applytest-rc1`, all **1,790** layer paths staged) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (independently re-checked; sizes as in the row above). The rebase had exactly **one conflict**, in `servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl`: resolved by keeping our `batch_instance_index` rename and taking rc1's new `.xyz` on `prev_data.inv_view_precision` / `data.inv_view_precision` (rc1 made those precision-aware vec4 accesses); every other stack file applied cleanly |
 | layer completeness | all **1,790/1,790** changed paths are covered by the union of `patches/layers/*.files` (the worktree status set exactly matches the layer union after the rebase). `0004`'s layer list gained `tint_cli/core/os/os.h` and `tint_cli/core/string/ustring.h` (**34** paths, was 32). The per-layer round-trip check only diffs the *listed* paths, so still cross-check `git status` against the union |
-| other worktrees | `/tmp/godot48` (old 4.8-beta5 build tree, history) and `/tmp/ref472` (detached `d8cb1fd77c`, 4.7.2 reference only) |
+| other worktrees | `/tmp/godot48` (old 4.8-beta5 build tree, detached at `582d619026`, history), `/tmp/ref472` (detached `d8cb1fd77c`, 4.7.2 reference only) and the verification trees `/tmp/applytest-rc1`, `/tmp/applytest`, `/tmp/revert` |
 | toolchain bootstrap | downloads `godotengine/godot` @ `7c97c29779` (~76 MB) + the `fast-godot` **`4.8-rc1` branch** archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly. Patch `0001`'s provisioner `PATCH_STACK_REF` / `PATCH_STACK_ARCHIVE_URL` now name `4.8-rc1` (was `4.8-beta5`) |
 | toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8-rc1 + the current stack, **re-synced for the rc1 builds, then for the tag-free bootstrap at 2026-11-28 13:24** (`version.py` on disk 11:57:40 with status `rc`; the tint_cli shims on disk 12:14:26; the branch-URL provisioner file on disk 13:24) |
 | staged editor | `out/editor-staging/Fast_Godot_4.8.app` = **`4.8.rc.custom_build.7c97c2977`**, **rebuilt from the rc1 tree 2026-11-28 13:24:38** (`/tmp/editor_tagfree_build.log`: `scons: done building targets.`, 6.96 s) so the embedded provisioner fetches the branch archive; `Contents/MacOS/Godot` **111,257,056 B**, sha256 **`9499ffae…`** (= `9499ffaebb253bbc…`). `Fast_Godot_4.8-macos.zip` written 13:25:26 (58,382,609 B, sha256 `381b4c3c…`) |
@@ -404,8 +406,9 @@ The current 4.8 build tree is the **volatile git worktree `/tmp/godot48-rc1`**
 — detached at upstream `7c97c297793` (4.8-rc1) with the whole stack applied as
 working-tree changes (**1,790 changed paths = the 1,790 layer-listed paths**;
 the rebase used `git apply --3way` with one resolved shader conflict, see the
-rc1 section). The old `/tmp/godot48` worktree (`port48` @ `582d619026`, the
-4.8.0-beta stack) is retained as history and is not used by rc1 builds. The
+rc1 section). The old `/tmp/godot48` worktree (old `port48` branch, deleted
+2026-11-28; tree kept detached at `582d619026`, the 4.8.0-beta stack) is
+retained as history and is not used by rc1 builds. The
 patch stack is the source of truth: regenerate from `/tmp/godot48-rc1`, or
 apply the repo's `patches/*.patch` files to a fresh checkout of `7c97c29779`
 if `/tmp` is wiped. Ancestors of the beta worktree (historical): bundle-lock

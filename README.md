@@ -69,8 +69,10 @@ provisioner in patch `0001` points at it). The old `4.8-beta5` branch and tag
 were removed the same day — their commits are ancestors of `4.8-rc1`, so
 nothing was lost.
 
-The `4.7.2` full-source branch is not maintained; a leftover local branch
-`fresh` points at the same commit and can be deleted.
+The `4.7.2` full-source branch is not maintained. The stale local branches
+(`fresh`, `main`, `webgpu-4.8`, `port48`) were deleted on 2026-11-28; the only
+local branch is `4.8-rc1` (the `/tmp/godot48` history worktree is kept as a
+detached checkout).
 
 ## Documentation
 
