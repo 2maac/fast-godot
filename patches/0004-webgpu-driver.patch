@@ -1,5 +1,5 @@
 diff --git a/drivers/SCsub b/drivers/SCsub
-index dc50ff065c..c43a8d524f 100644
+index dc50ff065c9..c43a8d524f7 100644
 --- a/drivers/SCsub
 +++ b/drivers/SCsub
 @@ -60,6 +60,14 @@ if env["opengl3"]:
@@ -18,7 +18,7 @@ index dc50ff065c..c43a8d524f 100644
  # Input drivers
  if env["sdl"] and env["platform"] in ["linuxbsd", "macos", "windows", "ios", "visionos"]:
 diff --git a/drivers/vulkan/rendering_device_driver_vulkan.cpp b/drivers/vulkan/rendering_device_driver_vulkan.cpp
-index 138adf0e91..49004ce247 100644
+index 138adf0e91e..49004ce247c 100644
 --- a/drivers/vulkan/rendering_device_driver_vulkan.cpp
 +++ b/drivers/vulkan/rendering_device_driver_vulkan.cpp
 @@ -2209,7 +2209,9 @@ uint64_t RenderingDeviceDriverVulkan::buffer_get_dynamic_offsets(Span<BufferID>
@@ -33,7 +33,7 @@ index 138adf0e91..49004ce247 100644
  
  	VkMemoryPropertyFlags mem_props_flags;
 diff --git a/drivers/vulkan/rendering_device_driver_vulkan.h b/drivers/vulkan/rendering_device_driver_vulkan.h
-index d123f31239..d8b639d0b2 100644
+index d123f312396..d8b639d0b28 100644
 --- a/drivers/vulkan/rendering_device_driver_vulkan.h
 +++ b/drivers/vulkan/rendering_device_driver_vulkan.h
 @@ -268,7 +268,7 @@ public:
@@ -47,7 +47,7 @@ index d123f31239..d8b639d0b2 100644
  	/*****************/
 diff --git a/drivers/webgpu/README.md b/drivers/webgpu/README.md
 new file mode 100644
-index 0000000000..c9485e958c
+index 00000000000..c9485e958c8
 --- /dev/null
 +++ b/drivers/webgpu/README.md
 @@ -0,0 +1,140 @@
@@ -193,7 +193,7 @@ index 0000000000..c9485e958c
 +clear error message if the browser doesn't support it.
 diff --git a/drivers/webgpu/SCsub b/drivers/webgpu/SCsub
 new file mode 100644
-index 0000000000..f04ce6e803
+index 00000000000..f04ce6e8038
 --- /dev/null
 +++ b/drivers/webgpu/SCsub
 @@ -0,0 +1,763 @@
@@ -962,7 +962,7 @@ index 0000000000..f04ce6e803
 +)
 diff --git a/drivers/webgpu/pixel_formats_webgpu.h b/drivers/webgpu/pixel_formats_webgpu.h
 new file mode 100644
-index 0000000000..35b40d0bf1
+index 00000000000..35b40d0bf13
 --- /dev/null
 +++ b/drivers/webgpu/pixel_formats_webgpu.h
 @@ -0,0 +1,705 @@
@@ -1673,7 +1673,7 @@ index 0000000000..35b40d0bf1
 +#endif // PIXEL_FORMATS_WEBGPU_H
 diff --git a/drivers/webgpu/rendering_context_driver_webgpu.cpp b/drivers/webgpu/rendering_context_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..0d3c000d1e
+index 00000000000..0d3c000d1e0
 --- /dev/null
 +++ b/drivers/webgpu/rendering_context_driver_webgpu.cpp
 @@ -0,0 +1,258 @@
@@ -1937,7 +1937,7 @@ index 0000000000..0d3c000d1e
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_context_driver_webgpu.h b/drivers/webgpu/rendering_context_driver_webgpu.h
 new file mode 100644
-index 0000000000..e1ca81df52
+index 00000000000..e1ca81df522
 --- /dev/null
 +++ b/drivers/webgpu/rendering_context_driver_webgpu.h
 @@ -0,0 +1,105 @@
@@ -2048,7 +2048,7 @@ index 0000000000..e1ca81df52
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..0360a4152f
+index 00000000000..0360a4152f3
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 @@ -0,0 +1,10615 @@
@@ -12669,7 +12669,7 @@ index 0000000000..0360a4152f
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.h b/drivers/webgpu/rendering_device_driver_webgpu.h
 new file mode 100644
-index 0000000000..8dd3098d65
+index 00000000000..8dd3098d65a
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.h
 @@ -0,0 +1,772 @@
@@ -13447,7 +13447,7 @@ index 0000000000..8dd3098d65
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_shader_container_webgpu.cpp b/drivers/webgpu/rendering_shader_container_webgpu.cpp
 new file mode 100644
-index 0000000000..43ceb94f7f
+index 00000000000..43ceb94f7f1
 --- /dev/null
 +++ b/drivers/webgpu/rendering_shader_container_webgpu.cpp
 @@ -0,0 +1,355 @@
@@ -13808,7 +13808,7 @@ index 0000000000..43ceb94f7f
 +
 diff --git a/drivers/webgpu/rendering_shader_container_webgpu.h b/drivers/webgpu/rendering_shader_container_webgpu.h
 new file mode 100644
-index 0000000000..dad0b0a2ed
+index 00000000000..dad0b0a2ed6
 --- /dev/null
 +++ b/drivers/webgpu/rendering_shader_container_webgpu.h
 @@ -0,0 +1,125 @@
@@ -13939,7 +13939,7 @@ index 0000000000..dad0b0a2ed
 +
 diff --git a/drivers/webgpu/spirv_preprocess.cpp b/drivers/webgpu/spirv_preprocess.cpp
 new file mode 100644
-index 0000000000..5416e94d29
+index 00000000000..5416e94d291
 --- /dev/null
 +++ b/drivers/webgpu/spirv_preprocess.cpp
 @@ -0,0 +1,3359 @@
@@ -17304,7 +17304,7 @@ index 0000000000..5416e94d29
 +} // namespace spirv_preprocess
 diff --git a/drivers/webgpu/spirv_preprocess.h b/drivers/webgpu/spirv_preprocess.h
 new file mode 100644
-index 0000000000..9a2344dfd2
+index 00000000000..9a2344dfd23
 --- /dev/null
 +++ b/drivers/webgpu/spirv_preprocess.h
 @@ -0,0 +1,216 @@
@@ -17526,7 +17526,7 @@ index 0000000000..9a2344dfd2
 +} // namespace spirv_preprocess
 diff --git a/drivers/webgpu/spirv_to_wgsl.cpp b/drivers/webgpu/spirv_to_wgsl.cpp
 new file mode 100644
-index 0000000000..c119d06b2f
+index 00000000000..c119d06b2f9
 --- /dev/null
 +++ b/drivers/webgpu/spirv_to_wgsl.cpp
 @@ -0,0 +1,81 @@
@@ -17613,7 +17613,7 @@ index 0000000000..c119d06b2f
 +}
 diff --git a/drivers/webgpu/spirv_to_wgsl.h b/drivers/webgpu/spirv_to_wgsl.h
 new file mode 100644
-index 0000000000..0615e2ce48
+index 00000000000..0615e2ce487
 --- /dev/null
 +++ b/drivers/webgpu/spirv_to_wgsl.h
 @@ -0,0 +1,46 @@
@@ -17665,7 +17665,7 @@ index 0000000000..0615e2ce48
 +char *webgpu_spirv_to_wgsl_prepared(const uint8_t *p_spv, int p_size, String *r_error);
 diff --git a/drivers/webgpu/tint_cli/.gitignore b/drivers/webgpu/tint_cli/.gitignore
 new file mode 100644
-index 0000000000..5f3d2b1a79
+index 00000000000..5f3d2b1a798
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/.gitignore
 @@ -0,0 +1,2 @@
@@ -17673,7 +17673,7 @@ index 0000000000..5f3d2b1a79
 +fuzz/corpus/
 diff --git a/drivers/webgpu/tint_cli/build.sh b/drivers/webgpu/tint_cli/build.sh
 new file mode 100644
-index 0000000000..d6b6895b19
+index 00000000000..d6b6895b19f
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/build.sh
 @@ -0,0 +1,330 @@
@@ -18007,9 +18007,78 @@ index 0000000000..d6b6895b19
 +mkdir -p "$CACHE_ROOT/$KEY"
 +cp bin/tint_convert_cli "$CACHED"
 +echo "Cached: $CACHED"
+diff --git a/drivers/webgpu/tint_cli/core/os/os.h b/drivers/webgpu/tint_cli/core/os/os.h
+new file mode 100644
+index 00000000000..c2a5aae42f7
+--- /dev/null
++++ b/drivers/webgpu/tint_cli/core/os/os.h
+@@ -0,0 +1,5 @@
++// Minimal shim for core/os/os.h — standalone CLI builds only.
++// spirv_preprocess.cpp only needs String from the Godot core for the host tool.
++#pragma once
++
++#include "core/string/ustring.h"
+diff --git a/drivers/webgpu/tint_cli/core/string/ustring.h b/drivers/webgpu/tint_cli/core/string/ustring.h
+new file mode 100644
+index 00000000000..4ae76a13157
+--- /dev/null
++++ b/drivers/webgpu/tint_cli/core/string/ustring.h
+@@ -0,0 +1,52 @@
++// Minimal shim for Godot's String — standalone CLI builds only.
++// The host-side tint_convert_cli must not pull in Godot's core (it needs a
++// platform_config.h generated per target), so the few String operations used
++// by spirv_preprocess are mapped onto std::string here.
++#pragma once
++
++#include <cstdint>
++#include <cstdio>
++#include <string>
++
++class String {
++	std::string _s;
++
++public:
++	String() = default;
++	String(const char *p_str) : _s(p_str ? p_str : "") {}
++	String(const std::string &p_str) : _s(p_str) {}
++
++	String &operator=(const char *p_str) {
++		_s = p_str ? p_str : "";
++		return *this;
++	}
++	String &operator=(const std::string &p_str) {
++		_s = p_str;
++		return *this;
++	}
++
++	bool is_empty() const { return _s.empty(); }
++	size_t length() const { return _s.size(); }
++	const char *get_data() const { return _s.c_str(); }
++	std::string utf8() const { return _s; }
++
++	String operator+(const String &p_other) const { return String(_s + p_other._s); }
++	String operator+(const char *p_other) const { return String(_s + (p_other ? p_other : "")); }
++	String &operator+=(const String &p_other) {
++		_s += p_other._s;
++		return *this;
++	}
++	String &operator+=(const char *p_other) {
++		_s += (p_other ? p_other : "");
++		return *this;
++	}
++
++	bool operator==(const String &p_other) const { return _s == p_other._s; }
++	bool operator==(const char *p_other) const { return _s == (p_other ? p_other : ""); }
++	bool operator!=(const String &p_other) const { return _s != p_other._s; }
++	bool operator!=(const char *p_other) const { return _s != (p_other ? p_other : ""); }
++};
++
++inline String itos(int64_t p_val) {
++	return String(std::to_string(p_val));
++}
 diff --git a/drivers/webgpu/tint_cli/core/templates/hash_map.h b/drivers/webgpu/tint_cli/core/templates/hash_map.h
 new file mode 100644
-index 0000000000..92f6511c04
+index 00000000000..92f6511c042
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/core/templates/hash_map.h
 @@ -0,0 +1,77 @@
@@ -18092,7 +18161,7 @@ index 0000000000..92f6511c04
 +};
 diff --git a/drivers/webgpu/tint_cli/core/templates/hash_set.h b/drivers/webgpu/tint_cli/core/templates/hash_set.h
 new file mode 100644
-index 0000000000..f02678c806
+index 00000000000..f02678c8061
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/core/templates/hash_set.h
 @@ -0,0 +1,25 @@
@@ -18123,10 +18192,10 @@ index 0000000000..f02678c806
 +};
 diff --git a/drivers/webgpu/tint_cli/core/templates/vector.h b/drivers/webgpu/tint_cli/core/templates/vector.h
 new file mode 100644
-index 0000000000..4d4f0f2082
+index 00000000000..667b594802d
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/core/templates/vector.h
-@@ -0,0 +1,48 @@
+@@ -0,0 +1,49 @@
 +// Minimal shim for Godot's Vector<T> — standalone CLI builds only.
 +// Maps to std::vector with Godot-compatible API surface.
 +#pragma once
@@ -18134,6 +18203,7 @@ index 0000000000..4d4f0f2082
 +#include <cstdint>
 +#include <cstring>
 +#include <vector>
++#include "core/string/ustring.h"
 +
 +template <typename T>
 +class Vector {
@@ -18177,7 +18247,7 @@ index 0000000000..4d4f0f2082
 +};
 diff --git a/drivers/webgpu/tint_cli/fuzz/build_fuzzers.sh b/drivers/webgpu/tint_cli/fuzz/build_fuzzers.sh
 new file mode 100644
-index 0000000000..c35acaa566
+index 00000000000..c35acaa5666
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/fuzz/build_fuzzers.sh
 @@ -0,0 +1,255 @@
@@ -18438,7 +18508,7 @@ index 0000000000..c35acaa566
 +fi
 diff --git a/drivers/webgpu/tint_cli/fuzz/fuzz_preprocess_passes.cpp b/drivers/webgpu/tint_cli/fuzz/fuzz_preprocess_passes.cpp
 new file mode 100644
-index 0000000000..0205eae8df
+index 00000000000..0205eae8df0
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/fuzz/fuzz_preprocess_passes.cpp
 @@ -0,0 +1,38 @@
@@ -18482,7 +18552,7 @@ index 0000000000..0205eae8df
 +}
 diff --git a/drivers/webgpu/tint_cli/fuzz/fuzz_spirv_to_wgsl.cpp b/drivers/webgpu/tint_cli/fuzz/fuzz_spirv_to_wgsl.cpp
 new file mode 100644
-index 0000000000..edd29dee01
+index 00000000000..edd29dee015
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/fuzz/fuzz_spirv_to_wgsl.cpp
 @@ -0,0 +1,93 @@
@@ -18581,7 +18651,7 @@ index 0000000000..edd29dee01
 +}
 diff --git a/drivers/webgpu/tint_cli/fuzz/fuzz_split_samplers.cpp b/drivers/webgpu/tint_cli/fuzz/fuzz_split_samplers.cpp
 new file mode 100644
-index 0000000000..ac99e04a84
+index 00000000000..ac99e04a84f
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/fuzz/fuzz_split_samplers.cpp
 @@ -0,0 +1,22 @@
@@ -18609,7 +18679,7 @@ index 0000000000..ac99e04a84
 +}
 diff --git a/drivers/webgpu/tint_cli/fuzz/standalone_driver.cpp b/drivers/webgpu/tint_cli/fuzz/standalone_driver.cpp
 new file mode 100644
-index 0000000000..fa8c0e46ee
+index 00000000000..fa8c0e46ee2
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/fuzz/standalone_driver.cpp
 @@ -0,0 +1,142 @@
@@ -18757,7 +18827,7 @@ index 0000000000..fa8c0e46ee
 +}
 diff --git a/drivers/webgpu/tint_cli/main.cpp b/drivers/webgpu/tint_cli/main.cpp
 new file mode 100644
-index 0000000000..43cb243c32
+index 00000000000..43cb243c325
 --- /dev/null
 +++ b/drivers/webgpu/tint_cli/main.cpp
 @@ -0,0 +1,257 @@
@@ -19020,7 +19090,7 @@ index 0000000000..43cb243c32
 +}
 diff --git a/drivers/webgpu/tint_wrapper.cpp b/drivers/webgpu/tint_wrapper.cpp
 new file mode 100644
-index 0000000000..b05b9a91f3
+index 00000000000..b05b9a91f35
 --- /dev/null
 +++ b/drivers/webgpu/tint_wrapper.cpp
 @@ -0,0 +1,59 @@
@@ -19085,7 +19155,7 @@ index 0000000000..b05b9a91f3
 +}
 diff --git a/drivers/webgpu/tint_wrapper.h b/drivers/webgpu/tint_wrapper.h
 new file mode 100644
-index 0000000000..05f35d7bc4
+index 00000000000..05f35d7bc43
 --- /dev/null
 +++ b/drivers/webgpu/tint_wrapper.h
 @@ -0,0 +1,29 @@
@@ -19120,7 +19190,7 @@ index 0000000000..05f35d7bc4
 +#endif // TINT_WRAPPER_H
 diff --git a/drivers/webgpu/webgpu_objects.h b/drivers/webgpu/webgpu_objects.h
 new file mode 100644
-index 0000000000..1be34ab5d8
+index 00000000000..1be34ab5d8d
 --- /dev/null
 +++ b/drivers/webgpu/webgpu_objects.h
 @@ -0,0 +1,562 @@
@@ -19688,7 +19758,7 @@ index 0000000000..1be34ab5d8
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/wgsl_cache_blob.h b/drivers/webgpu/wgsl_cache_blob.h
 new file mode 100644
-index 0000000000..2f6d80eaea
+index 00000000000..2f6d80eaea6
 --- /dev/null
 +++ b/drivers/webgpu/wgsl_cache_blob.h
 @@ -0,0 +1,141 @@
@@ -19835,7 +19905,7 @@ index 0000000000..2f6d80eaea
 +} // namespace WgslCacheBlob
 diff --git a/drivers/webgpu/wgsl_precompile.py b/drivers/webgpu/wgsl_precompile.py
 new file mode 100644
-index 0000000000..cd825ac3a8
+index 00000000000..cd825ac3a80
 --- /dev/null
 +++ b/drivers/webgpu/wgsl_precompile.py
 @@ -0,0 +1,973 @@

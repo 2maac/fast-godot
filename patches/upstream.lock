@@ -1,4 +1,4 @@
 # Godot source this patch stack applies to.
 godot_repo   = "https://github.com/godotengine/godot"
-godot_tag    = "master (4.8.0-beta)"
-godot_commit = "67421f36e5069e62573c44beb8dd2f8f91e065b0"
+godot_tag    = "master (4.8.0-rc1)"
+godot_commit = "7c97c297793ce4711679491d34693a5719a79ebe"

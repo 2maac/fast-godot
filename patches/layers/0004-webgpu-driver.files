@@ -16,6 +16,8 @@ drivers/webgpu/spirv_to_wgsl.cpp
 drivers/webgpu/spirv_to_wgsl.h
 drivers/webgpu/tint_cli/.gitignore
 drivers/webgpu/tint_cli/build.sh
+drivers/webgpu/tint_cli/core/os/os.h
+drivers/webgpu/tint_cli/core/string/ustring.h
 drivers/webgpu/tint_cli/core/templates/hash_map.h
 drivers/webgpu/tint_cli/core/templates/hash_set.h
 drivers/webgpu/tint_cli/core/templates/vector.h

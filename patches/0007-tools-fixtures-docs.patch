@@ -1,5 +1,5 @@
 diff --git a/.gitignore b/.gitignore
-index 1406aa529c..e10f4e246e 100644
+index 1406aa529c1..e10f4e246ea 100644
 --- a/.gitignore
 +++ b/.gitignore
 @@ -396,3 +396,32 @@ $RECYCLE.BIN/
@@ -37,7 +37,7 @@ index 1406aa529c..e10f4e246e 100644
 +test_project/wgsl_bake/
 diff --git a/WEBGPU_DRIVER_MIGRATION.md b/WEBGPU_DRIVER_MIGRATION.md
 new file mode 100644
-index 0000000000..11d061a9d6
+index 00000000000..11d061a9d6f
 --- /dev/null
 +++ b/WEBGPU_DRIVER_MIGRATION.md
 @@ -0,0 +1,349 @@
@@ -392,7 +392,7 @@ index 0000000000..11d061a9d6
 +exclusions (their census: TonemapMobile x2, Octmap x6).
 diff --git a/docs/_config.yml b/docs/_config.yml
 new file mode 100644
-index 0000000000..730f92deee
+index 00000000000..730f92deee6
 --- /dev/null
 +++ b/docs/_config.yml
 @@ -0,0 +1,9 @@
@@ -16788,7 +16788,7 @@ HcmV?d00001
 
 diff --git a/docs/callable-function.md b/docs/callable-function.md
 new file mode 100644
-index 0000000000..3dff8fd9f9
+index 00000000000..3dff8fd9f90
 --- /dev/null
 +++ b/docs/callable-function.md
 @@ -0,0 +1,61 @@
@@ -16855,7 +16855,7 @@ index 0000000000..3dff8fd9f9
 +as the `Callable` does, so the reference you keep is what keeps them valid.
 diff --git a/docs/cffi.md b/docs/cffi.md
 new file mode 100644
-index 0000000000..f1f9526d01
+index 00000000000..f1f9526d01a
 --- /dev/null
 +++ b/docs/cffi.md
 @@ -0,0 +1,164 @@
@@ -17025,7 +17025,7 @@ index 0000000000..f1f9526d01
 +character APIs. On Windows `wchar_t` is 16 bits, on Linux and macOS it is 32.
 diff --git a/docs/examples.md b/docs/examples.md
 new file mode 100644
-index 0000000000..7d84587849
+index 00000000000..7d845878493
 --- /dev/null
 +++ b/docs/examples.md
 @@ -0,0 +1,189 @@
@@ -17220,7 +17220,7 @@ index 0000000000..7d84587849
 +The Variant must outlive the pointer: `CFFI.get_pointer` borrows, it does not copy.
 diff --git a/docs/function.md b/docs/function.md
 new file mode 100644
-index 0000000000..435e83a01e
+index 00000000000..435e83a01e5
 --- /dev/null
 +++ b/docs/function.md
 @@ -0,0 +1,44 @@
@@ -17270,7 +17270,7 @@ index 0000000000..435e83a01e
 +signature accurately instead of using `"pointer"` everywhere.
 diff --git a/docs/index.md b/docs/index.md
 new file mode 100644
-index 0000000000..2f0d212708
+index 00000000000..2f0d212708c
 --- /dev/null
 +++ b/docs/index.md
 @@ -0,0 +1,46 @@
@@ -17322,7 +17322,7 @@ index 0000000000..2f0d212708
 +is a runtime error rather than a silent truncation.
 diff --git a/docs/library-handle.md b/docs/library-handle.md
 new file mode 100644
-index 0000000000..a8943469ec
+index 00000000000..a8943469ece
 --- /dev/null
 +++ b/docs/library-handle.md
 @@ -0,0 +1,50 @@
@@ -17378,7 +17378,7 @@ index 0000000000..a8943469ec
 +The pointer refers to the library's storage; it stays valid while the library is loaded.
 diff --git a/docs/pointer.md b/docs/pointer.md
 new file mode 100644
-index 0000000000..32f158c5fc
+index 00000000000..32f158c5fca
 --- /dev/null
 +++ b/docs/pointer.md
 @@ -0,0 +1,142 @@
@@ -17526,7 +17526,7 @@ index 0000000000..32f158c5fc
 +point is lifetime.
 diff --git a/docs/span.md b/docs/span.md
 new file mode 100644
-index 0000000000..04b9c94b30
+index 00000000000..04b9c94b302
 --- /dev/null
 +++ b/docs/span.md
 @@ -0,0 +1,124 @@
@@ -17656,7 +17656,7 @@ index 0000000000..04b9c94b30
 +`CFFISpan.from` does **not** own anything: the memory it views must outlive the span.
 diff --git a/docs/stream-peer.md b/docs/stream-peer.md
 new file mode 100644
-index 0000000000..bc63908511
+index 00000000000..bc639085112
 --- /dev/null
 +++ b/docs/stream-peer.md
 @@ -0,0 +1,46 @@
@@ -17708,7 +17708,7 @@ index 0000000000..bc63908511
 +over a borrowed buffer must not outlive the buffer.
 diff --git a/docs/type-strings.md b/docs/type-strings.md
 new file mode 100644
-index 0000000000..9a2733be84
+index 00000000000..9a2733be84b
 --- /dev/null
 +++ b/docs/type-strings.md
 @@ -0,0 +1,65 @@
@@ -17779,7 +17779,7 @@ index 0000000000..9a2733be84
 +Or pass a `Dictionary` where a type is accepted, which defines the struct inline.
 diff --git a/docs/types.md b/docs/types.md
 new file mode 100644
-index 0000000000..5ffc2bca87
+index 00000000000..5ffc2bca87f
 --- /dev/null
 +++ b/docs/types.md
 @@ -0,0 +1,98 @@
@@ -20344,7 +20344,7 @@ HcmV?d00001
 
 diff --git a/test_project/.godot/editor/export-3070c538c03ee49b7677ff960a3f5195-main.scn-folding-a944da49341e1e0a5ff3d39c72060b2d.cfg b/test_project/.godot/editor/export-3070c538c03ee49b7677ff960a3f5195-main.scn-folding-a944da49341e1e0a5ff3d39c72060b2d.cfg
 new file mode 100644
-index 0000000000..e860dd492d
+index 00000000000..e860dd492d4
 --- /dev/null
 +++ b/test_project/.godot/editor/export-3070c538c03ee49b7677ff960a3f5195-main.scn-folding-a944da49341e1e0a5ff3d39c72060b2d.cfg
 @@ -0,0 +1,3 @@
@@ -20353,7 +20353,7 @@ index 0000000000..e860dd492d
 +sections_unfolded=PackedStringArray()
 diff --git a/test_project/.godot/editor/filesystem_cache10 b/test_project/.godot/editor/filesystem_cache10
 new file mode 100644
-index 0000000000..3a9ce0ca7e
+index 00000000000..3a9ce0ca7ea
 --- /dev/null
 +++ b/test_project/.godot/editor/filesystem_cache10
 @@ -0,0 +1,8 @@
@@ -20367,7 +20367,7 @@ index 0000000000..3a9ce0ca7e
 +depth_scan.gdshader::Shader::8816738736478517900::1795589946::0::1::::<><><>0<>0<><>::
 diff --git a/test_project/.godot/editor/main.tscn-folding-3070c538c03ee49b7677ff960a3f5195.cfg b/test_project/.godot/editor/main.tscn-folding-3070c538c03ee49b7677ff960a3f5195.cfg
 new file mode 100644
-index 0000000000..4790b6f12c
+index 00000000000..4790b6f12c1
 --- /dev/null
 +++ b/test_project/.godot/editor/main.tscn-folding-3070c538c03ee49b7677ff960a3f5195.cfg
 @@ -0,0 +1,6 @@
@@ -20379,7 +20379,7 @@ index 0000000000..4790b6f12c
 +animation_groups_folded=[]
 diff --git a/test_project/.godot/editor/project_metadata.cfg b/test_project/.godot/editor/project_metadata.cfg
 new file mode 100644
-index 0000000000..900674efc0
+index 00000000000..900674efc0c
 --- /dev/null
 +++ b/test_project/.godot/editor/project_metadata.cfg
 @@ -0,0 +1,11 @@
@@ -20396,21 +20396,21 @@ index 0000000000..900674efc0
 +scenes=["res://main.tscn"]
 diff --git a/test_project/.godot/exported/133200997/file_cache b/test_project/.godot/exported/133200997/file_cache
 new file mode 100644
-index 0000000000..2f9a4db6c6
+index 00000000000..2f9a4db6c6e
 --- /dev/null
 +++ b/test_project/.godot/exported/133200997/file_cache
 @@ -0,0 +1 @@
 +res://main.tscn::40cbfb6bc6723a65cf167f01026f69ac::1795586563::res://.godot/exported/133200997/export-3070c538c03ee49b7677ff960a3f5195-main.scn
 diff --git a/test_project/.godot/global_script_class_cache.cfg b/test_project/.godot/global_script_class_cache.cfg
 new file mode 100644
-index 0000000000..32c239432e
+index 00000000000..32c239432e2
 --- /dev/null
 +++ b/test_project/.godot/global_script_class_cache.cfg
 @@ -0,0 +1 @@
 +list=[]
 diff --git a/test_project/.godot/imported/index.png-659c11691fe5279cf81f33eb936290a4.md5 b/test_project/.godot/imported/index.png-659c11691fe5279cf81f33eb936290a4.md5
 new file mode 100644
-index 0000000000..84b3ab922f
+index 00000000000..84b3ab922fc
 --- /dev/null
 +++ b/test_project/.godot/imported/index.png-659c11691fe5279cf81f33eb936290a4.md5
 @@ -0,0 +1,3 @@
@@ -20419,7 +20419,7 @@ index 0000000000..84b3ab922f
 +
 diff --git a/test_project/export_presets.cfg b/test_project/export_presets.cfg
 new file mode 100644
-index 0000000000..10f8cf8a3d
+index 00000000000..10f8cf8a3d3
 --- /dev/null
 +++ b/test_project/export_presets.cfg
 @@ -0,0 +1,49 @@
@@ -20474,7 +20474,7 @@ index 0000000000..10f8cf8a3d
 +grit/optimize="Speed"
 diff --git a/test_project/main.gd b/test_project/main.gd
 new file mode 100644
-index 0000000000..d9e418aa9e
+index 00000000000..d9e418aa9ef
 --- /dev/null
 +++ b/test_project/main.gd
 @@ -0,0 +1,203 @@
@@ -20683,14 +20683,14 @@ index 0000000000..d9e418aa9e
 +			JavaScriptBridge.eval("window.__webgpu_fps = %d; window.__webgpu_draws = %d;" % [_fps, draws])
 diff --git a/test_project/main.gd.uid b/test_project/main.gd.uid
 new file mode 100644
-index 0000000000..7b19698622
+index 00000000000..7b196986229
 --- /dev/null
 +++ b/test_project/main.gd.uid
 @@ -0,0 +1 @@
 +uid://b3nvd4qc5xcgi
 diff --git a/test_project/main.tscn b/test_project/main.tscn
 new file mode 100644
-index 0000000000..823a75fc77
+index 00000000000..823a75fc774
 --- /dev/null
 +++ b/test_project/main.tscn
 @@ -0,0 +1,114 @@
@@ -20810,7 +20810,7 @@ index 0000000000..823a75fc77
 +text = "Fast_Godot + WebGPU smoke test"
 diff --git a/test_project/project.godot b/test_project/project.godot
 new file mode 100644
-index 0000000000..20a3334b7e
+index 00000000000..20a3334b7eb
 --- /dev/null
 +++ b/test_project/project.godot
 @@ -0,0 +1,29 @@
@@ -20845,7 +20845,7 @@ index 0000000000..20a3334b7e
 +environment/defaults/default_clear_color=Color(1, 0, 0, 1)
 diff --git a/test_project/shaders/canvas_shadow.gdshader b/test_project/shaders/canvas_shadow.gdshader
 new file mode 100644
-index 0000000000..c0dd69235a
+index 00000000000..c0dd69235a9
 --- /dev/null
 +++ b/test_project/shaders/canvas_shadow.gdshader
 @@ -0,0 +1,13 @@
@@ -20864,14 +20864,14 @@ index 0000000000..c0dd69235a
 +}
 diff --git a/test_project/shaders/canvas_shadow.gdshader.uid b/test_project/shaders/canvas_shadow.gdshader.uid
 new file mode 100644
-index 0000000000..8005ac6c7a
+index 00000000000..8005ac6c7ae
 --- /dev/null
 +++ b/test_project/shaders/canvas_shadow.gdshader.uid
 @@ -0,0 +1 @@
 +uid://blnfbavclgavq
 diff --git a/test_project/shaders/depth_scan.gdshader b/test_project/shaders/depth_scan.gdshader
 new file mode 100644
-index 0000000000..9d2de5aa66
+index 00000000000..9d2de5aa667
 --- /dev/null
 +++ b/test_project/shaders/depth_scan.gdshader
 @@ -0,0 +1,28 @@
@@ -20905,13 +20905,13 @@ index 0000000000..9d2de5aa66
 +}
 diff --git a/test_project/shaders/depth_scan.gdshader.uid b/test_project/shaders/depth_scan.gdshader.uid
 new file mode 100644
-index 0000000000..a235e5eb99
+index 00000000000..a235e5eb992
 --- /dev/null
 +++ b/test_project/shaders/depth_scan.gdshader.uid
 @@ -0,0 +1 @@
 +uid://dxu5ntcle3rce
 diff --git a/tests/SCsub b/tests/SCsub
-index acf6984943..58cb786404 100644
+index acf69849431..58cb786404d 100644
 --- a/tests/SCsub
 +++ b/tests/SCsub
 @@ -7,6 +7,11 @@ import test_builders
@@ -20928,7 +20928,7 @@ index acf6984943..58cb786404 100644
  force_link_header = env.CommandNoCache(
 diff --git a/tests/core/crypto/test_ghash.cpp b/tests/core/crypto/test_ghash.cpp
 new file mode 100644
-index 0000000000..5ee5d8a79d
+index 00000000000..5ee5d8a79dd
 --- /dev/null
 +++ b/tests/core/crypto/test_ghash.cpp
 @@ -0,0 +1,267 @@
@@ -21201,7 +21201,7 @@ index 0000000000..5ee5d8a79d
 +} // namespace TestGhash
 diff --git a/tests/core/io/test_fae_bench.cpp b/tests/core/io/test_fae_bench.cpp
 new file mode 100644
-index 0000000000..86cde4b451
+index 00000000000..86cde4b4511
 --- /dev/null
 +++ b/tests/core/io/test_fae_bench.cpp
 @@ -0,0 +1,130 @@
@@ -21337,7 +21337,7 @@ index 0000000000..86cde4b451
 +} // namespace TestFaeBench
 diff --git a/tests/core/io/test_file_access_encrypted.cpp b/tests/core/io/test_file_access_encrypted.cpp
 new file mode 100644
-index 0000000000..4ba47d8301
+index 00000000000..4ba47d83012
 --- /dev/null
 +++ b/tests/core/io/test_file_access_encrypted.cpp
 @@ -0,0 +1,616 @@
@@ -21958,7 +21958,7 @@ index 0000000000..4ba47d8301
 +
 +} // namespace TestFileAccessEncrypted
 diff --git a/tests/core/io/test_logger.cpp b/tests/core/io/test_logger.cpp
-index f4edcdb6b4..3edfea50d9 100644
+index f4edcdb6b48..3edfea50d9d 100644
 --- a/tests/core/io/test_logger.cpp
 +++ b/tests/core/io/test_logger.cpp
 @@ -40,11 +40,59 @@ TEST_FORCE_LINK(test_logger)
@@ -22107,7 +22107,7 @@ index f4edcdb6b4..3edfea50d9 100644
  	cleanup_logs();
  }
 diff --git a/tests/core/io/test_tcp_server.cpp b/tests/core/io/test_tcp_server.cpp
-index aa530000a4..6b82789480 100644
+index aa530000a42..6b827894804 100644
 --- a/tests/core/io/test_tcp_server.cpp
 +++ b/tests/core/io/test_tcp_server.cpp
 @@ -90,6 +90,19 @@ Ref<StreamPeerTCP> accept_connection(Ref<TCPServer> &p_server) {
@@ -22219,7 +22219,7 @@ index aa530000a4..6b82789480 100644
  	client_from_server->disconnect_from_host();
 diff --git a/tests/core/os/test_secure_memory.cpp b/tests/core/os/test_secure_memory.cpp
 new file mode 100644
-index 0000000000..a6f18f33b6
+index 00000000000..a6f18f33b66
 --- /dev/null
 +++ b/tests/core/os/test_secure_memory.cpp
 @@ -0,0 +1,76 @@
@@ -22301,7 +22301,7 @@ index 0000000000..a6f18f33b6
 +} // namespace TestSecureMemory
 diff --git a/tools/build-editor.cmd b/tools/build-editor.cmd
 new file mode 100644
-index 0000000000..8f2a5f5695
+index 00000000000..8f2a5f5695e
 --- /dev/null
 +++ b/tools/build-editor.cmd
 @@ -0,0 +1,136 @@
@@ -22443,7 +22443,7 @@ index 0000000000..8f2a5f5695
 +goto :eof
 diff --git a/tools/build-editor.sh b/tools/build-editor.sh
 new file mode 100755
-index 0000000000..bb9a03a41f
+index 00000000000..bb9a03a41f5
 --- /dev/null
 +++ b/tools/build-editor.sh
 @@ -0,0 +1,60 @@
@@ -22509,7 +22509,7 @@ index 0000000000..bb9a03a41f
 +fi
 diff --git a/tools/build.sh b/tools/build.sh
 new file mode 100755
-index 0000000000..0f0c11b9d9
+index 00000000000..0f0c11b9d9d
 --- /dev/null
 +++ b/tools/build.sh
 @@ -0,0 +1,16 @@
@@ -22531,7 +22531,7 @@ index 0000000000..0f0c11b9d9
 +scons platform="$PLATFORM" target=template_release -j"$JOBS" "$@"
 diff --git a/tools/export_webgpu_grit.sh b/tools/export_webgpu_grit.sh
 new file mode 100755
-index 0000000000..8799958ecf
+index 00000000000..8799958ecfe
 --- /dev/null
 +++ b/tools/export_webgpu_grit.sh
 @@ -0,0 +1,67 @@
@@ -22604,7 +22604,7 @@ index 0000000000..8799958ecf
 +echo "[export] serve it with: cd \"$OUT_DIR\" && python3 -m http.server 8125 --bind 127.0.0.1"
 diff --git a/tools/grit_build.py b/tools/grit_build.py
 new file mode 100755
-index 0000000000..0b85ed40ff
+index 00000000000..0b85ed40ff3
 --- /dev/null
 +++ b/tools/grit_build.py
 @@ -0,0 +1,960 @@
@@ -23570,7 +23570,7 @@ index 0000000000..0b85ed40ff
 +        sys.exit(1)
 diff --git a/tools/grit_stage_editor.sh b/tools/grit_stage_editor.sh
 new file mode 100755
-index 0000000000..c5f7f4fda0
+index 00000000000..c5f7f4fda04
 --- /dev/null
 +++ b/tools/grit_stage_editor.sh
 @@ -0,0 +1,80 @@
@@ -23656,7 +23656,7 @@ index 0000000000..c5f7f4fda0
 +fi
 diff --git a/tools/smoke_webgpu.js b/tools/smoke_webgpu.js
 new file mode 100644
-index 0000000000..bb77e2c3fb
+index 00000000000..bb77e2c3fbb
 --- /dev/null
 +++ b/tools/smoke_webgpu.js
 @@ -0,0 +1,95 @@
@@ -23757,7 +23757,7 @@ index 0000000000..bb77e2c3fb
 +});
 diff --git a/tools/stage_editor.sh b/tools/stage_editor.sh
 new file mode 100755
-index 0000000000..b32ffb71d0
+index 00000000000..b32ffb71d04
 --- /dev/null
 +++ b/tools/stage_editor.sh
 @@ -0,0 +1,47 @@
@@ -23810,7 +23810,7 @@ index 0000000000..b32ffb71d0
 +echo "[stage] $VERSION"
 diff --git a/tools/toolchain/download_toolchain.cmd b/tools/toolchain/download_toolchain.cmd
 new file mode 100755
-index 0000000000..04a5a4d239
+index 00000000000..04a5a4d2398
 --- /dev/null
 +++ b/tools/toolchain/download_toolchain.cmd
 @@ -0,0 +1,150 @@
@@ -23966,7 +23966,7 @@ index 0000000000..04a5a4d239
 +exit /b 0
 diff --git a/tools/toolchain/download_toolchain.sh b/tools/toolchain/download_toolchain.sh
 new file mode 100755
-index 0000000000..6d365bac58
+index 00000000000..6d365bac58e
 --- /dev/null
 +++ b/tools/toolchain/download_toolchain.sh
 @@ -0,0 +1,204 @@
@@ -24176,7 +24176,7 @@ index 0000000000..6d365bac58
 +fi
 diff --git a/tools/toolchain/fetch_linux_toolchain.sh b/tools/toolchain/fetch_linux_toolchain.sh
 new file mode 100755
-index 0000000000..c799ced53e
+index 00000000000..c799ced53e2
 --- /dev/null
 +++ b/tools/toolchain/fetch_linux_toolchain.sh
 @@ -0,0 +1,60 @@
@@ -24242,7 +24242,7 @@ index 0000000000..c799ced53e
 +JSON
 diff --git a/tools/toolchain/linux_gcc_packages.txt b/tools/toolchain/linux_gcc_packages.txt
 new file mode 100644
-index 0000000000..9746fa0731
+index 00000000000..9746fa0731d
 --- /dev/null
 +++ b/tools/toolchain/linux_gcc_packages.txt
 @@ -0,0 +1,20 @@
@@ -24268,7 +24268,7 @@ index 0000000000..9746fa0731
 +http://archive.ubuntu.com/ubuntu/pool/main/b/binutils/libbinutils_2.34-6ubuntu1_amd64.deb 7a7da2b3a4c7586fdf11b21ee3144ee1bd3ccb17250644810f1332c9214b29d7
 diff --git a/tools/toolchain/make_bundle_zip.py b/tools/toolchain/make_bundle_zip.py
 new file mode 100644
-index 0000000000..5d05832529
+index 00000000000..5d058325293
 --- /dev/null
 +++ b/tools/toolchain/make_bundle_zip.py
 @@ -0,0 +1,42 @@
@@ -24316,7 +24316,7 @@ index 0000000000..5d05832529
 +    sys.exit(main(sys.argv))
 diff --git a/tools/toolchain/make_linux_gcc.sh b/tools/toolchain/make_linux_gcc.sh
 new file mode 100755
-index 0000000000..e045de19f6
+index 00000000000..e045de19f6f
 --- /dev/null
 +++ b/tools/toolchain/make_linux_gcc.sh
 @@ -0,0 +1,108 @@
@@ -24430,7 +24430,7 @@ index 0000000000..e045de19f6
 +"$B/gcc/bin/wayland-scanner" -v
 diff --git a/webgpu/DRIVER_README.md b/webgpu/DRIVER_README.md
 new file mode 100644
-index 0000000000..c9485e958c
+index 00000000000..c9485e958c8
 --- /dev/null
 +++ b/webgpu/DRIVER_README.md
 @@ -0,0 +1,140 @@
@@ -24576,7 +24576,7 @@ index 0000000000..c9485e958c
 +clear error message if the browser doesn't support it.
 diff --git a/webgpu/UPSTREAM_README.md b/webgpu/UPSTREAM_README.md
 new file mode 100644
-index 0000000000..a0a9308960
+index 00000000000..a0a93089600
 --- /dev/null
 +++ b/webgpu/UPSTREAM_README.md
 @@ -0,0 +1,270 @@
@@ -24852,7 +24852,7 @@ index 0000000000..a0a9308960
 +</p>
 diff --git a/webgpu/notes/ASYNC_WEBGPU.md b/webgpu/notes/ASYNC_WEBGPU.md
 new file mode 100644
-index 0000000000..80f98481e7
+index 00000000000..80f98481e72
 --- /dev/null
 +++ b/webgpu/notes/ASYNC_WEBGPU.md
 @@ -0,0 +1,466 @@
@@ -25324,7 +25324,7 @@ index 0000000000..80f98481e7
 +- [ ] Deploy updated compute_heightmap to godotwebgpu.com.
 diff --git a/webgpu/notes/BUFFER_UNMAP_32MB_FLUSH_ROOT_CAUSE.md b/webgpu/notes/BUFFER_UNMAP_32MB_FLUSH_ROOT_CAUSE.md
 new file mode 100644
-index 0000000000..21d2868ef8
+index 00000000000..21d2868ef8a
 --- /dev/null
 +++ b/webgpu/notes/BUFFER_UNMAP_32MB_FLUSH_ROOT_CAUSE.md
 @@ -0,0 +1,210 @@
@@ -25540,7 +25540,7 @@ index 0000000000..21d2868ef8
 +| `servers/rendering/rendering_device.cpp:7038` | End-of-frame staging flush |
 diff --git a/webgpu/notes/BUILD_BLOCKERS.md b/webgpu/notes/BUILD_BLOCKERS.md
 new file mode 100644
-index 0000000000..41ab824269
+index 00000000000..41ab824269f
 --- /dev/null
 +++ b/webgpu/notes/BUILD_BLOCKERS.md
 @@ -0,0 +1,425 @@
@@ -25971,7 +25971,7 @@ index 0000000000..41ab824269
 +| `misc/dist/html/` | New/Modified | ~30 lines |
 diff --git a/webgpu/notes/COMMAND_BUFFERING_WASM_TO_JS.md b/webgpu/notes/COMMAND_BUFFERING_WASM_TO_JS.md
 new file mode 100644
-index 0000000000..460f8b2be9
+index 00000000000..460f8b2be95
 --- /dev/null
 +++ b/webgpu/notes/COMMAND_BUFFERING_WASM_TO_JS.md
 @@ -0,0 +1,526 @@
@@ -26503,7 +26503,7 @@ index 0000000000..460f8b2be9
 +- **WebGPU dispatch overhead (arxiv 2604.02344):** 24-71µs per full dispatch cycle depending on backend
 diff --git a/webgpu/notes/COMMAND_STREAM_RECORDER_PERF_OPTIM.md b/webgpu/notes/COMMAND_STREAM_RECORDER_PERF_OPTIM.md
 new file mode 100644
-index 0000000000..645b463e19
+index 00000000000..645b463e194
 --- /dev/null
 +++ b/webgpu/notes/COMMAND_STREAM_RECORDER_PERF_OPTIM.md
 @@ -0,0 +1,774 @@
@@ -27283,7 +27283,7 @@ index 0000000000..645b463e19
 +
 diff --git a/webgpu/notes/DESIGN.md b/webgpu/notes/DESIGN.md
 new file mode 100644
-index 0000000000..bb770158a5
+index 00000000000..bb770158a5a
 --- /dev/null
 +++ b/webgpu/notes/DESIGN.md
 @@ -0,0 +1,803 @@
@@ -28092,7 +28092,7 @@ index 0000000000..bb770158a5
 +| `fwidth()` | `fwidth()` | Same |
 diff --git a/webgpu/notes/FIX_2D_PLATFORMER.md b/webgpu/notes/FIX_2D_PLATFORMER.md
 new file mode 100644
-index 0000000000..52d848e518
+index 00000000000..52d848e5188
 --- /dev/null
 +++ b/webgpu/notes/FIX_2D_PLATFORMER.md
 @@ -0,0 +1,135 @@
@@ -28233,7 +28233,7 @@ index 0000000000..52d848e518
 +| `godot-demo-projects/2d/platformer/player/player.gd` | Player + Camera2D |
 diff --git a/webgpu/notes/FIX_CONSOLE_ERRORS.md b/webgpu/notes/FIX_CONSOLE_ERRORS.md
 new file mode 100644
-index 0000000000..5a790d176e
+index 00000000000..5a790d176e3
 --- /dev/null
 +++ b/webgpu/notes/FIX_CONSOLE_ERRORS.md
 @@ -0,0 +1,198 @@
@@ -28437,7 +28437,7 @@ index 0000000000..5a790d176e
 +- The JS monkey-patches in `rendering_device_driver_webgpu.cpp::initialize()` intercept every `createRenderPipeline` call plus a parallel `createRenderPipelineAsync` for authoritative error reporting. Worth keeping as the default diagnostic path for WebGPU pipeline bugs — error scopes alone are not sufficient.
 diff --git a/webgpu/notes/FIX_PHASE7.md b/webgpu/notes/FIX_PHASE7.md
 new file mode 100644
-index 0000000000..a1c7a96a8f
+index 00000000000..a1c7a96a8fd
 --- /dev/null
 +++ b/webgpu/notes/FIX_PHASE7.md
 @@ -0,0 +1,123 @@
@@ -28566,7 +28566,7 @@ index 0000000000..a1c7a96a8f
 +  - **Vertex buffer dynamic offsets (the missing piece that caused 2D sprite flicker):** Canvas renderer binds per-batch instance data as a VERTEX buffer via `state.instance_buffers.set_vertex_size(0, ...)`, which routes through `command_render_bind_vertex_buffers`. That function was ignoring `p_dynamic_offsets`, so the CPU rotated writes to slices 0/1/2 but the GPU always read slice 0 — stale data → displaced sprites and wrong spritesheet frames, visible only while values were changing (character moving). Fix mirrors Vulkan: unpack 2-bit `frame_idx` from the mask and offset into `frame_idx * buf->per_frame_size`. Note `per_frame_size`, not `buf->size` — WebGPU's `buf->size` is total physical allocation, unlike Vulkan where `buf_info->size` is already the per-frame size.
 diff --git a/webgpu/notes/IMPLEMENTATION.md b/webgpu/notes/IMPLEMENTATION.md
 new file mode 100644
-index 0000000000..d929b51017
+index 00000000000..d929b510178
 --- /dev/null
 +++ b/webgpu/notes/IMPLEMENTATION.md
 @@ -0,0 +1,103 @@
@@ -28675,7 +28675,7 @@ index 0000000000..d929b51017
 +| `misc/dist/html/full-size.html` | WebGPU detection + status messaging |
 diff --git a/webgpu/notes/INITIAL_PLAN.md b/webgpu/notes/INITIAL_PLAN.md
 new file mode 100644
-index 0000000000..f9048d9f95
+index 00000000000..f9048d9f952
 --- /dev/null
 +++ b/webgpu/notes/INITIAL_PLAN.md
 @@ -0,0 +1,136 @@
@@ -28817,7 +28817,7 @@ index 0000000000..f9048d9f95
 +Let’s make Godot web competitive with Three.js. 🚀
 diff --git a/webgpu/notes/IPC_OPTIMIZATION_SUMMARY.md b/webgpu/notes/IPC_OPTIMIZATION_SUMMARY.md
 new file mode 100644
-index 0000000000..d13f191f93
+index 00000000000..d13f191f934
 --- /dev/null
 +++ b/webgpu/notes/IPC_OPTIMIZATION_SUMMARY.md
 @@ -0,0 +1,351 @@
@@ -29174,7 +29174,7 @@ index 0000000000..d13f191f93
 +The remaining performance gap vs native (1.44x) is dominated by WASM execution overhead for game logic (GDScript, physics at 120Hz × 150 enemies, skeletal animation), which is outside the scope of rendering driver optimizations. The remaining ~8,700 WebGPU API calls per frame (now issued from JS, not WASM) are irreducible with current WebGPU spec capabilities. Future spec additions (multi-draw-indirect, render bundles, bindless textures) could reduce the API call count further, but the practical per-draw optimizations available today are complete. All 18 demo and benchmark scenes pass with 0 GPU errors.
 diff --git a/webgpu/notes/PR_DESCRIPTION.md b/webgpu/notes/PR_DESCRIPTION.md
 new file mode 100644
-index 0000000000..3650ef7adc
+index 00000000000..3650ef7adc7
 --- /dev/null
 +++ b/webgpu/notes/PR_DESCRIPTION.md
 @@ -0,0 +1,124 @@
@@ -29304,7 +29304,7 @@ index 0000000000..3650ef7adc
 +The `compute/heightmap` and `compute/texture` demos are **impossible to run on current WebGL web exports** — they require `RenderingDevice` which is only available with the WebGPU backend.
 diff --git a/webgpu/notes/RESEARCH.md b/webgpu/notes/RESEARCH.md
 new file mode 100644
-index 0000000000..25865dd00d
+index 00000000000..25865dd00da
 --- /dev/null
 +++ b/webgpu/notes/RESEARCH.md
 @@ -0,0 +1,901 @@
@@ -30211,7 +30211,7 @@ index 0000000000..25865dd00d
 +| Max compute workgroup size X | `LIMIT_MAX_COMPUTE_WORKGROUP_SIZE_X` | 256 |
 diff --git a/webgpu/notes/SLOW_WINDOW_OR_TEXTURE_CREATION.md b/webgpu/notes/SLOW_WINDOW_OR_TEXTURE_CREATION.md
 new file mode 100644
-index 0000000000..d7a7bab976
+index 00000000000..d7a7bab976f
 --- /dev/null
 +++ b/webgpu/notes/SLOW_WINDOW_OR_TEXTURE_CREATION.md
 @@ -0,0 +1,95 @@
@@ -30312,7 +30312,7 @@ index 0000000000..d7a7bab976
 +This will tell us whether to fix the bridge (batching) or the browser calls (deferral).
 diff --git a/webgpu/notes/STARTUP_PROFILING.md b/webgpu/notes/STARTUP_PROFILING.md
 new file mode 100644
-index 0000000000..e909a03e0c
+index 00000000000..e909a03e0c8
 --- /dev/null
 +++ b/webgpu/notes/STARTUP_PROFILING.md
 @@ -0,0 +1,411 @@
@@ -30729,7 +30729,7 @@ index 0000000000..e909a03e0c
 +5. **58% fewer render pipelines (190 to 80)** because multiple specialization variants that previously needed separate pipelines now share a single base shader module and differ only in pipeline constants.
 diff --git a/webgpu/notes/TASKS.md b/webgpu/notes/TASKS.md
 new file mode 100644
-index 0000000000..fb1a4075cf
+index 00000000000..fb1a4075cf0
 --- /dev/null
 +++ b/webgpu/notes/TASKS.md
 @@ -0,0 +1,1896 @@
@@ -32631,7 +32631,7 @@ index 0000000000..fb1a4075cf
 +**Investigation**: `wgpuBufferSetLabel()`, `wgpuTextureSetLabel()` etc. are available in emdawnwebgpu. Low-effort to implement — just call the corresponding WebGPU API.
 diff --git a/webgpu/notes/batched_images_to_vram.md b/webgpu/notes/batched_images_to_vram.md
 new file mode 100644
-index 0000000000..176610ed7b
+index 00000000000..176610ed7b2
 --- /dev/null
 +++ b/webgpu/notes/batched_images_to_vram.md
 @@ -0,0 +1,281 @@
@@ -32918,7 +32918,7 @@ index 0000000000..176610ed7b
 +   documenting in the PR that this respects shared-resource semantics.
 diff --git a/webgpu/notes/benchmark_vs_threejs.md b/webgpu/notes/benchmark_vs_threejs.md
 new file mode 100644
-index 0000000000..9e16a525d9
+index 00000000000..9e16a525d91
 --- /dev/null
 +++ b/webgpu/notes/benchmark_vs_threejs.md
 @@ -0,0 +1,176 @@
@@ -33100,7 +33100,7 @@ index 0000000000..9e16a525d9
 +- Both APIs require scene restructuring (single batched object instead of individual nodes/meshes).
 diff --git a/webgpu/notes/finish_async_shader_comp.md b/webgpu/notes/finish_async_shader_comp.md
 new file mode 100644
-index 0000000000..24a19a155d
+index 00000000000..24a19a155d5
 --- /dev/null
 +++ b/webgpu/notes/finish_async_shader_comp.md
 @@ -0,0 +1,326 @@
@@ -33432,7 +33432,7 @@ index 0000000000..24a19a155d
 +- `webgpu_notes/review/async_shader_compilation_final_review.md` — correctness review
 diff --git a/webgpu/notes/manualy_run_benchmark_scenes.md b/webgpu/notes/manualy_run_benchmark_scenes.md
 new file mode 100644
-index 0000000000..003cb7ca89
+index 00000000000..003cb7ca89f
 --- /dev/null
 +++ b/webgpu/notes/manualy_run_benchmark_scenes.md
 @@ -0,0 +1,240 @@
@@ -33678,7 +33678,7 @@ index 0000000000..003cb7ca89
 +```
 diff --git a/webgpu/notes/naga_to_tint.md b/webgpu/notes/naga_to_tint.md
 new file mode 100644
-index 0000000000..83f4562a67
+index 00000000000..83f4562a67e
 --- /dev/null
 +++ b/webgpu/notes/naga_to_tint.md
 @@ -0,0 +1,375 @@
@@ -34059,7 +34059,7 @@ index 0000000000..83f4562a67
 +Passes marked "New for Tint" handle SPIR-V constructs that naga tolerated but Tint rejects. They have no naga equivalent because naga handled them internally.
 diff --git a/webgpu/notes/naga_to_tint_commit_message.md b/webgpu/notes/naga_to_tint_commit_message.md
 new file mode 100644
-index 0000000000..703da09cc7
+index 00000000000..703da09cc70
 --- /dev/null
 +++ b/webgpu/notes/naga_to_tint_commit_message.md
 @@ -0,0 +1,49 @@
@@ -34114,7 +34114,7 @@ index 0000000000..703da09cc7
 +- Rebuild and full CI pass required before committing
 diff --git a/webgpu/notes/naga_to_tint_debugging.md b/webgpu/notes/naga_to_tint_debugging.md
 new file mode 100644
-index 0000000000..b80ace7fc0
+index 00000000000..b80ace7fc05
 --- /dev/null
 +++ b/webgpu/notes/naga_to_tint_debugging.md
 @@ -0,0 +1,431 @@
@@ -34551,7 +34551,7 @@ index 0000000000..b80ace7fc0
 +The one thing to watch: Tint version upgrades. The 6 patched files need to be tracked and re-verified when updating `thirdparty/tint/`.
 diff --git a/webgpu/notes/native_vs_web_benchmarks.md b/webgpu/notes/native_vs_web_benchmarks.md
 new file mode 100644
-index 0000000000..bcf2cbdde4
+index 00000000000..bcf2cbdde4c
 --- /dev/null
 +++ b/webgpu/notes/native_vs_web_benchmarks.md
 @@ -0,0 +1,178 @@
@@ -34735,7 +34735,7 @@ index 0000000000..bcf2cbdde4
 +- WebGPU uses Mobile renderer, WebGL uses Compatibility.
 diff --git a/webgpu/notes/perf_optimization_may3_2026.md b/webgpu/notes/perf_optimization_may3_2026.md
 new file mode 100644
-index 0000000000..a53ec27ab7
+index 00000000000..a53ec27ab76
 --- /dev/null
 +++ b/webgpu/notes/perf_optimization_may3_2026.md
 @@ -0,0 +1,1368 @@
@@ -36109,7 +36109,7 @@ index 0000000000..a53ec27ab7
 +- `FI/f` — draws using firstInstance (push constant dedup active)
 diff --git a/webgpu/notes/precompile_naga_spirv_to_wgsl.md b/webgpu/notes/precompile_naga_spirv_to_wgsl.md
 new file mode 100644
-index 0000000000..ba3e07c44e
+index 00000000000..ba3e07c44e6
 --- /dev/null
 +++ b/webgpu/notes/precompile_naga_spirv_to_wgsl.md
 @@ -0,0 +1,246 @@
@@ -36361,7 +36361,7 @@ index 0000000000..ba3e07c44e
 +Each phase is independent and can be shipped separately.
 diff --git a/webgpu/notes/precompile_specialized_to_wgsl.md b/webgpu/notes/precompile_specialized_to_wgsl.md
 new file mode 100644
-index 0000000000..7f267cb874
+index 00000000000..7f267cb8748
 --- /dev/null
 +++ b/webgpu/notes/precompile_specialized_to_wgsl.md
 @@ -0,0 +1,401 @@
@@ -36768,7 +36768,7 @@ index 0000000000..7f267cb874
 +| `platform/web/js/engine/engine.js` | Switched `window.nagaSpirvToWgsl` to use `spirv_to_wgsl_with_overrides` |
 diff --git a/webgpu/notes/push_constant_ring_buffer.md b/webgpu/notes/push_constant_ring_buffer.md
 new file mode 100644
-index 0000000000..aa660c009f
+index 00000000000..aa660c009f3
 --- /dev/null
 +++ b/webgpu/notes/push_constant_ring_buffer.md
 @@ -0,0 +1,135 @@
@@ -36909,7 +36909,7 @@ index 0000000000..aa660c009f
 +- Benchmark: 3025 skeletons @ ~48 FPS on M3 Ultra, no validation errors, no color flickering
 diff --git a/webgpu/notes/remove_rust.md b/webgpu/notes/remove_rust.md
 new file mode 100644
-index 0000000000..310f5d8ad7
+index 00000000000..310f5d8ad70
 --- /dev/null
 +++ b/webgpu/notes/remove_rust.md
 @@ -0,0 +1,193 @@
@@ -37108,7 +37108,7 @@ index 0000000000..310f5d8ad7
 +3. **C++20 in SCons**: Can SCons be configured to compile Tint sources with `-std=c++20` while keeping the rest of Godot at C++17? Likely yes, via per-target compile flags.
 diff --git a/webgpu/notes/review_v3/01_driver_core.md b/webgpu/notes/review_v3/01_driver_core.md
 new file mode 100644
-index 0000000000..24bab50e95
+index 00000000000..24bab50e951
 --- /dev/null
 +++ b/webgpu/notes/review_v3/01_driver_core.md
 @@ -0,0 +1,502 @@
@@ -37616,7 +37616,7 @@ index 0000000000..24bab50e95
 +documentation. The code is maintainable and debuggable despite its complexity.
 diff --git a/webgpu/notes/review_v3/02_shader_pipeline.md b/webgpu/notes/review_v3/02_shader_pipeline.md
 new file mode 100644
-index 0000000000..705460cd88
+index 00000000000..705460cd88c
 --- /dev/null
 +++ b/webgpu/notes/review_v3/02_shader_pipeline.md
 @@ -0,0 +1,548 @@
@@ -38170,7 +38170,7 @@ index 0000000000..705460cd88
 +   maxBindingsPerBindGroup).
 diff --git a/webgpu/notes/review_v3/03_renderer_integration.md b/webgpu/notes/review_v3/03_renderer_integration.md
 new file mode 100644
-index 0000000000..b557ea323a
+index 00000000000..b557ea323af
 --- /dev/null
 +++ b/webgpu/notes/review_v3/03_renderer_integration.md
 @@ -0,0 +1,536 @@
@@ -38712,7 +38712,7 @@ index 0000000000..b557ea323a
 +   be noted in user-facing docs (affects perceived quality of certain effects).
 diff --git a/webgpu/notes/review_v3/04_performance.md b/webgpu/notes/review_v3/04_performance.md
 new file mode 100644
-index 0000000000..eaaec224cc
+index 00000000000..eaaec224cc2
 --- /dev/null
 +++ b/webgpu/notes/review_v3/04_performance.md
 @@ -0,0 +1,502 @@
@@ -39220,7 +39220,7 @@ index 0000000000..eaaec224cc
 +- `servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl` -- batch_instance_index
 diff --git a/webgpu/notes/review_v3/05_platform_web.md b/webgpu/notes/review_v3/05_platform_web.md
 new file mode 100644
-index 0000000000..2195be0fd7
+index 00000000000..2195be0fd70
 --- /dev/null
 +++ b/webgpu/notes/review_v3/05_platform_web.md
 @@ -0,0 +1,577 @@
@@ -39803,7 +39803,7 @@ index 0000000000..2195be0fd7
 +| `core/object/worker_thread_pool.cpp` | Nothreads fix: group cleanup |
 diff --git a/webgpu/notes/review_v3/06_build_system.md b/webgpu/notes/review_v3/06_build_system.md
 new file mode 100644
-index 0000000000..bceb2fa6be
+index 00000000000..bceb2fa6bef
 --- /dev/null
 +++ b/webgpu/notes/review_v3/06_build_system.md
 @@ -0,0 +1,394 @@
@@ -40203,7 +40203,7 @@ index 0000000000..bceb2fa6be
 +is pragmatic and avoids coupling the main build to Rust tooling.
 diff --git a/webgpu/notes/review_v3/07_correctness.md b/webgpu/notes/review_v3/07_correctness.md
 new file mode 100644
-index 0000000000..a63f349d10
+index 00000000000..a63f349d102
 --- /dev/null
 +++ b/webgpu/notes/review_v3/07_correctness.md
 @@ -0,0 +1,676 @@
@@ -40885,7 +40885,7 @@ index 0000000000..a63f349d10
 +to users.
 diff --git a/webgpu/notes/review_v3/08_architecture.md b/webgpu/notes/review_v3/08_architecture.md
 new file mode 100644
-index 0000000000..13077aa42b
+index 00000000000..13077aa42b6
 --- /dev/null
 +++ b/webgpu/notes/review_v3/08_architecture.md
 @@ -0,0 +1,491 @@
@@ -41382,7 +41382,7 @@ index 0000000000..13077aa42b
 +This is a well-executed WebGPU backend that achieves functional parity with the Mobile renderer path. The architecture follows Godot conventions while making appropriate adaptations for WebGPU's constraints. The main risks are maintainability (vendored Naga, WGSL string patching) and upstream acceptability (base interface modifications). For its current purpose as a working WebGPU web export target, the architecture is fit for purpose.
 diff --git a/webgpu/notes/review_v3/FINAL_1_ARCHITECTURE_AND_DESIGN.md b/webgpu/notes/review_v3/FINAL_1_ARCHITECTURE_AND_DESIGN.md
 new file mode 100644
-index 0000000000..b2e7a802fe
+index 00000000000..b2e7a802fe0
 --- /dev/null
 +++ b/webgpu/notes/review_v3/FINAL_1_ARCHITECTURE_AND_DESIGN.md
 @@ -0,0 +1,390 @@
@@ -41778,7 +41778,7 @@ index 0000000000..b2e7a802fe
 +The architecture is sound, pragmatic, and production-ready for its target use case. It correctly identifies and addresses the 9 major gaps between WebGPU and Vulkan with well-designed emulation. The main risks are maintainability and upstream acceptability — both addressable with incremental refactoring that doesn't change the fundamental design.
 diff --git a/webgpu/notes/review_v3/FINAL_2_TECHNICAL_REFERENCE.md b/webgpu/notes/review_v3/FINAL_2_TECHNICAL_REFERENCE.md
 new file mode 100644
-index 0000000000..f062d9d38b
+index 00000000000..f062d9d38be
 --- /dev/null
 +++ b/webgpu/notes/review_v3/FINAL_2_TECHNICAL_REFERENCE.md
 @@ -0,0 +1,597 @@
@@ -42381,7 +42381,7 @@ index 0000000000..f062d9d38b
 +The naga-patched crate is a vendored+patched copy of the upstream [naga](https://github.com/gfx-rs/wgpu/tree/trunk/naga) shader translator. It is compiled to WASM separately and the prebuilt binary (`naga_wasm_bg.wasm`) is committed to the repo — no Rust toolchain needed for engine builds.
 diff --git a/webgpu/notes/review_v3/FINAL_3_PERFORMANCE_AND_OPTIMIZATION.md b/webgpu/notes/review_v3/FINAL_3_PERFORMANCE_AND_OPTIMIZATION.md
 new file mode 100644
-index 0000000000..5517db69cf
+index 00000000000..5517db69cf4
 --- /dev/null
 +++ b/webgpu/notes/review_v3/FINAL_3_PERFORMANCE_AND_OPTIMIZATION.md
 @@ -0,0 +1,379 @@
@@ -42766,7 +42766,7 @@ index 0000000000..5517db69cf
 +| `servers/rendering/renderer_rd/shaders/skeleton.glsl` | bone_offset |
 diff --git a/webgpu/notes/review_v3/FINAL_4_CORRECTNESS_AND_COMPATIBILITY.md b/webgpu/notes/review_v3/FINAL_4_CORRECTNESS_AND_COMPATIBILITY.md
 new file mode 100644
-index 0000000000..5d3ce7b0c9
+index 00000000000..5d3ce7b0c9a
 --- /dev/null
 +++ b/webgpu/notes/review_v3/FINAL_4_CORRECTNESS_AND_COMPATIBILITY.md
 @@ -0,0 +1,396 @@
@@ -43168,7 +43168,7 @@ index 0000000000..5d3ce7b0c9
 +The known limitations (mid-pass clear, indirect count, binding array flattening, shader startup time) are acceptable for an initial public release and clearly documented. No critical bugs were found during this comprehensive review.
 diff --git a/webgpu/notes/review_v3/FINAL_5_LAUNCH_TODO.md b/webgpu/notes/review_v3/FINAL_5_LAUNCH_TODO.md
 new file mode 100644
-index 0000000000..18fa6fd223
+index 00000000000..18fa6fd2235
 --- /dev/null
 +++ b/webgpu/notes/review_v3/FINAL_5_LAUNCH_TODO.md
 @@ -0,0 +1,144 @@
@@ -43318,7 +43318,7 @@ index 0000000000..18fa6fd223
 +- [ ] Large scene stress test (many instances) achieves expected performance
 diff --git a/webgpu/notes/review_v3/FINAL_FAQ.md b/webgpu/notes/review_v3/FINAL_FAQ.md
 new file mode 100644
-index 0000000000..1a95bd9fe4
+index 00000000000..1a95bd9fe47
 --- /dev/null
 +++ b/webgpu/notes/review_v3/FINAL_FAQ.md
 @@ -0,0 +1,341 @@
@@ -43665,7 +43665,7 @@ index 0000000000..1a95bd9fe4
 +- An expected-failures baseline (`expected_failures.json`) tracking 32 Vulkan-only shader variants that fail offline but are never used at runtime — CI fails only on regressions beyond this baseline
 diff --git a/webgpu/notes/review_v3/PLAN.md b/webgpu/notes/review_v3/PLAN.md
 new file mode 100644
-index 0000000000..ecf7185d07
+index 00000000000..ecf7185d074
 --- /dev/null
 +++ b/webgpu/notes/review_v3/PLAN.md
 @@ -0,0 +1,341 @@
@@ -44012,7 +44012,7 @@ index 0000000000..ecf7185d07
 +```
 diff --git a/webgpu/notes/stubs/SCsub b/webgpu/notes/stubs/SCsub
 new file mode 100644
-index 0000000000..5b209553cc
+index 00000000000..5b209553cc1
 --- /dev/null
 +++ b/webgpu/notes/stubs/SCsub
 @@ -0,0 +1,9 @@
@@ -44027,7 +44027,7 @@ index 0000000000..5b209553cc
 +env_webgpu.add_source_files(env.drivers_sources, "*.cpp")
 diff --git a/webgpu/notes/stubs/pixel_formats_webgpu.h b/webgpu/notes/stubs/pixel_formats_webgpu.h
 new file mode 100644
-index 0000000000..ea3c1f8418
+index 00000000000..ea3c1f8418a
 --- /dev/null
 +++ b/webgpu/notes/stubs/pixel_formats_webgpu.h
 @@ -0,0 +1,708 @@
@@ -44741,7 +44741,7 @@ index 0000000000..ea3c1f8418
 +#endif // PIXEL_FORMATS_WEBGPU_H
 diff --git a/webgpu/notes/stubs/rendering_context_driver_webgpu.cpp b/webgpu/notes/stubs/rendering_context_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..2311ed1bc0
+index 00000000000..2311ed1bc03
 --- /dev/null
 +++ b/webgpu/notes/stubs/rendering_context_driver_webgpu.cpp
 @@ -0,0 +1,194 @@
@@ -44941,7 +44941,7 @@ index 0000000000..2311ed1bc0
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/notes/stubs/rendering_context_driver_webgpu.h b/webgpu/notes/stubs/rendering_context_driver_webgpu.h
 new file mode 100644
-index 0000000000..f2f41e2d61
+index 00000000000..f2f41e2d611
 --- /dev/null
 +++ b/webgpu/notes/stubs/rendering_context_driver_webgpu.h
 @@ -0,0 +1,88 @@
@@ -45035,7 +45035,7 @@ index 0000000000..f2f41e2d61
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/notes/stubs/rendering_device_driver_webgpu.cpp b/webgpu/notes/stubs/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 0000000000..f14f75dde3
+index 00000000000..f14f75dde3d
 --- /dev/null
 +++ b/webgpu/notes/stubs/rendering_device_driver_webgpu.cpp
 @@ -0,0 +1,1691 @@
@@ -46732,7 +46732,7 @@ index 0000000000..f14f75dde3
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/notes/stubs/rendering_device_driver_webgpu.h b/webgpu/notes/stubs/rendering_device_driver_webgpu.h
 new file mode 100644
-index 0000000000..5c93efba25
+index 00000000000..5c93efba25a
 --- /dev/null
 +++ b/webgpu/notes/stubs/rendering_device_driver_webgpu.h
 @@ -0,0 +1,343 @@
@@ -47081,7 +47081,7 @@ index 0000000000..5c93efba25
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/notes/stubs/rendering_shader_container_webgpu.cpp b/webgpu/notes/stubs/rendering_shader_container_webgpu.cpp
 new file mode 100644
-index 0000000000..6d31dc94b3
+index 00000000000..6d31dc94b3a
 --- /dev/null
 +++ b/webgpu/notes/stubs/rendering_shader_container_webgpu.cpp
 @@ -0,0 +1,184 @@
@@ -47271,7 +47271,7 @@ index 0000000000..6d31dc94b3
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/notes/stubs/rendering_shader_container_webgpu.h b/webgpu/notes/stubs/rendering_shader_container_webgpu.h
 new file mode 100644
-index 0000000000..f77849e29d
+index 00000000000..f77849e29de
 --- /dev/null
 +++ b/webgpu/notes/stubs/rendering_shader_container_webgpu.h
 @@ -0,0 +1,107 @@
@@ -47384,7 +47384,7 @@ index 0000000000..f77849e29d
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/notes/stubs/webgpu_objects.h b/webgpu/notes/stubs/webgpu_objects.h
 new file mode 100644
-index 0000000000..1ab292f004
+index 00000000000..1ab292f004d
 --- /dev/null
 +++ b/webgpu/notes/stubs/webgpu_objects.h
 @@ -0,0 +1,265 @@
@@ -47655,7 +47655,7 @@ index 0000000000..1ab292f004
 +#endif // WEBGPU_ENABLED
 diff --git a/webgpu/site/ARCHITECTURE_AND_DESIGN.md b/webgpu/site/ARCHITECTURE_AND_DESIGN.md
 new file mode 100644
-index 0000000000..59cbe9a0a2
+index 00000000000..59cbe9a0a21
 --- /dev/null
 +++ b/webgpu/site/ARCHITECTURE_AND_DESIGN.md
 @@ -0,0 +1,391 @@
@@ -48052,7 +48052,7 @@ index 0000000000..59cbe9a0a2
 +The architecture is sound, pragmatic, and production-ready for its target use case. It correctly identifies and addresses the 9 major gaps between WebGPU and Vulkan with well-designed emulation. The main risks are maintainability and upstream acceptability — both addressable with incremental refactoring that doesn't change the fundamental design.
 diff --git a/webgpu/site/CORRECTNESS_AND_COMPATIBILITY.md b/webgpu/site/CORRECTNESS_AND_COMPATIBILITY.md
 new file mode 100644
-index 0000000000..e3bff5c518
+index 00000000000..e3bff5c5188
 --- /dev/null
 +++ b/webgpu/site/CORRECTNESS_AND_COMPATIBILITY.md
 @@ -0,0 +1,398 @@
@@ -48456,7 +48456,7 @@ index 0000000000..e3bff5c518
 +The known limitations (mid-pass clear, indirect count, binding array flattening, shader startup time) are acceptable for an initial public release and clearly documented. No critical bugs were found during this comprehensive review.
 diff --git a/webgpu/site/FAQ.md b/webgpu/site/FAQ.md
 new file mode 100644
-index 0000000000..24cc09476a
+index 00000000000..24cc09476a3
 --- /dev/null
 +++ b/webgpu/site/FAQ.md
 @@ -0,0 +1,334 @@
@@ -48796,7 +48796,7 @@ index 0000000000..24cc09476a
 +- Resource lifecycle stress tests (rapid create/destroy cycles)
 diff --git a/webgpu/site/PERFORMANCE_AND_OPTIMIZATION.md b/webgpu/site/PERFORMANCE_AND_OPTIMIZATION.md
 new file mode 100644
-index 0000000000..567970dbb6
+index 00000000000..567970dbb62
 --- /dev/null
 +++ b/webgpu/site/PERFORMANCE_AND_OPTIMIZATION.md
 @@ -0,0 +1,379 @@
@@ -49181,7 +49181,7 @@ index 0000000000..567970dbb6
 +| `servers/rendering/renderer_rd/shaders/skeleton.glsl` | bone_offset |
 diff --git a/webgpu/site/TECHNICAL_REFERENCE.md b/webgpu/site/TECHNICAL_REFERENCE.md
 new file mode 100644
-index 0000000000..7c10a988e7
+index 00000000000..7c10a988e72
 --- /dev/null
 +++ b/webgpu/site/TECHNICAL_REFERENCE.md
 @@ -0,0 +1,511 @@
@@ -49698,7 +49698,7 @@ index 0000000000..7c10a988e7
 +Attached at initialization via JS `device.lost.then(...)`. Logs reason and message. No automatic recovery (page reload required).
 diff --git a/webgpu/tests/.gitignore b/webgpu/tests/.gitignore
 new file mode 100644
-index 0000000000..403362a32a
+index 00000000000..403362a32a7
 --- /dev/null
 +++ b/webgpu/tests/.gitignore
 @@ -0,0 +1,3 @@
@@ -49707,7 +49707,7 @@ index 0000000000..403362a32a
 +startup_profile.json
 diff --git a/webgpu/tests/README.md b/webgpu/tests/README.md
 new file mode 100644
-index 0000000000..ebef34a23f
+index 00000000000..ebef34a23ff
 --- /dev/null
 +++ b/webgpu/tests/README.md
 @@ -0,0 +1,271 @@
@@ -49984,7 +49984,7 @@ index 0000000000..ebef34a23f
 +**Export fails with "No export template found"** — Template must be installed at the path matching the editor's version string. Check `bin/godot --version` and install to the corresponding `export_templates/<version>/` directory.
 diff --git a/webgpu/tests/TASKS.md b/webgpu/tests/TASKS.md
 new file mode 100644
-index 0000000000..b8f43c339c
+index 00000000000..b8f43c339c0
 --- /dev/null
 +++ b/webgpu/tests/TASKS.md
 @@ -0,0 +1,99 @@
@@ -50089,7 +50089,7 @@ index 0000000000..b8f43c339c
 +- [ ] Fence/sync correctness under rapid submit cycles
 diff --git a/webgpu/tests/benchmark/benchmark_profiler.gd b/webgpu/tests/benchmark/benchmark_profiler.gd
 new file mode 100644
-index 0000000000..496451693c
+index 00000000000..496451693c8
 --- /dev/null
 +++ b/webgpu/tests/benchmark/benchmark_profiler.gd
 @@ -0,0 +1,117 @@
@@ -50212,7 +50212,7 @@ index 0000000000..496451693c
 +	return sum / arr.size()
 diff --git a/webgpu/tests/benchmark/godot/.gitignore b/webgpu/tests/benchmark/godot/.gitignore
 new file mode 100644
-index 0000000000..46409e657f
+index 00000000000..46409e657f3
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/.gitignore
 @@ -0,0 +1,4 @@
@@ -50222,7 +50222,7 @@ index 0000000000..46409e657f
 +benchmark_profiler.gd
 diff --git a/webgpu/tests/benchmark/godot/scene_a_optimized/benchmark.gd b/webgpu/tests/benchmark/godot/scene_a_optimized/benchmark.gd
 new file mode 100644
-index 0000000000..473f0e580c
+index 00000000000..473f0e580cf
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_optimized/benchmark.gd
 @@ -0,0 +1,119 @@
@@ -50347,7 +50347,7 @@ index 0000000000..473f0e580c
 +		fps_label.text = "DONE  avg=%.1f  p1=%.1f  p99=%.1f  [%d MultiMesh2D]" % [avg, p1, p99, SPRITE_COUNT]
 diff --git a/webgpu/tests/benchmark/godot/scene_a_optimized/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_a_optimized/export_presets.cfg
 new file mode 100644
-index 0000000000..c5d39ce963
+index 00000000000..c5d39ce963a
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_optimized/export_presets.cfg
 @@ -0,0 +1,33 @@
@@ -50386,7 +50386,7 @@ index 0000000000..c5d39ce963
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_a_optimized/main.tscn b/webgpu/tests/benchmark/godot/scene_a_optimized/main.tscn
 new file mode 100644
-index 0000000000..4db2140941
+index 00000000000..4db2140941a
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_optimized/main.tscn
 @@ -0,0 +1,6 @@
@@ -50398,7 +50398,7 @@ index 0000000000..4db2140941
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_a_optimized/project.godot b/webgpu/tests/benchmark/godot/scene_a_optimized/project.godot
 new file mode 100644
-index 0000000000..18760be808
+index 00000000000..18760be808c
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_optimized/project.godot
 @@ -0,0 +1,23 @@
@@ -50427,7 +50427,7 @@ index 0000000000..18760be808
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_a_sprites/benchmark.gd b/webgpu/tests/benchmark/godot/scene_a_sprites/benchmark.gd
 new file mode 100644
-index 0000000000..8a8570cdf3
+index 00000000000..8a8570cdf38
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_sprites/benchmark.gd
 @@ -0,0 +1,84 @@
@@ -50517,7 +50517,7 @@ index 0000000000..8a8570cdf3
 +		fps_label.text = "DONE  avg=%.1f  p1=%.1f  p99=%.1f  [%d sprites]" % [avg, p1, p99, SPRITE_COUNT]
 diff --git a/webgpu/tests/benchmark/godot/scene_a_sprites/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_a_sprites/export_presets.cfg
 new file mode 100644
-index 0000000000..ff38ff80d0
+index 00000000000..ff38ff80d03
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_sprites/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -50590,7 +50590,7 @@ index 0000000000..ff38ff80d0
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_a_sprites/main.tscn b/webgpu/tests/benchmark/godot/scene_a_sprites/main.tscn
 new file mode 100644
-index 0000000000..4db2140941
+index 00000000000..4db2140941a
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_sprites/main.tscn
 @@ -0,0 +1,6 @@
@@ -50602,7 +50602,7 @@ index 0000000000..4db2140941
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_a_sprites/project.godot b/webgpu/tests/benchmark/godot/scene_a_sprites/project.godot
 new file mode 100644
-index 0000000000..eab670e5ef
+index 00000000000..eab670e5ef8
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_a_sprites/project.godot
 @@ -0,0 +1,21 @@
@@ -50629,7 +50629,7 @@ index 0000000000..eab670e5ef
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_b_pbr/benchmark.gd b/webgpu/tests/benchmark/godot/scene_b_pbr/benchmark.gd
 new file mode 100644
-index 0000000000..621bd0018a
+index 00000000000..621bd0018a2
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_b_pbr/benchmark.gd
 @@ -0,0 +1,105 @@
@@ -50740,7 +50740,7 @@ index 0000000000..621bd0018a
 +		fps_label.text = "DONE  avg=%.1f  p1=%.1f  p99=%.1f  [%d PBR spheres]" % [avg, p1, p99, GRID_ROWS * GRID_COLS]
 diff --git a/webgpu/tests/benchmark/godot/scene_b_pbr/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_b_pbr/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_b_pbr/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -50813,7 +50813,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_b_pbr/main.tscn b/webgpu/tests/benchmark/godot/scene_b_pbr/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_b_pbr/main.tscn
 @@ -0,0 +1,6 @@
@@ -50825,7 +50825,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_b_pbr/project.godot b/webgpu/tests/benchmark/godot/scene_b_pbr/project.godot
 new file mode 100644
-index 0000000000..a602298861
+index 00000000000..a6022988616
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_b_pbr/project.godot
 @@ -0,0 +1,21 @@
@@ -50852,7 +50852,7 @@ index 0000000000..a602298861
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_c_instances/benchmark.gd b/webgpu/tests/benchmark/godot/scene_c_instances/benchmark.gd
 new file mode 100644
-index 0000000000..55bf734e6d
+index 00000000000..55bf734e6d0
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_c_instances/benchmark.gd
 @@ -0,0 +1,100 @@
@@ -50958,7 +50958,7 @@ index 0000000000..55bf734e6d
 +	print("=============================================")
 diff --git a/webgpu/tests/benchmark/godot/scene_c_instances/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_c_instances/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_c_instances/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -51031,7 +51031,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_c_instances/main.tscn b/webgpu/tests/benchmark/godot/scene_c_instances/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_c_instances/main.tscn
 @@ -0,0 +1,6 @@
@@ -51043,7 +51043,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_c_instances/project.godot b/webgpu/tests/benchmark/godot/scene_c_instances/project.godot
 new file mode 100644
-index 0000000000..6bd16bfd1b
+index 00000000000..6bd16bfd1b9
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_c_instances/project.godot
 @@ -0,0 +1,23 @@
@@ -51072,7 +51072,7 @@ index 0000000000..6bd16bfd1b
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_d_particles/benchmark.gd b/webgpu/tests/benchmark/godot/scene_d_particles/benchmark.gd
 new file mode 100644
-index 0000000000..2a546b6c0e
+index 00000000000..2a546b6c0e0
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_d_particles/benchmark.gd
 @@ -0,0 +1,100 @@
@@ -51178,7 +51178,7 @@ index 0000000000..2a546b6c0e
 +		fps_label.text = "DONE  avg=%.1f  p1=%.1f  p99=%.1f  [%d particles]" % [avg, p1, p99, PARTICLE_COUNT]
 diff --git a/webgpu/tests/benchmark/godot/scene_d_particles/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_d_particles/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_d_particles/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -51251,7 +51251,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_d_particles/main.tscn b/webgpu/tests/benchmark/godot/scene_d_particles/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_d_particles/main.tscn
 @@ -0,0 +1,6 @@
@@ -51263,7 +51263,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_d_particles/project.godot b/webgpu/tests/benchmark/godot/scene_d_particles/project.godot
 new file mode 100644
-index 0000000000..192df739c2
+index 00000000000..192df739c2e
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_d_particles/project.godot
 @@ -0,0 +1,21 @@
@@ -51290,7 +51290,7 @@ index 0000000000..192df739c2
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_e_animated/benchmark.gd b/webgpu/tests/benchmark/godot/scene_e_animated/benchmark.gd
 new file mode 100644
-index 0000000000..a77ca70c6a
+index 00000000000..a77ca70c6ae
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_e_animated/benchmark.gd
 @@ -0,0 +1,217 @@
@@ -51513,7 +51513,7 @@ index 0000000000..a77ca70c6a
 +	])
 diff --git a/webgpu/tests/benchmark/godot/scene_e_animated/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_e_animated/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_e_animated/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -51586,7 +51586,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_e_animated/main.tscn b/webgpu/tests/benchmark/godot/scene_e_animated/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_e_animated/main.tscn
 @@ -0,0 +1,6 @@
@@ -51598,7 +51598,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_e_animated/project.godot b/webgpu/tests/benchmark/godot/scene_e_animated/project.godot
 new file mode 100644
-index 0000000000..4f564bdf60
+index 00000000000..4f564bdf602
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_e_animated/project.godot
 @@ -0,0 +1,23 @@
@@ -51627,7 +51627,7 @@ index 0000000000..4f564bdf60
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_f_postfx/benchmark.gd b/webgpu/tests/benchmark/godot/scene_f_postfx/benchmark.gd
 new file mode 100644
-index 0000000000..a75b2918a3
+index 00000000000..a75b2918a3e
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_f_postfx/benchmark.gd
 @@ -0,0 +1,175 @@
@@ -51808,7 +51808,7 @@ index 0000000000..a75b2918a3
 +		torus_node.rotation.x = elapsed * 0.4
 diff --git a/webgpu/tests/benchmark/godot/scene_f_postfx/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_f_postfx/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_f_postfx/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -51881,7 +51881,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_f_postfx/main.tscn b/webgpu/tests/benchmark/godot/scene_f_postfx/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_f_postfx/main.tscn
 @@ -0,0 +1,6 @@
@@ -51893,7 +51893,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_f_postfx/project.godot b/webgpu/tests/benchmark/godot/scene_f_postfx/project.godot
 new file mode 100644
-index 0000000000..0d6f69dd77
+index 00000000000..0d6f69dd777
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_f_postfx/project.godot
 @@ -0,0 +1,21 @@
@@ -51920,7 +51920,7 @@ index 0000000000..0d6f69dd77
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_g_shadows/benchmark.gd b/webgpu/tests/benchmark/godot/scene_g_shadows/benchmark.gd
 new file mode 100644
-index 0000000000..fa087d9f3c
+index 00000000000..fa087d9f3c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_g_shadows/benchmark.gd
 @@ -0,0 +1,138 @@
@@ -52064,7 +52064,7 @@ index 0000000000..fa087d9f3c
 +	print("========================================")
 diff --git a/webgpu/tests/benchmark/godot/scene_g_shadows/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_g_shadows/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_g_shadows/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -52137,7 +52137,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_g_shadows/main.tscn b/webgpu/tests/benchmark/godot/scene_g_shadows/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_g_shadows/main.tscn
 @@ -0,0 +1,6 @@
@@ -52149,7 +52149,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_g_shadows/project.godot b/webgpu/tests/benchmark/godot/scene_g_shadows/project.godot
 new file mode 100644
-index 0000000000..e40011f0cd
+index 00000000000..e40011f0cd5
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_g_shadows/project.godot
 @@ -0,0 +1,23 @@
@@ -52178,7 +52178,7 @@ index 0000000000..e40011f0cd
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batched/benchmark.gd b/webgpu/tests/benchmark/godot/scene_h_batched/benchmark.gd
 new file mode 100644
-index 0000000000..60ad283716
+index 00000000000..60ad283716b
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batched/benchmark.gd
 @@ -0,0 +1,130 @@
@@ -52314,7 +52314,7 @@ index 0000000000..60ad283716
 +	print("=============================================")
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batched/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_h_batched/export_presets.cfg
 new file mode 100644
-index 0000000000..db424f8541
+index 00000000000..db424f85412
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batched/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -52387,7 +52387,7 @@ index 0000000000..db424f8541
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batched/main.tscn b/webgpu/tests/benchmark/godot/scene_h_batched/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batched/main.tscn
 @@ -0,0 +1,6 @@
@@ -52399,7 +52399,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batched/project.godot b/webgpu/tests/benchmark/godot/scene_h_batched/project.godot
 new file mode 100644
-index 0000000000..464f148e1a
+index 00000000000..464f148e1ab
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batched/project.godot
 @@ -0,0 +1,23 @@
@@ -52428,7 +52428,7 @@ index 0000000000..464f148e1a
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batching/benchmark.gd b/webgpu/tests/benchmark/godot/scene_h_batching/benchmark.gd
 new file mode 100644
-index 0000000000..0cd71455f0
+index 00000000000..0cd71455f02
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batching/benchmark.gd
 @@ -0,0 +1,110 @@
@@ -52544,7 +52544,7 @@ index 0000000000..0cd71455f0
 +	print("=============================================")
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batching/export_presets.cfg b/webgpu/tests/benchmark/godot/scene_h_batching/export_presets.cfg
 new file mode 100644
-index 0000000000..0b40f3840c
+index 00000000000..0b40f3840c4
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batching/export_presets.cfg
 @@ -0,0 +1,67 @@
@@ -52617,7 +52617,7 @@ index 0000000000..0b40f3840c
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batching/main.tscn b/webgpu/tests/benchmark/godot/scene_h_batching/main.tscn
 new file mode 100644
-index 0000000000..642717b644
+index 00000000000..642717b644f
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batching/main.tscn
 @@ -0,0 +1,6 @@
@@ -52629,7 +52629,7 @@ index 0000000000..642717b644
 +script = ExtResource("1")
 diff --git a/webgpu/tests/benchmark/godot/scene_h_batching/project.godot b/webgpu/tests/benchmark/godot/scene_h_batching/project.godot
 new file mode 100644
-index 0000000000..e6680150ef
+index 00000000000..e6680150eff
 --- /dev/null
 +++ b/webgpu/tests/benchmark/godot/scene_h_batching/project.godot
 @@ -0,0 +1,23 @@
@@ -52658,7 +52658,7 @@ index 0000000000..e6680150ef
 +BenchmarkProfiler="*res://benchmark_profiler.gd"
 diff --git a/webgpu/tests/benchmark/run_benchmark.sh b/webgpu/tests/benchmark/run_benchmark.sh
 new file mode 100755
-index 0000000000..c954278f9d
+index 00000000000..c954278f9dc
 --- /dev/null
 +++ b/webgpu/tests/benchmark/run_benchmark.sh
 @@ -0,0 +1,211 @@
@@ -52875,7 +52875,7 @@ index 0000000000..c954278f9d
 +"
 diff --git a/webgpu/tests/benchmark/threejs/package.json b/webgpu/tests/benchmark/threejs/package.json
 new file mode 100644
-index 0000000000..578551c8c1
+index 00000000000..578551c8c15
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/package.json
 @@ -0,0 +1,8 @@
@@ -52889,7 +52889,7 @@ index 0000000000..578551c8c1
 +}
 diff --git a/webgpu/tests/benchmark/threejs/run.mjs b/webgpu/tests/benchmark/threejs/run.mjs
 new file mode 100644
-index 0000000000..ed601e2d1a
+index 00000000000..ed601e2d1a0
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/run.mjs
 @@ -0,0 +1,65 @@
@@ -52960,7 +52960,7 @@ index 0000000000..ed601e2d1a
 +});
 diff --git a/webgpu/tests/benchmark/threejs/scene_a.html b/webgpu/tests/benchmark/threejs/scene_a.html
 new file mode 100644
-index 0000000000..154a3ab615
+index 00000000000..154a3ab6152
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_a.html
 @@ -0,0 +1,162 @@
@@ -53128,7 +53128,7 @@ index 0000000000..154a3ab615
 +</html>
 diff --git a/webgpu/tests/benchmark/threejs/scene_a_optimized.html b/webgpu/tests/benchmark/threejs/scene_a_optimized.html
 new file mode 100644
-index 0000000000..5d1efd52cb
+index 00000000000..5d1efd52cb1
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_a_optimized.html
 @@ -0,0 +1,180 @@
@@ -53314,7 +53314,7 @@ index 0000000000..5d1efd52cb
 +</html>
 diff --git a/webgpu/tests/benchmark/threejs/scene_b.html b/webgpu/tests/benchmark/threejs/scene_b.html
 new file mode 100644
-index 0000000000..1fafda079a
+index 00000000000..1fafda079a2
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_b.html
 @@ -0,0 +1,174 @@
@@ -53494,7 +53494,7 @@ index 0000000000..1fafda079a
 +</html>
 diff --git a/webgpu/tests/benchmark/threejs/scene_c.html b/webgpu/tests/benchmark/threejs/scene_c.html
 new file mode 100644
-index 0000000000..486fd16508
+index 00000000000..486fd165081
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_c.html
 @@ -0,0 +1,162 @@
@@ -53662,7 +53662,7 @@ index 0000000000..486fd16508
 +</html>
 diff --git a/webgpu/tests/benchmark/threejs/scene_d.html b/webgpu/tests/benchmark/threejs/scene_d.html
 new file mode 100644
-index 0000000000..08c30b4861
+index 00000000000..08c30b48614
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_d.html
 @@ -0,0 +1,211 @@
@@ -53879,7 +53879,7 @@ index 0000000000..08c30b4861
 +</html>
 diff --git a/webgpu/tests/benchmark/threejs/scene_h.html b/webgpu/tests/benchmark/threejs/scene_h.html
 new file mode 100644
-index 0000000000..274315d4cd
+index 00000000000..274315d4cda
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_h.html
 @@ -0,0 +1,171 @@
@@ -54056,7 +54056,7 @@ index 0000000000..274315d4cd
 +</html>
 diff --git a/webgpu/tests/benchmark/threejs/scene_h_batched.html b/webgpu/tests/benchmark/threejs/scene_h_batched.html
 new file mode 100644
-index 0000000000..27982a4380
+index 00000000000..27982a43800
 --- /dev/null
 +++ b/webgpu/tests/benchmark/threejs/scene_h_batched.html
 @@ -0,0 +1,202 @@
@@ -54264,7 +54264,7 @@ index 0000000000..27982a4380
 +</html>
 diff --git a/webgpu/tests/driver_unit_tests/package.json b/webgpu/tests/driver_unit_tests/package.json
 new file mode 100644
-index 0000000000..8d48f03f2e
+index 00000000000..8d48f03f2ed
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/package.json
 @@ -0,0 +1,12 @@
@@ -54282,7 +54282,7 @@ index 0000000000..8d48f03f2e
 +}
 diff --git a/webgpu/tests/driver_unit_tests/run_tests.mjs b/webgpu/tests/driver_unit_tests/run_tests.mjs
 new file mode 100644
-index 0000000000..8a8e323423
+index 00000000000..8a8e323423f
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/run_tests.mjs
 @@ -0,0 +1,60 @@
@@ -54348,7 +54348,7 @@ index 0000000000..8a8e323423
 +process.exit(results.failed > 0 ? 1 : 0);
 diff --git a/webgpu/tests/driver_unit_tests/test_bind_group_compat.mjs b/webgpu/tests/driver_unit_tests/test_bind_group_compat.mjs
 new file mode 100644
-index 0000000000..3f92878104
+index 00000000000..3f928781040
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_bind_group_compat.mjs
 @@ -0,0 +1,369 @@
@@ -54723,7 +54723,7 @@ index 0000000000..3f92878104
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_bind_group_layout.mjs b/webgpu/tests/driver_unit_tests/test_bind_group_layout.mjs
 new file mode 100644
-index 0000000000..3075ecd789
+index 00000000000..3075ecd7899
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_bind_group_layout.mjs
 @@ -0,0 +1,395 @@
@@ -55124,7 +55124,7 @@ index 0000000000..3075ecd789
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_buffer_alignment.mjs b/webgpu/tests/driver_unit_tests/test_buffer_alignment.mjs
 new file mode 100644
-index 0000000000..15d3929783
+index 00000000000..15d39297833
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_buffer_alignment.mjs
 @@ -0,0 +1,263 @@
@@ -55393,7 +55393,7 @@ index 0000000000..15d3929783
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_command_buffer.mjs b/webgpu/tests/driver_unit_tests/test_command_buffer.mjs
 new file mode 100644
-index 0000000000..b9013573ba
+index 00000000000..b9013573ba5
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_command_buffer.mjs
 @@ -0,0 +1,448 @@
@@ -55847,7 +55847,7 @@ index 0000000000..b9013573ba
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_format_mapping.mjs b/webgpu/tests/driver_unit_tests/test_format_mapping.mjs
 new file mode 100644
-index 0000000000..80d1d29976
+index 00000000000..80d1d299762
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_format_mapping.mjs
 @@ -0,0 +1,455 @@
@@ -56308,7 +56308,7 @@ index 0000000000..80d1d29976
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_harness.mjs b/webgpu/tests/driver_unit_tests/test_harness.mjs
 new file mode 100644
-index 0000000000..e04cdbd690
+index 00000000000..e04cdbd6905
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_harness.mjs
 @@ -0,0 +1,87 @@
@@ -56401,7 +56401,7 @@ index 0000000000..e04cdbd690
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_override_filtering.mjs b/webgpu/tests/driver_unit_tests/test_override_filtering.mjs
 new file mode 100644
-index 0000000000..e902b8ca2f
+index 00000000000..e902b8ca2f8
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_override_filtering.mjs
 @@ -0,0 +1,269 @@
@@ -56676,7 +56676,7 @@ index 0000000000..e902b8ca2f
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_pipeline_hashing.mjs b/webgpu/tests/driver_unit_tests/test_pipeline_hashing.mjs
 new file mode 100644
-index 0000000000..10b965b886
+index 00000000000..10b965b8865
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_pipeline_hashing.mjs
 @@ -0,0 +1,310 @@
@@ -56992,7 +56992,7 @@ index 0000000000..10b965b886
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_ring_buffer.mjs b/webgpu/tests/driver_unit_tests/test_ring_buffer.mjs
 new file mode 100644
-index 0000000000..765ba733e0
+index 00000000000..765ba733e08
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_ring_buffer.mjs
 @@ -0,0 +1,232 @@
@@ -57230,7 +57230,7 @@ index 0000000000..765ba733e0
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_shadow_buffer.mjs b/webgpu/tests/driver_unit_tests/test_shadow_buffer.mjs
 new file mode 100644
-index 0000000000..8d3312129d
+index 00000000000..8d3312129d8
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_shadow_buffer.mjs
 @@ -0,0 +1,309 @@
@@ -57545,7 +57545,7 @@ index 0000000000..8d3312129d
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_std140_packing.mjs b/webgpu/tests/driver_unit_tests/test_std140_packing.mjs
 new file mode 100644
-index 0000000000..8995f7da9c
+index 00000000000..8995f7da9c7
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_std140_packing.mjs
 @@ -0,0 +1,350 @@
@@ -57901,7 +57901,7 @@ index 0000000000..8995f7da9c
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_texture_conversion.mjs b/webgpu/tests/driver_unit_tests/test_texture_conversion.mjs
 new file mode 100644
-index 0000000000..c21a9577d1
+index 00000000000..c21a9577d14
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_texture_conversion.mjs
 @@ -0,0 +1,408 @@
@@ -58315,7 +58315,7 @@ index 0000000000..c21a9577d1
 +}
 diff --git a/webgpu/tests/driver_unit_tests/test_texture_layout.mjs b/webgpu/tests/driver_unit_tests/test_texture_layout.mjs
 new file mode 100644
-index 0000000000..35618d1d20
+index 00000000000..35618d1d20c
 --- /dev/null
 +++ b/webgpu/tests/driver_unit_tests/test_texture_layout.mjs
 @@ -0,0 +1,413 @@
@@ -58734,7 +58734,7 @@ index 0000000000..35618d1d20
 +}
 diff --git a/webgpu/tests/local_ci.sh b/webgpu/tests/local_ci.sh
 new file mode 100755
-index 0000000000..a2968bee76
+index 00000000000..a2968bee760
 --- /dev/null
 +++ b/webgpu/tests/local_ci.sh
 @@ -0,0 +1,289 @@
@@ -59029,7 +59029,7 @@ index 0000000000..a2968bee76
 +fi
 diff --git a/webgpu/tests/preprocessing_tests/run_tests.mjs b/webgpu/tests/preprocessing_tests/run_tests.mjs
 new file mode 100644
-index 0000000000..a99f61f340
+index 00000000000..a99f61f3401
 --- /dev/null
 +++ b/webgpu/tests/preprocessing_tests/run_tests.mjs
 @@ -0,0 +1,1331 @@
@@ -60366,7 +60366,7 @@ index 0000000000..a99f61f340
 +}
 diff --git a/webgpu/tests/profile_startup.mjs b/webgpu/tests/profile_startup.mjs
 new file mode 100644
-index 0000000000..a41b4fd5ab
+index 00000000000..a41b4fd5ab8
 --- /dev/null
 +++ b/webgpu/tests/profile_startup.mjs
 @@ -0,0 +1,509 @@
@@ -60881,7 +60881,7 @@ index 0000000000..a41b4fd5ab
 +});
 diff --git a/webgpu/tests/resource_lifecycle/README.md b/webgpu/tests/resource_lifecycle/README.md
 new file mode 100644
-index 0000000000..04b73a0aad
+index 00000000000..04b73a0aad2
 --- /dev/null
 +++ b/webgpu/tests/resource_lifecycle/README.md
 @@ -0,0 +1,46 @@
@@ -60933,7 +60933,7 @@ index 0000000000..04b73a0aad
 +All 6 tests must complete without uncaught errors. The async map test accepts both map-success and map-rejection as valid outcomes (implementation-defined behavior per the WebGPU spec).
 diff --git a/webgpu/tests/resource_lifecycle/index.html b/webgpu/tests/resource_lifecycle/index.html
 new file mode 100644
-index 0000000000..fa7d93fef0
+index 00000000000..fa7d93fef01
 --- /dev/null
 +++ b/webgpu/tests/resource_lifecycle/index.html
 @@ -0,0 +1,66 @@
@@ -61005,7 +61005,7 @@ index 0000000000..fa7d93fef0
 +</html>
 diff --git a/webgpu/tests/resource_lifecycle/package.json b/webgpu/tests/resource_lifecycle/package.json
 new file mode 100644
-index 0000000000..e41637e666
+index 00000000000..e41637e6666
 --- /dev/null
 +++ b/webgpu/tests/resource_lifecycle/package.json
 @@ -0,0 +1,15 @@
@@ -61026,7 +61026,7 @@ index 0000000000..e41637e666
 +}
 diff --git a/webgpu/tests/resource_lifecycle/run_tests.mjs b/webgpu/tests/resource_lifecycle/run_tests.mjs
 new file mode 100644
-index 0000000000..e2202bf6f6
+index 00000000000..e2202bf6f63
 --- /dev/null
 +++ b/webgpu/tests/resource_lifecycle/run_tests.mjs
 @@ -0,0 +1,160 @@
@@ -61192,7 +61192,7 @@ index 0000000000..e2202bf6f6
 +});
 diff --git a/webgpu/tests/resource_lifecycle/stress_tests.js b/webgpu/tests/resource_lifecycle/stress_tests.js
 new file mode 100644
-index 0000000000..e1281a2c8e
+index 00000000000..e1281a2c8ec
 --- /dev/null
 +++ b/webgpu/tests/resource_lifecycle/stress_tests.js
 @@ -0,0 +1,681 @@
@@ -61879,7 +61879,7 @@ index 0000000000..e1281a2c8e
 +window.addEventListener('load', renderTestCards);
 diff --git a/webgpu/tests/scene_smoketest/.gitignore b/webgpu/tests/scene_smoketest/.gitignore
 new file mode 100644
-index 0000000000..a84784561e
+index 00000000000..a84784561e6
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/.gitignore
 @@ -0,0 +1,3 @@
@@ -61888,7 +61888,7 @@ index 0000000000..a84784561e
 +exports/
 diff --git a/webgpu/tests/scene_smoketest/open_3browsers.mjs b/webgpu/tests/scene_smoketest/open_3browsers.mjs
 new file mode 100644
-index 0000000000..68324907d4
+index 00000000000..68324907d49
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/open_3browsers.mjs
 @@ -0,0 +1,60 @@
@@ -61954,7 +61954,7 @@ index 0000000000..68324907d4
 +await new Promise(() => {});
 diff --git a/webgpu/tests/scene_smoketest/package.json b/webgpu/tests/scene_smoketest/package.json
 new file mode 100644
-index 0000000000..42a8a612cf
+index 00000000000..42a8a612cf6
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/package.json
 @@ -0,0 +1,16 @@
@@ -61976,7 +61976,7 @@ index 0000000000..42a8a612cf
 +}
 diff --git a/webgpu/tests/scene_smoketest/run_scenes.mjs b/webgpu/tests/scene_smoketest/run_scenes.mjs
 new file mode 100644
-index 0000000000..635d28a8b3
+index 00000000000..635d28a8b3b
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/run_scenes.mjs
 @@ -0,0 +1,797 @@
@@ -62779,7 +62779,7 @@ index 0000000000..635d28a8b3
 +});
 diff --git a/webgpu/tests/scene_smoketest/safari_diag.mjs b/webgpu/tests/scene_smoketest/safari_diag.mjs
 new file mode 100644
-index 0000000000..fa89790ae3
+index 00000000000..fa89790ae39
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/safari_diag.mjs
 @@ -0,0 +1,401 @@
@@ -63186,7 +63186,7 @@ index 0000000000..fa89790ae3
 +main().catch(e => { console.error('Fatal:', e); process.exit(1); });
 diff --git a/webgpu/tests/scene_smoketest/scenes.json b/webgpu/tests/scene_smoketest/scenes.json
 new file mode 100644
-index 0000000000..c8b2fbcea3
+index 00000000000..c8b2fbcea3d
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/scenes.json
 @@ -0,0 +1,144 @@
@@ -63336,7 +63336,7 @@ index 0000000000..c8b2fbcea3
 +}
 diff --git a/webgpu/tests/scene_smoketest/test_heightmap_visual.mjs b/webgpu/tests/scene_smoketest/test_heightmap_visual.mjs
 new file mode 100644
-index 0000000000..04a50e261d
+index 00000000000..04a50e261d3
 --- /dev/null
 +++ b/webgpu/tests/scene_smoketest/test_heightmap_visual.mjs
 @@ -0,0 +1,117 @@
@@ -63459,7 +63459,7 @@ index 0000000000..04a50e261d
 +process.exit(anyFail ? 1 : 0);
 diff --git a/webgpu/tests/screenshot_comparison/README.md b/webgpu/tests/screenshot_comparison/README.md
 new file mode 100644
-index 0000000000..e3bd222a45
+index 00000000000..e3bd222a458
 --- /dev/null
 +++ b/webgpu/tests/screenshot_comparison/README.md
 @@ -0,0 +1,61 @@
@@ -63526,7 +63526,7 @@ index 0000000000..e3bd222a45
 +Add `?autorun` query param or use the Playwright runner directly. The test exits with code 1 on failure for CI integration.
 diff --git a/webgpu/tests/screenshot_comparison/package.json b/webgpu/tests/screenshot_comparison/package.json
 new file mode 100644
-index 0000000000..15354e0591
+index 00000000000..15354e05910
 --- /dev/null
 +++ b/webgpu/tests/screenshot_comparison/package.json
 @@ -0,0 +1,15 @@
@@ -63547,7 +63547,7 @@ index 0000000000..15354e0591
 +}
 diff --git a/webgpu/tests/screenshot_comparison/render_scene.html b/webgpu/tests/screenshot_comparison/render_scene.html
 new file mode 100644
-index 0000000000..8587ee38b9
+index 00000000000..8587ee38b92
 --- /dev/null
 +++ b/webgpu/tests/screenshot_comparison/render_scene.html
 @@ -0,0 +1,17 @@
@@ -63570,7 +63570,7 @@ index 0000000000..8587ee38b9
 +</html>
 diff --git a/webgpu/tests/screenshot_comparison/render_scene.js b/webgpu/tests/screenshot_comparison/render_scene.js
 new file mode 100644
-index 0000000000..77e7812653
+index 00000000000..77e78126539
 --- /dev/null
 +++ b/webgpu/tests/screenshot_comparison/render_scene.js
 @@ -0,0 +1,469 @@
@@ -64045,7 +64045,7 @@ index 0000000000..77e7812653
 +init();
 diff --git a/webgpu/tests/screenshot_comparison/screenshot_tests.mjs b/webgpu/tests/screenshot_comparison/screenshot_tests.mjs
 new file mode 100644
-index 0000000000..d7bec6f5ac
+index 00000000000..d7bec6f5ac9
 --- /dev/null
 +++ b/webgpu/tests/screenshot_comparison/screenshot_tests.mjs
 @@ -0,0 +1,348 @@
@@ -64399,7 +64399,7 @@ index 0000000000..d7bec6f5ac
 +});
 diff --git a/webgpu/tests/screenshot_comparison/screenshots/.gitignore b/webgpu/tests/screenshot_comparison/screenshots/.gitignore
 new file mode 100644
-index 0000000000..8618d078a6
+index 00000000000..8618d078a63
 --- /dev/null
 +++ b/webgpu/tests/screenshot_comparison/screenshots/.gitignore
 @@ -0,0 +1,3 @@
@@ -64408,7 +64408,7 @@ index 0000000000..8618d078a6
 +report.json
 diff --git a/webgpu/tests/shader_corpus/README.md b/webgpu/tests/shader_corpus/README.md
 new file mode 100644
-index 0000000000..6814148cb2
+index 00000000000..6814148cb2f
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/README.md
 @@ -0,0 +1,49 @@
@@ -64463,7 +64463,7 @@ index 0000000000..6814148cb2
 +- **tint_convert_cli** — Standalone Tint CLI (optional; tests skip gracefully if not available)
 diff --git a/webgpu/tests/shader_corpus/compile_fixtures.sh b/webgpu/tests/shader_corpus/compile_fixtures.sh
 new file mode 100755
-index 0000000000..8fb5481ee9
+index 00000000000..8fb5481ee97
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/compile_fixtures.sh
 @@ -0,0 +1,45 @@
@@ -64514,7 +64514,7 @@ index 0000000000..8fb5481ee9
 +fi
 diff --git a/webgpu/tests/shader_corpus/expected_failures.json b/webgpu/tests/shader_corpus/expected_failures.json
 new file mode 100644
-index 0000000000..cb380642af
+index 00000000000..cb380642af2
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/expected_failures.json
 @@ -0,0 +1,90 @@
@@ -64610,7 +64610,7 @@ index 0000000000..cb380642af
 +}
 diff --git a/webgpu/tests/shader_corpus/fixtures/basic_fragment.frag b/webgpu/tests/shader_corpus/fixtures/basic_fragment.frag
 new file mode 100644
-index 0000000000..299e96af21
+index 00000000000..299e96af21d
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/basic_fragment.frag
 @@ -0,0 +1,29 @@
@@ -64699,7 +64699,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/basic_vertex.vert b/webgpu/tests/shader_corpus/fixtures/basic_vertex.vert
 new file mode 100644
-index 0000000000..868f6c9aa1
+index 00000000000..868f6c9aa1f
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/basic_vertex.vert
 @@ -0,0 +1,28 @@
@@ -64733,7 +64733,7 @@ index 0000000000..868f6c9aa1
 +}
 diff --git a/webgpu/tests/shader_corpus/fixtures/chained_spec_ops.comp b/webgpu/tests/shader_corpus/fixtures/chained_spec_ops.comp
 new file mode 100644
-index 0000000000..cfa878beab
+index 00000000000..cfa878beab4
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/chained_spec_ops.comp
 @@ -0,0 +1,35 @@
@@ -64796,7 +64796,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/compute_particles.comp b/webgpu/tests/shader_corpus/fixtures/compute_particles.comp
 new file mode 100644
-index 0000000000..c4d8125d11
+index 00000000000..c4d8125d114
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/compute_particles.comp
 @@ -0,0 +1,47 @@
@@ -64887,7 +64887,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/depth_sampling.frag b/webgpu/tests/shader_corpus/fixtures/depth_sampling.frag
 new file mode 100644
-index 0000000000..c155265c6e
+index 00000000000..c155265c6ec
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/depth_sampling.frag
 @@ -0,0 +1,27 @@
@@ -64949,7 +64949,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/many_overrides.comp b/webgpu/tests/shader_corpus/fixtures/many_overrides.comp
 new file mode 100644
-index 0000000000..feb0061345
+index 00000000000..feb00613455
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/many_overrides.comp
 @@ -0,0 +1,57 @@
@@ -65046,7 +65046,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/multi_texture.frag b/webgpu/tests/shader_corpus/fixtures/multi_texture.frag
 new file mode 100644
-index 0000000000..6c128c103a
+index 00000000000..6c128c103a1
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/multi_texture.frag
 @@ -0,0 +1,39 @@
@@ -65124,7 +65124,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/per_stage_overrides_frag.frag b/webgpu/tests/shader_corpus/fixtures/per_stage_overrides_frag.frag
 new file mode 100644
-index 0000000000..b0cbbb3f28
+index 00000000000..b0cbbb3f288
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/per_stage_overrides_frag.frag
 @@ -0,0 +1,35 @@
@@ -65214,7 +65214,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/per_stage_overrides_vert.vert b/webgpu/tests/shader_corpus/fixtures/per_stage_overrides_vert.vert
 new file mode 100644
-index 0000000000..1396ffb4ad
+index 00000000000..1396ffb4add
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/per_stage_overrides_vert.vert
 @@ -0,0 +1,25 @@
@@ -65245,7 +65245,7 @@ index 0000000000..1396ffb4ad
 +}
 diff --git a/webgpu/tests/shader_corpus/fixtures/readonly_ssbo.comp b/webgpu/tests/shader_corpus/fixtures/readonly_ssbo.comp
 new file mode 100644
-index 0000000000..e33e1116b2
+index 00000000000..e33e1116b23
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/readonly_ssbo.comp
 @@ -0,0 +1,36 @@
@@ -65339,7 +65339,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/shadow_pass.vert b/webgpu/tests/shader_corpus/fixtures/shadow_pass.vert
 new file mode 100644
-index 0000000000..02b94f318c
+index 00000000000..02b94f318c5
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/shadow_pass.vert
 @@ -0,0 +1,12 @@
@@ -65357,7 +65357,7 @@ index 0000000000..02b94f318c
 +}
 diff --git a/webgpu/tests/shader_corpus/fixtures/spec_constants.frag b/webgpu/tests/shader_corpus/fixtures/spec_constants.frag
 new file mode 100644
-index 0000000000..cd5cd91fc2
+index 00000000000..cd5cd91fc27
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/spec_constants.frag
 @@ -0,0 +1,37 @@
@@ -65430,7 +65430,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/storage_image.comp b/webgpu/tests/shader_corpus/fixtures/storage_image.comp
 new file mode 100644
-index 0000000000..bfd5000d62
+index 00000000000..bfd5000d624
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/storage_image.comp
 @@ -0,0 +1,23 @@
@@ -65485,7 +65485,7 @@ HcmV?d00001
 
 diff --git a/webgpu/tests/shader_corpus/fixtures/validation_report.json b/webgpu/tests/shader_corpus/fixtures/validation_report.json
 new file mode 100644
-index 0000000000..215b3ae25d
+index 00000000000..215b3ae25d7
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/fixtures/validation_report.json
 @@ -0,0 +1,10 @@
@@ -65502,7 +65502,7 @@ index 0000000000..215b3ae25d
 \ No newline at end of file
 diff --git a/webgpu/tests/shader_corpus/results/.gitignore b/webgpu/tests/shader_corpus/results/.gitignore
 new file mode 100644
-index 0000000000..d6b7ef32c8
+index 00000000000..d6b7ef32c84
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/results/.gitignore
 @@ -0,0 +1,2 @@
@@ -65510,7 +65510,7 @@ index 0000000000..d6b7ef32c8
 +!.gitignore
 diff --git a/webgpu/tests/shader_corpus/run_tests.mjs b/webgpu/tests/shader_corpus/run_tests.mjs
 new file mode 100644
-index 0000000000..ee8b2d30f3
+index 00000000000..ee8b2d30f38
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/run_tests.mjs
 @@ -0,0 +1,187 @@
@@ -65703,7 +65703,7 @@ index 0000000000..ee8b2d30f3
 +runTests();
 diff --git a/webgpu/tests/shader_corpus/validate_spirv_dump.mjs b/webgpu/tests/shader_corpus/validate_spirv_dump.mjs
 new file mode 100644
-index 0000000000..82a7eb25b1
+index 00000000000..82a7eb25b10
 --- /dev/null
 +++ b/webgpu/tests/shader_corpus/validate_spirv_dump.mjs
 @@ -0,0 +1,200 @@
@@ -65909,7 +65909,7 @@ index 0000000000..82a7eb25b1
 +main();
 diff --git a/webgpu/tests/test_project/.gitignore b/webgpu/tests/test_project/.gitignore
 new file mode 100644
-index 0000000000..5ee0f6dd06
+index 00000000000..5ee0f6dd06d
 --- /dev/null
 +++ b/webgpu/tests/test_project/.gitignore
 @@ -0,0 +1,7 @@
@@ -65922,7 +65922,7 @@ index 0000000000..5ee0f6dd06
 +.DS_Store
 diff --git a/webgpu/tests/test_project/README.md b/webgpu/tests/test_project/README.md
 new file mode 100644
-index 0000000000..e1d2cb6b6a
+index 00000000000..e1d2cb6b6a0
 --- /dev/null
 +++ b/webgpu/tests/test_project/README.md
 @@ -0,0 +1,105 @@
@@ -66033,7 +66033,7 @@ index 0000000000..e1d2cb6b6a
 +- GDScript reports `PASS` in output
 diff --git a/webgpu/tests/test_project/export_presets.cfg b/webgpu/tests/test_project/export_presets.cfg
 new file mode 100644
-index 0000000000..49ec771a82
+index 00000000000..49ec771a82d
 --- /dev/null
 +++ b/webgpu/tests/test_project/export_presets.cfg
 @@ -0,0 +1,30 @@
@@ -66069,7 +66069,7 @@ index 0000000000..49ec771a82
 +progressive_web_app/enabled=false
 diff --git a/webgpu/tests/test_project/package.json b/webgpu/tests/test_project/package.json
 new file mode 100644
-index 0000000000..793d8c101f
+index 00000000000..793d8c101f3
 --- /dev/null
 +++ b/webgpu/tests/test_project/package.json
 @@ -0,0 +1,15 @@
@@ -66090,7 +66090,7 @@ index 0000000000..793d8c101f
 +}
 diff --git a/webgpu/tests/test_project/project.godot b/webgpu/tests/test_project/project.godot
 new file mode 100644
-index 0000000000..e65559b26b
+index 00000000000..e65559b26bf
 --- /dev/null
 +++ b/webgpu/tests/test_project/project.godot
 @@ -0,0 +1,28 @@
@@ -66124,7 +66124,7 @@ index 0000000000..e65559b26b
 +environment/defaults/default_clear_color=Color(0.1, 0.1, 0.15, 1)
 diff --git a/webgpu/tests/test_project/scenes/main.tscn b/webgpu/tests/test_project/scenes/main.tscn
 new file mode 100644
-index 0000000000..25beb8d51e
+index 00000000000..25beb8d51e9
 --- /dev/null
 +++ b/webgpu/tests/test_project/scenes/main.tscn
 @@ -0,0 +1,6 @@
@@ -66136,7 +66136,7 @@ index 0000000000..25beb8d51e
 +script = ExtResource("1")
 diff --git a/webgpu/tests/test_project/scripts/shader_coverage.gd b/webgpu/tests/test_project/scripts/shader_coverage.gd
 new file mode 100644
-index 0000000000..5c3af05494
+index 00000000000..5c3af054941
 --- /dev/null
 +++ b/webgpu/tests/test_project/scripts/shader_coverage.gd
 @@ -0,0 +1,764 @@
@@ -66906,7 +66906,7 @@ index 0000000000..5c3af05494
 +		print("[ShaderCoverage] Report saved to: %s" % REPORT_PATH)
 diff --git a/webgpu/tests/test_project/smoke_test.mjs b/webgpu/tests/test_project/smoke_test.mjs
 new file mode 100644
-index 0000000000..c260a36262
+index 00000000000..c260a362629
 --- /dev/null
 +++ b/webgpu/tests/test_project/smoke_test.mjs
 @@ -0,0 +1,235 @@
@@ -67147,7 +67147,7 @@ index 0000000000..c260a36262
 +});
 diff --git a/webgpu/tests/wgsl_cache/capture_runtime_wgsl.mjs b/webgpu/tests/wgsl_cache/capture_runtime_wgsl.mjs
 new file mode 100644
-index 0000000000..2adbcc00f1
+index 00000000000..2adbcc00f11
 --- /dev/null
 +++ b/webgpu/tests/wgsl_cache/capture_runtime_wgsl.mjs
 @@ -0,0 +1,182 @@
@@ -67335,7 +67335,7 @@ index 0000000000..2adbcc00f1
 +}
 diff --git a/webgpu/tests/wgsl_cache/package.json b/webgpu/tests/wgsl_cache/package.json
 new file mode 100644
-index 0000000000..a8b790717b
+index 00000000000..a8b790717b3
 --- /dev/null
 +++ b/webgpu/tests/wgsl_cache/package.json
 @@ -0,0 +1,12 @@
@@ -67353,7 +67353,7 @@ index 0000000000..a8b790717b
 +}
 diff --git a/webgpu/tests/wgsl_cache/test_wgsl_cache.mjs b/webgpu/tests/wgsl_cache/test_wgsl_cache.mjs
 new file mode 100644
-index 0000000000..05ac0e2f6d
+index 00000000000..05ac0e2f6de
 --- /dev/null
 +++ b/webgpu/tests/wgsl_cache/test_wgsl_cache.mjs
 @@ -0,0 +1,143 @@
@@ -67502,7 +67502,7 @@ index 0000000000..05ac0e2f6d
 +}
 diff --git a/webgpu/tests/wgsl_cache/test_wgsl_precompile.py b/webgpu/tests/wgsl_cache/test_wgsl_precompile.py
 new file mode 100644
-index 0000000000..784e1c3d88
+index 00000000000..784e1c3d885
 --- /dev/null
 +++ b/webgpu/tests/wgsl_cache/test_wgsl_precompile.py
 @@ -0,0 +1,436 @@
@@ -67944,7 +67944,7 @@ index 0000000000..784e1c3d88
 +    sys.exit(1)
 diff --git a/webgpu/tests/wgsl_cache/verify_precompiled_hits.mjs b/webgpu/tests/wgsl_cache/verify_precompiled_hits.mjs
 new file mode 100644
-index 0000000000..c398176241
+index 00000000000..c398176241b
 --- /dev/null
 +++ b/webgpu/tests/wgsl_cache/verify_precompiled_hits.mjs
 @@ -0,0 +1,202 @@

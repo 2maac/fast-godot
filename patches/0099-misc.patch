@@ -1,9 +1,9 @@
 diff --git a/.metadata_never_index b/.metadata_never_index
 new file mode 100644
-index 0000000000..e69de29bb2
+index 00000000000..e69de29bb2d
 diff --git a/GODOT_README.md b/GODOT_README.md
 new file mode 100644
-index 0000000000..1df1a587a7
+index 00000000000..1df1a587a7d
 --- /dev/null
 +++ b/GODOT_README.md
 @@ -0,0 +1,76 @@
@@ -85,7 +85,7 @@ index 0000000000..1df1a587a7
 +[![Translate on Weblate](https://hosted.weblate.org/widgets/godot-engine/-/godot/svg-badge.svg)](https://hosted.weblate.org/engage/godot-engine/?utm_source=widget)
 diff --git a/NOTICE.md b/NOTICE.md
 new file mode 100644
-index 0000000000..8aaeacf475
+index 00000000000..8aaeacf4756
 --- /dev/null
 +++ b/NOTICE.md
 @@ -0,0 +1,23 @@
@@ -113,7 +113,7 @@ index 0000000000..8aaeacf475
 +plain filesystem library paths instead of a custom `.ffilibrary` resource format, system libffi
 +instead of a vendored build).
 diff --git a/doc/classes/SoftBody3D.xml b/doc/classes/SoftBody3D.xml
-index 148eb5c63e..fb4953a754 100644
+index 148eb5c63e6..fb4953a754b 100644
 --- a/doc/classes/SoftBody3D.xml
 +++ b/doc/classes/SoftBody3D.xml
 @@ -168,6 +168,7 @@
@@ -126,7 +126,7 @@ index 148eb5c63e..fb4953a754 100644
  	<constants>
 diff --git a/modules/ALLOWED b/modules/ALLOWED
 new file mode 100644
-index 0000000000..89056f10be
+index 00000000000..89056f10be2
 --- /dev/null
 +++ b/modules/ALLOWED
 @@ -0,0 +1,59 @@
@@ -190,7 +190,7 @@ index 0000000000..89056f10be
 +xatlas_unwrap
 +zip
 diff --git a/modules/gdscript/gdscript.h b/modules/gdscript/gdscript.h
-index 330120b237..7857843145 100644
+index 330120b2378..78578431458 100644
 --- a/modules/gdscript/gdscript.h
 +++ b/modules/gdscript/gdscript.h
 @@ -78,6 +78,7 @@ class GDScript : public Script {
@@ -218,7 +218,7 @@ index 330120b237..7857843145 100644
  	Mutex mutex;
  
 diff --git a/modules/gdscript/gdscript_compiler.cpp b/modules/gdscript/gdscript_compiler.cpp
-index 4fd867f903..839305c132 100644
+index 4fd867f903c..839305c1323 100644
 --- a/modules/gdscript/gdscript_compiler.cpp
 +++ b/modules/gdscript/gdscript_compiler.cpp
 @@ -2285,10 +2285,23 @@ Error GDScriptCompiler::_parse_block(CodeGen &codegen, const GDScriptParser::Sui
@@ -256,7 +256,7 @@ index 4fd867f903..839305c132 100644
  	codegen.class_node = p_class;
  	codegen.script = p_script;
 diff --git a/modules/gdscript/gdscript_compiler.h b/modules/gdscript/gdscript_compiler.h
-index ce832f249d..6010b53735 100644
+index ce832f249d0..6010b537354 100644
 --- a/modules/gdscript/gdscript_compiler.h
 +++ b/modules/gdscript/gdscript_compiler.h
 @@ -173,7 +173,13 @@ class GDScriptCompiler {
@@ -274,7 +274,7 @@ index ce832f249d..6010b53735 100644
  	static void make_scripts(GDScript *p_script, const GDScriptParser::ClassNode *p_class, bool p_keep_state);
  	Error compile(const GDScriptParser *p_parser, GDScript *p_script, bool p_keep_state = false);
 diff --git a/modules/gdscript/gdscript_editor.cpp b/modules/gdscript/gdscript_editor.cpp
-index 0fbea53af6..6024da451e 100644
+index 0fbea53af69..6024da451eb 100644
 --- a/modules/gdscript/gdscript_editor.cpp
 +++ b/modules/gdscript/gdscript_editor.cpp
 @@ -379,6 +379,9 @@ void GDScriptLanguage::debug_get_stack_level_locals(int p_level, List<String> *r
@@ -288,7 +288,7 @@ index 0fbea53af6..6024da451e 100644
  	List<Pair<StringName, int>> locals;
  
 diff --git a/modules/gdscript/gdscript_function.h b/modules/gdscript/gdscript_function.h
-index 4864112d7a..22a1151eb3 100644
+index 4864112d7af..22a1151eb32 100644
 --- a/modules/gdscript/gdscript_function.h
 +++ b/modules/gdscript/gdscript_function.h
 @@ -150,6 +150,9 @@ public:
@@ -339,7 +339,7 @@ index 4864112d7a..22a1151eb3 100644
  	GDScriptFunction::CallState state;
  
 diff --git a/modules/gdscript/gdscript_vm.cpp b/modules/gdscript/gdscript_vm.cpp
-index da78d9a56c..5d0deae89a 100644
+index da78d9a56c5..5d0deae89ac 100644
 --- a/modules/gdscript/gdscript_vm.cpp
 +++ b/modules/gdscript/gdscript_vm.cpp
 @@ -462,6 +462,8 @@ void (*type_init_function_table[])(Variant *) = {
@@ -374,7 +374,7 @@ index da78d9a56c..5d0deae89a 100644
  	Variant **instruction_args = nullptr;
 diff --git a/modules/gdscript/tests/scripts/runtime/features/packed_array_temporary_reuse.gd b/modules/gdscript/tests/scripts/runtime/features/packed_array_temporary_reuse.gd
 new file mode 100644
-index 0000000000..2e3e243385
+index 00000000000..2e3e243385c
 --- /dev/null
 +++ b/modules/gdscript/tests/scripts/runtime/features/packed_array_temporary_reuse.gd
 @@ -0,0 +1,22 @@
@@ -402,7 +402,7 @@ index 0000000000..2e3e243385
 +	print(copy)
 diff --git a/modules/gdscript/tests/scripts/runtime/features/packed_array_temporary_reuse.out b/modules/gdscript/tests/scripts/runtime/features/packed_array_temporary_reuse.out
 new file mode 100644
-index 0000000000..62db7ba93b
+index 00000000000..62db7ba93bc
 --- /dev/null
 +++ b/modules/gdscript/tests/scripts/runtime/features/packed_array_temporary_reuse.out
 @@ -0,0 +1,5 @@
@@ -413,7 +413,7 @@ index 0000000000..62db7ba93b
 +[1, 2, 3]
 diff --git a/patches/0001-gdscript-native-call-hooks.patch b/patches/0001-gdscript-native-call-hooks.patch
 new file mode 100644
-index 0000000000..a68512d694
+index 00000000000..a68512d694c
 --- /dev/null
 +++ b/patches/0001-gdscript-native-call-hooks.patch
 @@ -0,0 +1,194 @@
@@ -613,7 +613,7 @@ index 0000000000..a68512d694
 + 	Variant **instruction_args = nullptr;
 diff --git a/platform/android/java/app/src/instrumented/assets/.godot/global_script_class_cache.cfg b/platform/android/java/app/src/instrumented/assets/.godot/global_script_class_cache.cfg
 deleted file mode 100644
-index 080d225fc5..0000000000
+index 080d225fc53..00000000000
 --- a/platform/android/java/app/src/instrumented/assets/.godot/global_script_class_cache.cfg
 +++ /dev/null
 @@ -1,33 +0,0 @@
@@ -652,14 +652,14 @@ index 080d225fc5..0000000000
 -}]
 diff --git a/platform/android/java/app/src/instrumented/assets/.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.md5 b/platform/android/java/app/src/instrumented/assets/.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.md5
 deleted file mode 100644
-index 9346d82667..0000000000
+index 9346d82667c..00000000000
 --- a/platform/android/java/app/src/instrumented/assets/.godot/imported/icon.svg-218a8f2b3041327d8a5756f3a245f83b.md5
 +++ /dev/null
 @@ -1,2 +0,0 @@
 -source_md5="4cdc64b13a9af63279c486903c9b54cc"
 -dest_md5="ddbdfc47e6405ad8d8e9e6a88a32824e"
 diff --git a/platform/macos/export/export.cpp b/platform/macos/export/export.cpp
-index 392385159a..d06b0b39d0 100644
+index 392385159a0..d06b0b39d0c 100644
 --- a/platform/macos/export/export.cpp
 +++ b/platform/macos/export/export.cpp
 @@ -33,6 +33,10 @@
@@ -693,14 +693,14 @@ index 392385159a..d06b0b39d0 100644
 +
 diff --git a/platform/macos/export/export_plugin_fast.cpp b/platform/macos/export/export_plugin_fast.cpp
 new file mode 100644
-index 0000000000..3c268d7d14
+index 00000000000..3c268d7d146
 --- /dev/null
 +++ b/platform/macos/export/export_plugin_fast.cpp
 @@ -0,0 +1 @@
 +#include "export_plugin_fast.h"
 diff --git a/platform/macos/export/export_plugin_fast.h b/platform/macos/export/export_plugin_fast.h
 new file mode 100644
-index 0000000000..fa4b20348d
+index 00000000000..fa4b20348de
 --- /dev/null
 +++ b/platform/macos/export/export_plugin_fast.h
 @@ -0,0 +1,74 @@

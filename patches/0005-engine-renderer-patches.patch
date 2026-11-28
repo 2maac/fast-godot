@@ -1,5 +1,5 @@
 diff --git a/SConstruct b/SConstruct
-index 18538d363f..0375aa1217 100644
+index 18538d363fb..0375aa12172 100644
 --- a/SConstruct
 +++ b/SConstruct
 @@ -207,8 +207,11 @@ opts.Add(BoolVariable("vulkan", "Enable the Vulkan rendering driver", True))
@@ -69,7 +69,7 @@ index 18538d363f..0375aa1217 100644
  if not env["rendering_device"] or not (env["forward_mobile_renderer"] or env["forward_plus_renderer"]):
      env["d3d12"] = False
 diff --git a/core/SCsub b/core/SCsub
-index a77a2a5ed1..f701b68201 100644
+index a77a2a5ed1b..f701b68201e 100644
 --- a/core/SCsub
 +++ b/core/SCsub
 @@ -233,22 +233,23 @@ gen_hash = env.CommandNoCache(
@@ -106,7 +106,7 @@ index a77a2a5ed1..f701b68201 100644
  )
  env.add_source_files(env.core_sources, gen_encrypt)
 diff --git a/core/core_builders.py b/core/core_builders.py
-index b596aa3deb..6be2725afb 100644
+index b596aa3deb8..6be2725afb9 100644
 --- a/core/core_builders.py
 +++ b/core/core_builders.py
 @@ -3,6 +3,10 @@
@@ -593,7 +593,7 @@ index b596aa3deb..6be2725afb 100644
      decomp_size = len(buffer)
 diff --git a/core/crypto/ghash.cpp b/core/crypto/ghash.cpp
 new file mode 100644
-index 0000000000..01af00fe2d
+index 00000000000..01af00fe2d2
 --- /dev/null
 +++ b/core/crypto/ghash.cpp
 @@ -0,0 +1,316 @@
@@ -915,7 +915,7 @@ index 0000000000..01af00fe2d
 +}
 diff --git a/core/crypto/ghash.h b/core/crypto/ghash.h
 new file mode 100644
-index 0000000000..a04242c47b
+index 00000000000..a04242c47b5
 --- /dev/null
 +++ b/core/crypto/ghash.h
 @@ -0,0 +1,101 @@
@@ -1022,7 +1022,7 @@ index 0000000000..a04242c47b
 +};
 diff --git a/core/debugger/frame_profile.h b/core/debugger/frame_profile.h
 new file mode 100644
-index 0000000000..ccb045535c
+index 00000000000..ccb045535c4
 --- /dev/null
 +++ b/core/debugger/frame_profile.h
 @@ -0,0 +1,113 @@
@@ -1140,7 +1140,7 @@ index 0000000000..ccb045535c
 +
 +} // namespace FrameProf
 diff --git a/core/io/file_access_encrypted.cpp b/core/io/file_access_encrypted.cpp
-index e4bbe87581..f0a0bf5f29 100644
+index e4bbe875818..f0a0bf5f293 100644
 --- a/core/io/file_access_encrypted.cpp
 +++ b/core/io/file_access_encrypted.cpp
 @@ -30,6 +30,8 @@
@@ -1225,7 +1225,7 @@ index e4bbe87581..f0a0bf5f29 100644
  	String cs = p_key.md5_text();
  	ERR_FAIL_COND_V(cs.length() != 32, ERR_INVALID_PARAMETER);
 diff --git a/core/io/file_access_encrypted.h b/core/io/file_access_encrypted.h
-index 9dc4333dd5..f93a2f2bcf 100644
+index 9dc4333dd57..f93a2f2bcff 100644
 --- a/core/io/file_access_encrypted.h
 +++ b/core/io/file_access_encrypted.h
 @@ -61,6 +61,11 @@ private:
@@ -1241,7 +1241,7 @@ index 9dc4333dd5..f93a2f2bcf 100644
  
  	Vector<uint8_t> get_iv() const { return iv; }
 diff --git a/core/io/file_access_pack.cpp b/core/io/file_access_pack.cpp
-index cc4bef27a2..a6b002cf7a 100644
+index cc4bef27a2a..a6b002cf7a4 100644
 --- a/core/io/file_access_pack.cpp
 +++ b/core/io/file_access_pack.cpp
 @@ -30,6 +30,8 @@
@@ -1352,7 +1352,7 @@ index cc4bef27a2..a6b002cf7a 100644
  		off = 0;
  	}
 diff --git a/core/io/file_access_pack.h b/core/io/file_access_pack.h
-index 490778f203..339267ea51 100644
+index 490778f203c..339267ea51c 100644
 --- a/core/io/file_access_pack.h
 +++ b/core/io/file_access_pack.h
 @@ -184,9 +184,9 @@ class FileAccessPack : public FileAccess {
@@ -1369,7 +1369,7 @@ index 490778f203..339267ea51 100644
  	Ref<FileAccess> f;
  	virtual Error open_internal(const String &p_path, int p_mode_flags) override;
 diff --git a/core/io/logger.cpp b/core/io/logger.cpp
-index 19c820b051..15182766fc 100644
+index 19c820b0517..15182766fc4 100644
 --- a/core/io/logger.cpp
 +++ b/core/io/logger.cpp
 @@ -141,10 +141,17 @@ void RotatedFileLogger::rotate_file() {
@@ -1395,7 +1395,7 @@ index 19c820b051..15182766fc 100644
  
  			Ref<DirAccess> da = DirAccess::open(base_path.get_base_dir());
 diff --git a/core/io/resource_loader.cpp b/core/io/resource_loader.cpp
-index be050c9c78..3a19fd57d2 100644
+index be050c9c78f..3a19fd57d2e 100644
 --- a/core/io/resource_loader.cpp
 +++ b/core/io/resource_loader.cpp
 @@ -506,7 +506,11 @@ void ResourceLoader::_run_load_task(void *p_userdata) {
@@ -1425,7 +1425,7 @@ index be050c9c78..3a19fd57d2 100644
  	if (load_nesting == 0) {
  		if (own_mq_override) {
 diff --git a/core/object/object.h b/core/object/object.h
-index 95481522b7..7114562a28 100644
+index 95481522b7c..7114562a286 100644
 --- a/core/object/object.h
 +++ b/core/object/object.h
 @@ -404,6 +404,7 @@ private:
@@ -1445,7 +1445,7 @@ index 95481522b7..7114562a28 100644
  	BinaryMutex _instance_binding_mutex;
  	struct InstanceBinding {
 diff --git a/core/object/script_language.h b/core/object/script_language.h
-index 487d75f0ed..1138672a5a 100644
+index 487d75f0ed1..1138672a5a9 100644
 --- a/core/object/script_language.h
 +++ b/core/object/script_language.h
 @@ -339,7 +339,19 @@ public:
@@ -1470,7 +1470,7 @@ index 487d75f0ed..1138672a5a 100644
  class PlaceHolderScriptInstance : public ScriptInstance {
  	Object *owner = nullptr;
 diff --git a/core/object/worker_thread_pool.cpp b/core/object/worker_thread_pool.cpp
-index 87be597b89..278c0260cb 100644
+index 87be597b89f..278c0260cb6 100644
 --- a/core/object/worker_thread_pool.cpp
 +++ b/core/object/worker_thread_pool.cpp
 @@ -753,6 +753,22 @@ void WorkerThreadPool::wait_for_group_task_completion(GroupID p_group) {
@@ -1498,7 +1498,7 @@ index 87be597b89..278c0260cb 100644
  }
 diff --git a/core/os/secure_memory.cpp b/core/os/secure_memory.cpp
 new file mode 100644
-index 0000000000..f35b01143e
+index 00000000000..f35b01143ef
 --- /dev/null
 +++ b/core/os/secure_memory.cpp
 @@ -0,0 +1,134 @@
@@ -1638,7 +1638,7 @@ index 0000000000..f35b01143e
 +}
 diff --git a/core/os/secure_memory.h b/core/os/secure_memory.h
 new file mode 100644
-index 0000000000..085a951f1f
+index 00000000000..085a951f1ff
 --- /dev/null
 +++ b/core/os/secure_memory.h
 @@ -0,0 +1,67 @@
@@ -1710,7 +1710,7 @@ index 0000000000..085a951f1f
 +
 +} // namespace SecureMemory
 diff --git a/core/variant/variant.h b/core/variant/variant.h
-index 0aadc3b886..4c3607801c 100644
+index 0aadc3b886b..4c3607801cb 100644
 --- a/core/variant/variant.h
 +++ b/core/variant/variant.h
 @@ -391,6 +391,10 @@ public:
@@ -1725,7 +1725,7 @@ index 0aadc3b886..4c3607801c 100644
  	bool is_ref_counted() const;
  	_FORCE_INLINE_ bool is_num() const {
 diff --git a/core/variant/variant_internal.h b/core/variant/variant_internal.h
-index 65f9e9772c..9920994d55 100644
+index 65f9e9772cf..9920994d55c 100644
 --- a/core/variant/variant_internal.h
 +++ b/core/variant/variant_internal.h
 @@ -951,18 +951,16 @@ struct VariantDefaultInitializer<T, std::enable_if_t<IsVariantTypeT<T>>> {
@@ -1756,7 +1756,7 @@ index 65f9e9772c..9920994d55 100644
  	}
  };
 diff --git a/doc/classes/RenderingServer.xml b/doc/classes/RenderingServer.xml
-index f373a64a7a..93ce7a3e0d 100644
+index f373a64a7a3..93ce7a3e0d4 100644
 --- a/doc/classes/RenderingServer.xml
 +++ b/doc/classes/RenderingServer.xml
 @@ -5435,7 +5435,11 @@
@@ -1773,7 +1773,7 @@ index f373a64a7a..93ce7a3e0d 100644
  		</constant>
  		<constant name="VIEWPORT_UPDATE_DISABLED" value="0" enum="ViewportUpdateMode">
 diff --git a/doc/classes/Viewport.xml b/doc/classes/Viewport.xml
-index bafca16d64..c40084243a 100644
+index 57618f2eeb1..ecde282b94e 100644
 --- a/doc/classes/Viewport.xml
 +++ b/doc/classes/Viewport.xml
 @@ -579,7 +579,11 @@
@@ -1790,7 +1790,7 @@ index bafca16d64..c40084243a 100644
  		</constant>
  		<constant name="MSAA_DISABLED" value="0" enum="MSAA">
 diff --git a/editor/editor_node.cpp b/editor/editor_node.cpp
-index 1b5471573d..e9f03bb536 100644
+index 2fb7e6c4ca8..19d9aca2700 100644
 --- a/editor/editor_node.cpp
 +++ b/editor/editor_node.cpp
 @@ -195,6 +195,7 @@
@@ -1832,7 +1832,7 @@ index 1b5471573d..e9f03bb536 100644
  						err = platform->export_project(export_preset, export_defer.debug, export_path);
  					}
  				}
-@@ -9739,6 +9750,10 @@ EditorNode::EditorNode() {
+@@ -9757,6 +9768,10 @@ EditorNode::EditorNode() {
  	shader_baker_export_plugin->add_platform(shader_baker_export_plugin_platform_metal);
  #endif
  
@@ -1844,7 +1844,7 @@ index 1b5471573d..e9f03bb536 100644
  #endif // RD_ENABLED
  
 diff --git a/editor/export/editor_export.cpp b/editor/export/editor_export.cpp
-index 02d83601e8..087a07b217 100644
+index 02d83601e8c..087a07b2175 100644
 --- a/editor/export/editor_export.cpp
 +++ b/editor/export/editor_export.cpp
 @@ -186,6 +186,7 @@ Ref<EditorExportPlatform> EditorExport::get_export_platform(int p_idx) {
@@ -1903,7 +1903,7 @@ index 02d83601e8..087a07b217 100644
  	runnable_presets[p_preset->get_platform()] = p_preset;
  	emit_presets_runnable_changed();
 diff --git a/editor/export/editor_export.h b/editor/export/editor_export.h
-index e20baf4d05..673bb8582f 100644
+index e20baf4d05c..673bb8582f0 100644
 --- a/editor/export/editor_export.h
 +++ b/editor/export/editor_export.h
 @@ -59,7 +59,6 @@ class EditorExport : public Node {
@@ -1942,7 +1942,7 @@ index e20baf4d05..673bb8582f 100644
  	void unset_runnable_preset(const Ref<EditorExportPreset> &p_preset);
  	Ref<EditorExportPreset> get_runnable_preset_for_platform(const Ref<EditorExportPlatform> &p_for_platform) const;
 diff --git a/editor/export/editor_export_platform.h b/editor/export/editor_export_platform.h
-index cb6f0e421c..27e17f8daf 100644
+index cb6f0e421cd..27e17f8dafb 100644
 --- a/editor/export/editor_export_platform.h
 +++ b/editor/export/editor_export_platform.h
 @@ -198,8 +198,8 @@ protected:
@@ -1971,7 +1971,7 @@ index cb6f0e421c..27e17f8daf 100644
  	virtual String get_name() const = 0;
  	virtual Ref<Texture2D> get_logo() const = 0;
 diff --git a/editor/export/editor_export_platform_pc.cpp b/editor/export/editor_export_platform_pc.cpp
-index 66d61532fd..0424f1712c 100644
+index 66d61532fdc..0424f1712cc 100644
 --- a/editor/export/editor_export_platform_pc.cpp
 +++ b/editor/export/editor_export_platform_pc.cpp
 @@ -58,8 +58,6 @@ void EditorExportPlatformPC::get_preset_features(const Ref<EditorExportPreset> &
@@ -2026,7 +2026,7 @@ index 66d61532fd..0424f1712c 100644
  	String template_path = p_debug ? custom_debug : custom_release;
  
 diff --git a/editor/export/editor_export_plugin.h b/editor/export/editor_export_plugin.h
-index 96bfbc7afe..117d395e91 100644
+index 96bfbc7afe0..117d395e916 100644
 --- a/editor/export/editor_export_plugin.h
 +++ b/editor/export/editor_export_plugin.h
 @@ -123,6 +123,21 @@ protected:
@@ -2052,7 +2052,7 @@ index 96bfbc7afe..117d395e91 100644
  	virtual void _export_end();
  	virtual void _end_generate_apple_embedded_project(const String &p_path, bool p_will_build_archive);
 diff --git a/editor/export/project_export.cpp b/editor/export/project_export.cpp
-index a7eec1900f..c00380794d 100644
+index a7eec1900f6..c00380794d7 100644
 --- a/editor/export/project_export.cpp
 +++ b/editor/export/project_export.cpp
 @@ -30,7 +30,12 @@
@@ -2453,7 +2453,7 @@ index a7eec1900f..c00380794d 100644
 +}
 +#endif
 diff --git a/editor/export/project_export.h b/editor/export/project_export.h
-index 2a54b755d4..7cafe3043d 100644
+index 2a54b755d4f..7cafe3043db 100644
 --- a/editor/export/project_export.h
 +++ b/editor/export/project_export.h
 @@ -31,6 +31,7 @@
@@ -2530,7 +2530,7 @@ index 2a54b755d4..7cafe3043d 100644
  	bool _validate_script_encryption_key(const String &p_key);
  
 diff --git a/editor/export/shader_baker/shader_baker_export_plugin.cpp b/editor/export/shader_baker/shader_baker_export_plugin.cpp
-index 0f51b22c17..f9b9d4be90 100644
+index 0f51b22c176..f9b9d4be908 100644
 --- a/editor/export/shader_baker/shader_baker_export_plugin.cpp
 +++ b/editor/export/shader_baker/shader_baker_export_plugin.cpp
 @@ -42,6 +42,11 @@
@@ -2800,7 +2800,7 @@ index 0f51b22c17..f9b9d4be90 100644
  
  			// Compile shader binary from SPIR-V.
 diff --git a/editor/export/shader_baker/shader_baker_export_plugin.h b/editor/export/shader_baker/shader_baker_export_plugin.h
-index a663756699..95442c23ca 100644
+index a6637566992..95442c23cad 100644
 --- a/editor/export/shader_baker/shader_baker_export_plugin.h
 +++ b/editor/export/shader_baker/shader_baker_export_plugin.h
 @@ -80,6 +80,10 @@ protected:
@@ -2824,7 +2824,7 @@ index a663756699..95442c23ca 100644
  public:
  	ShaderBakerExportPlugin();
 diff --git a/editor/icons/DefaultProjectIcon.svg b/editor/icons/DefaultProjectIcon.svg
-index c6bbb7d820..51933b504d 100644
+index c6bbb7d820d..51933b504da 100644
 --- a/editor/icons/DefaultProjectIcon.svg
 +++ b/editor/icons/DefaultProjectIcon.svg
 @@ -1 +1,113 @@
@@ -2943,7 +2943,7 @@ index c6bbb7d820..51933b504d 100644
 +<path d="M0 0 C0.66 0 1.32 0 2 0 C1.25 4.75 1.25 4.75 -1 7 C-1.62 5.19 -1.62 5.19 -2 3 C-1.34 2.01 -0.68 1.02 0 0 Z " fill="#01080D" transform="translate(447,320)"/>
 +</svg>
 diff --git a/editor/project_manager/project_dialog.cpp b/editor/project_manager/project_dialog.cpp
-index 2c2d70e0bb..1772e28039 100644
+index 2c2d70e0bb3..1772e28039f 100644
 --- a/editor/project_manager/project_dialog.cpp
 +++ b/editor/project_manager/project_dialog.cpp
 @@ -598,6 +598,12 @@ void ProjectDialog::ok_pressed() {
@@ -2960,7 +2960,7 @@ index 2c2d70e0bb..1772e28039 100644
  		for (const KeyValue<String, Variant> &extra_setting : extra_settings) {
  			// Merge with other initial settings defined above.
 diff --git a/editor/settings/editor_build_profile.h b/editor/settings/editor_build_profile.h
-index 9c53f25b11..39e1f74692 100644
+index 9c53f25b117..39e1f746926 100644
 --- a/editor/settings/editor_build_profile.h
 +++ b/editor/settings/editor_build_profile.h
 @@ -189,7 +189,6 @@ class EditorBuildProfileManager : public AcceptDialog {
@@ -2972,7 +2972,7 @@ index 9c53f25b11..39e1f74692 100644
  	void _class_list_item_edited();
  	void _class_list_item_collapsed(Object *p_item);
 diff --git a/editor/shader/shader_baker/SCsub b/editor/shader/shader_baker/SCsub
-index 764b73760c..03cc6ad740 100644
+index 764b73760c4..03cc6ad740e 100644
 --- a/editor/shader/shader_baker/SCsub
 +++ b/editor/shader/shader_baker/SCsub
 @@ -11,3 +11,6 @@ if env["d3d12"]:
@@ -2984,7 +2984,7 @@ index 764b73760c..03cc6ad740 100644
 +env.add_source_files(env.editor_sources, "shader_baker_export_plugin_platform_webgpu.cpp")
 diff --git a/editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.cpp b/editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.cpp
 new file mode 100644
-index 0000000000..d57dc5047c
+index 00000000000..d57dc5047c4
 --- /dev/null
 +++ b/editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.cpp
 @@ -0,0 +1,41 @@
@@ -3031,7 +3031,7 @@ index 0000000000..d57dc5047c
 +}
 diff --git a/editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.h b/editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.h
 new file mode 100644
-index 0000000000..3e1ece0408
+index 00000000000..3e1ece0408a
 --- /dev/null
 +++ b/editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.h
 @@ -0,0 +1,41 @@
@@ -3437,7 +3437,7 @@ zADnGmj$``e|KGIBN;dz$81l@Fg0Iz|Ki!z#z-#bYw1KwJCfddkEc!y9Vk#F11OkCT
 kAP@)y0)apv5JU`r2j{8galPl4`v3p{07*qoM6N<$g1(zrBme*a
 
 diff --git a/main/main.cpp b/main/main.cpp
-index a1352e6d67..a5053311bd 100644
+index a1352e6d670..a5053311bd6 100644
 --- a/main/main.cpp
 +++ b/main/main.cpp
 @@ -35,6 +35,7 @@
@@ -3622,7 +3622,7 @@ index a1352e6d67..a5053311bd 100644
  	if (EngineDebugger::is_active()) {
  		EngineDebugger::get_singleton()->iteration(frame_time, process_ticks, physics_process_ticks, physics_step);
 diff --git a/main/main_builders.py b/main/main_builders.py
-index 78041ce4f1..55f0e0a221 100644
+index 78041ce4f19..55f0e0a221d 100644
 --- a/main/main_builders.py
 +++ b/main/main_builders.py
 @@ -11,7 +11,7 @@ def make_splash(target, source, env):
@@ -12377,7 +12377,7 @@ literal 0
 HcmV?d00001
 
 diff --git a/methods.py b/methods.py
-index 3dca5ad614..532601b620 100644
+index 3dca5ad6145..532601b6200 100644
 --- a/methods.py
 +++ b/methods.py
 @@ -167,6 +167,15 @@ def get_version_info(module_version_string="", silent=False):
@@ -12397,7 +12397,7 @@ index 3dca5ad614..532601b620 100644
      git_hash = ""
      git_folder = ".git"
 diff --git a/misc/dist/html/full-size.html b/misc/dist/html/full-size.html
-index 92b2b82ee7..d7bfbcdb0a 100644
+index 92b2b82ee7e..d7bfbcdb0a5 100644
 --- a/misc/dist/html/full-size.html
 +++ b/misc/dist/html/full-size.html
 @@ -111,6 +111,7 @@ body {
@@ -12436,7 +12436,7 @@ index 92b2b82ee7..d7bfbcdb0a 100644
  					statusProgress.max = total;
 diff --git a/misc/dist/html/webgpu-full-size.html b/misc/dist/html/webgpu-full-size.html
 new file mode 100644
-index 0000000000..6938260fe0
+index 00000000000..6938260fe05
 --- /dev/null
 +++ b/misc/dist/html/webgpu-full-size.html
 @@ -0,0 +1,336 @@
@@ -12777,7 +12777,7 @@ index 0000000000..6938260fe0
 +	</body>
 +</html>
 diff --git a/misc/dist/macos/editor_info_plist.template b/misc/dist/macos/editor_info_plist.template
-index 5cbf8024f4..fb0b7e0487 100644
+index 5cbf8024f43..fb0b7e04873 100644
 --- a/misc/dist/macos/editor_info_plist.template
 +++ b/misc/dist/macos/editor_info_plist.template
 @@ -10,8 +10,6 @@
@@ -12790,7 +12790,7 @@ index 5cbf8024f4..fb0b7e0487 100644
  	<string>org.godotengine.godot</string>
  	<key>CFBundleInfoDictionaryVersion</key>
 diff --git a/misc/dist/macos_tools.app/Contents/Info.plist b/misc/dist/macos_tools.app/Contents/Info.plist
-index 89462b2cae..d6b7001167 100644
+index 89462b2cae9..d6b7001167d 100644
 --- a/misc/dist/macos_tools.app/Contents/Info.plist
 +++ b/misc/dist/macos_tools.app/Contents/Info.plist
 @@ -10,8 +10,6 @@
@@ -80010,7 +80010,7 @@ literal 0
 HcmV?d00001
 
 diff --git a/modules/glslang/config.py b/modules/glslang/config.py
-index a024dcf984..3788c18277 100644
+index a024dcf9846..3788c182775 100644
 --- a/modules/glslang/config.py
 +++ b/modules/glslang/config.py
 @@ -1,7 +1,7 @@
@@ -80026,7 +80026,7 @@ index a024dcf984..3788c18277 100644
  def configure(env):
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildDiagnostic.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildDiagnostic.cs
 deleted file mode 100644
-index 79eb9e2ce2..0000000000
+index 79eb9e2ce2e..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildDiagnostic.cs
 +++ /dev/null
 @@ -1,21 +0,0 @@
@@ -80053,7 +80053,7 @@ index 79eb9e2ce2..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildInfo.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildInfo.cs
 deleted file mode 100644
-index dc9e2c5920..0000000000
+index dc9e2c59200..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildInfo.cs
 +++ /dev/null
 @@ -1,86 +0,0 @@
@@ -80145,7 +80145,7 @@ index dc9e2c5920..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildManager.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildManager.cs
 deleted file mode 100644
-index 8cb8f21c2d..0000000000
+index 8cb8f21c2df..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildManager.cs
 +++ /dev/null
 @@ -1,390 +0,0 @@
@@ -80541,7 +80541,7 @@ index 8cb8f21c2d..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildOutputView.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildOutputView.cs
 deleted file mode 100644
-index 5cf6581fc4..0000000000
+index 5cf6581fc49..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildOutputView.cs
 +++ /dev/null
 @@ -1,148 +0,0 @@
@@ -80695,7 +80695,7 @@ index 5cf6581fc4..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildProblemsFilter.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildProblemsFilter.cs
 deleted file mode 100644
-index a0db1cdf03..0000000000
+index a0db1cdf039..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildProblemsFilter.cs
 +++ /dev/null
 @@ -1,39 +0,0 @@
@@ -80740,7 +80740,7 @@ index a0db1cdf03..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildProblemsView.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildProblemsView.cs
 deleted file mode 100644
-index 35a62a0eab..0000000000
+index 35a62a0eab7..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildProblemsView.cs
 +++ /dev/null
 @@ -1,695 +0,0 @@
@@ -81441,7 +81441,7 @@ index 35a62a0eab..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildResult.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildResult.cs
 deleted file mode 100644
-index 59055b60c3..0000000000
+index 59055b60c3d..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildResult.cs
 +++ /dev/null
 @@ -1,8 +0,0 @@
@@ -81455,7 +81455,7 @@ index 59055b60c3..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/BuildSystem.cs b/modules/mono/editor/GodotTools/GodotTools/Build/BuildSystem.cs
 deleted file mode 100644
-index db582510a3..0000000000
+index db582510a3c..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/BuildSystem.cs
 +++ /dev/null
 @@ -1,395 +0,0 @@
@@ -81856,7 +81856,7 @@ index db582510a3..0000000000
 -}
 diff --git a/modules/mono/editor/GodotTools/GodotTools/Build/DotNetFinder.cs b/modules/mono/editor/GodotTools/GodotTools/Build/DotNetFinder.cs
 deleted file mode 100644
-index 4d1456b70c..0000000000
+index 4d1456b70ca..00000000000
 --- a/modules/mono/editor/GodotTools/GodotTools/Build/DotNetFinder.cs
 +++ /dev/null
 @@ -1,121 +0,0 @@
@@ -81982,7 +81982,7 @@ index 4d1456b70c..0000000000
 -    }
 -}
 diff --git a/platform/linuxbsd/SCsub b/platform/linuxbsd/SCsub
-index 87586c5ff6..954a39dcc6 100644
+index 87586c5ff60..954a39dcc6d 100644
 --- a/platform/linuxbsd/SCsub
 +++ b/platform/linuxbsd/SCsub
 @@ -7,6 +7,7 @@ import platform_linuxbsd_builders
@@ -81994,7 +81994,7 @@ index 87586c5ff6..954a39dcc6 100644
      "freedesktop_portal_desktop.cpp",
      "freedesktop_screensaver.cpp",
 diff --git a/platform/linuxbsd/export/export.cpp b/platform/linuxbsd/export/export.cpp
-index d8c407cd02..0dcf52b3d3 100644
+index d8c407cd02c..0dcf52b3d38 100644
 --- a/platform/linuxbsd/export/export.cpp
 +++ b/platform/linuxbsd/export/export.cpp
 @@ -33,6 +33,10 @@
@@ -82031,7 +82031,7 @@ index d8c407cd02..0dcf52b3d3 100644
  }
 diff --git a/platform/linuxbsd/export/export_plugin_fast.h b/platform/linuxbsd/export/export_plugin_fast.h
 new file mode 100644
-index 0000000000..9b929749e6
+index 00000000000..9b929749e60
 --- /dev/null
 +++ b/platform/linuxbsd/export/export_plugin_fast.h
 @@ -0,0 +1,68 @@
@@ -82105,7 +82105,7 @@ index 0000000000..9b929749e6
 +};
 diff --git a/platform/linuxbsd/grit_glibc_compat.c b/platform/linuxbsd/grit_glibc_compat.c
 new file mode 100644
-index 0000000000..a685d99eb6
+index 00000000000..a685d99eb6a
 --- /dev/null
 +++ b/platform/linuxbsd/grit_glibc_compat.c
 @@ -0,0 +1,26 @@
@@ -82136,7 +82136,7 @@ index 0000000000..a685d99eb6
 +#endif
 +}
 diff --git a/platform/windows/SCsub b/platform/windows/SCsub
-index 0339d14e94..1fb537b51c 100644
+index 0339d14e94b..1fb537b51c7 100644
 --- a/platform/windows/SCsub
 +++ b/platform/windows/SCsub
 @@ -82,6 +82,10 @@ else:
@@ -82160,10 +82160,10 @@ index 0339d14e94..1fb537b51c 100644
      if env.msvc:
          env_wrap.Append(LINKFLAGS=["/SUBSYSTEM:CONSOLE"])
 diff --git a/platform/windows/display_server_windows.cpp b/platform/windows/display_server_windows.cpp
-index d9ab264d0a..9a0bacb6e2 100644
+index 9a9e564e7e6..63dbcbeb9f9 100644
 --- a/platform/windows/display_server_windows.cpp
 +++ b/platform/windows/display_server_windows.cpp
-@@ -8389,6 +8389,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
+@@ -8444,6 +8444,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
  			if (fallback_to_native && gl_supported) {
  				WARN_PRINT("Your video card drivers seem not to support GLES3 / ANGLE, switching to native OpenGL.");
  				rendering_driver = "opengl3";
@@ -82172,7 +82172,7 @@ index d9ab264d0a..9a0bacb6e2 100644
  				r_error = ERR_UNAVAILABLE;
  				ERR_FAIL_MSG("Could not initialize ANGLE OpenGL.");
 diff --git a/platform/windows/export/export.cpp b/platform/windows/export/export.cpp
-index cc74901fac..78b4830f2e 100644
+index cc74901fac3..78b4830f2e4 100644
 --- a/platform/windows/export/export.cpp
 +++ b/platform/windows/export/export.cpp
 @@ -33,6 +33,10 @@
@@ -82207,7 +82207,7 @@ index cc74901fac..78b4830f2e 100644
  }
 diff --git a/platform/windows/export/export_plugin_fast.h b/platform/windows/export/export_plugin_fast.h
 new file mode 100644
-index 0000000000..9d64a3c69c
+index 00000000000..9d64a3c69ca
 --- /dev/null
 +++ b/platform/windows/export/export_plugin_fast.h
 @@ -0,0 +1,67 @@
@@ -84670,7 +84670,7 @@ zEzOlb0Ld{s5WNHe`ZKhbKFzBFo|63V&M7Zx|NR&J%(>(@t1siDC2FfjCO!<P8o6qG
 g`)_^ve<-AX)68|fWksNDYXYbcu$SW7?L*J|7fB~nu>b%7
 
 diff --git a/scene/3d/physics/soft_body_3d.cpp b/scene/3d/physics/soft_body_3d.cpp
-index 2484efb493..6928eaebe3 100644
+index 2484efb493b..6928eaebe3f 100644
 --- a/scene/3d/physics/soft_body_3d.cpp
 +++ b/scene/3d/physics/soft_body_3d.cpp
 @@ -389,7 +389,7 @@ void SoftBody3D::_bind_methods() {
@@ -84683,7 +84683,7 @@ index 2484efb493..6928eaebe3 100644
  	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "shrinking_factor", PROPERTY_HINT_RANGE, "-1,1,0.01,or_less,or_greater"), "set_shrinking_factor", "get_shrinking_factor");
  	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "pressure_coefficient"), "set_pressure_coefficient", "get_pressure_coefficient");
 diff --git a/scene/gui/color_picker.cpp b/scene/gui/color_picker.cpp
-index a857764e17..4ffdabd727 100644
+index a857764e171..4ffdabd7273 100644
 --- a/scene/gui/color_picker.cpp
 +++ b/scene/gui/color_picker.cpp
 @@ -1757,7 +1757,7 @@ void ColorPicker::_enable_input_on_popup_hide() {
@@ -84814,7 +84814,7 @@ index a857764e17..4ffdabd727 100644
  
  void ColorPicker::_picker_texture_input(const Ref<InputEvent> &p_event) {
 diff --git a/scene/gui/color_picker.h b/scene/gui/color_picker.h
-index a3c7e4b63f..9cceff5e56 100644
+index a3c7e4b63fe..9cceff5e567 100644
 --- a/scene/gui/color_picker.h
 +++ b/scene/gui/color_picker.h
 @@ -196,8 +196,11 @@ private:
@@ -84840,7 +84840,7 @@ index a3c7e4b63f..9cceff5e56 100644
  
  	inline int _get_preset_size();
 diff --git a/scene/gui/file_dialog.cpp b/scene/gui/file_dialog.cpp
-index 2b358a2492..e341ca2251 100644
+index 2b358a2492b..e341ca2251f 100644
 --- a/scene/gui/file_dialog.cpp
 +++ b/scene/gui/file_dialog.cpp
 @@ -2003,6 +2003,16 @@ Dictionary FileDialog::get_selected_options() const {
@@ -84861,7 +84861,7 @@ index 2b358a2492..e341ca2251 100644
  	ERR_FAIL_INDEX_V(p_option, options.size(), String());
  	return options[p_option].name;
 diff --git a/scene/gui/file_dialog.h b/scene/gui/file_dialog.h
-index bb6b077157..ff763964e2 100644
+index bb6b0771571..ff763964e23 100644
 --- a/scene/gui/file_dialog.h
 +++ b/scene/gui/file_dialog.h
 @@ -45,6 +45,8 @@ class PopupMenu;
@@ -84886,7 +84886,7 @@ index bb6b077157..ff763964e2 100644
  	int get_option_count() const;
  
 diff --git a/scene/main/viewport.cpp b/scene/main/viewport.cpp
-index 12c75ecc6b..bce312ef4c 100644
+index 12c75ecc6b9..bce312ef4ce 100644
 --- a/scene/main/viewport.cpp
 +++ b/scene/main/viewport.cpp
 @@ -5420,7 +5420,7 @@ void Viewport::_bind_methods() {
@@ -84907,7 +84907,7 @@ index 12c75ecc6b..bce312ef4c 100644
  
  	BIND_ENUM_CONSTANT(MSAA_DISABLED);
 diff --git a/scene/main/viewport.h b/scene/main/viewport.h
-index 46d432daab..bc93d027ab 100644
+index 46d432daab4..bc93d027ab2 100644
 --- a/scene/main/viewport.h
 +++ b/scene/main/viewport.h
 @@ -106,6 +106,7 @@ public:
@@ -84919,7 +84919,7 @@ index 46d432daab..bc93d027ab 100644
  	};
  
 diff --git a/scene/resources/compressed_texture.cpp b/scene/resources/compressed_texture.cpp
-index 5db54a3f33..407b40eedc 100644
+index 5db54a3f335..407b40eedc9 100644
 --- a/scene/resources/compressed_texture.cpp
 +++ b/scene/resources/compressed_texture.cpp
 @@ -250,11 +250,35 @@ bool CompressedTexture2D::has_alpha() const {
@@ -84961,7 +84961,7 @@ index 5db54a3f33..407b40eedc 100644
  
  bool CompressedTexture2D::is_pixel_opaque(int p_x, int p_y) const {
 diff --git a/servers/display/display_server.cpp b/servers/display/display_server.cpp
-index d363550e2b..43aa8c8173 100644
+index d363550e2b1..43aa8c81733 100644
 --- a/servers/display/display_server.cpp
 +++ b/servers/display/display_server.cpp
 @@ -58,6 +58,9 @@ STATIC_ASSERT_INCOMPLETE_TYPE(class, RenderingServer);
@@ -84999,7 +84999,7 @@ index d363550e2b..43aa8c8173 100644
  	if (rcd != nullptr) {
  		err = rcd->initialize();
 diff --git a/servers/rendering/renderer_rd/cluster_builder_rd.cpp b/servers/rendering/renderer_rd/cluster_builder_rd.cpp
-index 1df4b6054d..911de46da1 100644
+index 1df4b6054d5..911de46da1d 100644
 --- a/servers/rendering/renderer_rd/cluster_builder_rd.cpp
 +++ b/servers/rendering/renderer_rd/cluster_builder_rd.cpp
 @@ -55,6 +55,12 @@ ClusterBuilderSharedDataRD::ClusterBuilderSharedDataRD() {
@@ -85051,7 +85051,7 @@ index 1df4b6054d..911de46da1 100644
  	} else {
  		framebuffer = RD::get_singleton()->framebuffer_create_empty(p_screen_size / div_value);
 diff --git a/servers/rendering/renderer_rd/cluster_builder_rd.h b/servers/rendering/renderer_rd/cluster_builder_rd.h
-index 49b039a997..93f9f00206 100644
+index 49b039a997c..93f9f00206b 100644
 --- a/servers/rendering/renderer_rd/cluster_builder_rd.h
 +++ b/servers/rendering/renderer_rd/cluster_builder_rd.h
 @@ -198,6 +198,10 @@ private:
@@ -85066,7 +85066,7 @@ index 49b039a997..93f9f00206 100644
  	RID cluster_buffer; // Used for rendering.
  	RID element_buffer; // Used for storing, to hint element touches far plane or near plane.
 diff --git a/servers/rendering/renderer_rd/effects/copy_effects.cpp b/servers/rendering/renderer_rd/effects/copy_effects.cpp
-index 8882b12bf5..993a7ecc94 100644
+index 8882b12bf5a..993a7ecc943 100644
 --- a/servers/rendering/renderer_rd/effects/copy_effects.cpp
 +++ b/servers/rendering/renderer_rd/effects/copy_effects.cpp
 @@ -142,6 +142,13 @@ CopyEffects::CopyEffects(BitField<RasterEffects> p_raster_effects) {
@@ -85120,7 +85120,7 @@ index 8882b12bf5..993a7ecc94 100644
  	UniformSetCacheRD *uniform_set_cache = UniformSetCacheRD::get_singleton();
  	ERR_FAIL_NULL(uniform_set_cache);
 diff --git a/servers/rendering/renderer_rd/effects/copy_effects.h b/servers/rendering/renderer_rd/effects/copy_effects.h
-index c1077d61a8..ecf83c4442 100644
+index c1077d61a80..ecf83c44426 100644
 --- a/servers/rendering/renderer_rd/effects/copy_effects.h
 +++ b/servers/rendering/renderer_rd/effects/copy_effects.h
 @@ -34,6 +34,7 @@
@@ -85155,7 +85155,7 @@ index c1077d61a8..ecf83c4442 100644
  	void copy_to_atlas_fb(RID p_source_rd_texture, RID p_dest_framebuffer, const Rect2 &p_uv_rect, RD::DrawListID p_draw_list, bool p_flip_y = false, bool p_panorama = false);
  	void copy_to_drawlist(RD::DrawListID p_draw_list, RD::FramebufferFormatID p_fb_format, RID p_source_rd_texture, bool p_linear = false, float p_linear_luminance_multiplier = 1.0);
 diff --git a/servers/rendering/renderer_rd/effects/fsr.cpp b/servers/rendering/renderer_rd/effects/fsr.cpp
-index 10796cad67..825ac485c5 100644
+index 10796cad67a..825ac485c57 100644
 --- a/servers/rendering/renderer_rd/effects/fsr.cpp
 +++ b/servers/rendering/renderer_rd/effects/fsr.cpp
 @@ -41,11 +41,16 @@ FSR::FSR() {
@@ -85186,7 +85186,7 @@ index 10796cad67..825ac485c5 100644
  
  	RID default_sampler = material_storage->sampler_rd_get_default(RSE::CANVAS_ITEM_TEXTURE_FILTER_LINEAR, RSE::CANVAS_ITEM_TEXTURE_REPEAT_DISABLED);
 diff --git a/servers/rendering/renderer_rd/effects/fsr.h b/servers/rendering/renderer_rd/effects/fsr.h
-index e1766cb136..92e04ece2b 100644
+index e1766cb136e..92e04ece2b5 100644
 --- a/servers/rendering/renderer_rd/effects/fsr.h
 +++ b/servers/rendering/renderer_rd/effects/fsr.h
 @@ -68,6 +68,7 @@ private:
@@ -85198,7 +85198,7 @@ index e1766cb136..92e04ece2b 100644
  	PipelineDeferredRD pipeline;
  };
 diff --git a/servers/rendering/renderer_rd/effects/fsr2.cpp b/servers/rendering/renderer_rd/effects/fsr2.cpp
-index 207bb29a12..e4105b1441 100644
+index 207bb29a12a..e4105b1441a 100644
 --- a/servers/rendering/renderer_rd/effects/fsr2.cpp
 +++ b/servers/rendering/renderer_rd/effects/fsr2.cpp
 @@ -514,6 +514,18 @@ FSR2Context::~FSR2Context() {
@@ -85337,7 +85337,7 @@ index 207bb29a12..e4105b1441 100644
  	RD::get_singleton()->free_rid(device.linear_clamp_sampler);
  
 diff --git a/servers/rendering/renderer_rd/effects/fsr2.h b/servers/rendering/renderer_rd/effects/fsr2.h
-index 5c1d1fc434..3684b429ec 100644
+index 5c1d1fc434c..3684b429ece 100644
 --- a/servers/rendering/renderer_rd/effects/fsr2.h
 +++ b/servers/rendering/renderer_rd/effects/fsr2.h
 @@ -174,10 +174,17 @@ public:
@@ -85360,7 +85360,7 @@ index 5c1d1fc434..3684b429ec 100644
  		Fsr2ReconstructPreviousDepthPassShaderRD reconstruct_previous_depth;
 diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
 new file mode 100644
-index 0000000000..abb280bbc5
+index 00000000000..abb280bbc58
 --- /dev/null
 +++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.cpp
 @@ -0,0 +1,368 @@
@@ -85734,7 +85734,7 @@ index 0000000000..abb280bbc5
 +}
 diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
 new file mode 100644
-index 0000000000..a2a2d8b540
+index 00000000000..a2a2d8b5404
 --- /dev/null
 +++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler.h
 @@ -0,0 +1,118 @@
@@ -85858,7 +85858,7 @@ index 0000000000..a2a2d8b540
 +} // namespace RendererRD
 diff --git a/servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h b/servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h
 new file mode 100644
-index 0000000000..6c9e1b1a60
+index 00000000000..6c9e1b1a600
 --- /dev/null
 +++ b/servers/rendering/renderer_rd/effects/pmndrs_upscaler_wgsl.h
 @@ -0,0 +1,480 @@
@@ -86343,7 +86343,7 @@ index 0000000000..6c9e1b1a60
 +static_assert(sizeof(pmndrs_easu_wgsl) > 1, "pmndrs EASU WGSL must be embedded");
 +static_assert(sizeof(pmndrs_rcas_wgsl) > 1, "pmndrs RCAS WGSL must be embedded");
 diff --git a/servers/rendering/renderer_rd/effects/taa.cpp b/servers/rendering/renderer_rd/effects/taa.cpp
-index 9125301c43..d553569cec 100644
+index 9125301c431..d553569cec7 100644
 --- a/servers/rendering/renderer_rd/effects/taa.cpp
 +++ b/servers/rendering/renderer_rd/effects/taa.cpp
 @@ -101,7 +101,10 @@ void TAA::process(Ref<RenderSceneBuffersRD> p_render_buffers, RD::DataFormat p_f
@@ -86359,7 +86359,7 @@ index 9125301c43..d553569cec 100644
  		just_allocated = true;
  	}
 diff --git a/servers/rendering/renderer_rd/effects/tone_mapper.cpp b/servers/rendering/renderer_rd/effects/tone_mapper.cpp
-index 3ee5b78aa9..9b11c00b33 100644
+index 3ee5b78aa9d..9b11c00b33e 100644
 --- a/servers/rendering/renderer_rd/effects/tone_mapper.cpp
 +++ b/servers/rendering/renderer_rd/effects/tone_mapper.cpp
 @@ -61,6 +61,14 @@ ToneMapper::ToneMapper(bool p_use_mobile_version) {
@@ -86378,7 +86378,7 @@ index 3ee5b78aa9..9b11c00b33 100644
  
  		for (int i = 0; i < TONEMAP_MODE_MAX; i++) {
 diff --git a/servers/rendering/renderer_rd/environment/fog.cpp b/servers/rendering/renderer_rd/environment/fog.cpp
-index d55f5c4085..b3ea306ea0 100644
+index d55f5c4085a..b3ea306ea0f 100644
 --- a/servers/rendering/renderer_rd/environment/fog.cpp
 +++ b/servers/rendering/renderer_rd/environment/fog.cpp
 @@ -908,15 +908,6 @@ void Fog::volumetric_fog_update(const VolumetricFogSettings &p_settings, const P
@@ -86398,7 +86398,7 @@ index d55f5c4085..b3ea306ea0 100644
  			RD::Uniform u;
  			u.uniform_type = RD::UNIFORM_TYPE_UNIFORM_BUFFER;
 diff --git a/servers/rendering/renderer_rd/environment/gi.cpp b/servers/rendering/renderer_rd/environment/gi.cpp
-index 3130c76648..a1c6c6431c 100644
+index 3130c766486..a1c6c6431cf 100644
 --- a/servers/rendering/renderer_rd/environment/gi.cpp
 +++ b/servers/rendering/renderer_rd/environment/gi.cpp
 @@ -454,7 +454,11 @@ void GI::SDFGI::create(RID p_env, const Vector3 &p_world_position, uint32_t p_re
@@ -86535,7 +86535,7 @@ index 3130c76648..a1c6c6431c 100644
  				uniforms.push_back(u);
  			}
 diff --git a/servers/rendering/renderer_rd/environment/gi.h b/servers/rendering/renderer_rd/environment/gi.h
-index 496e7ac359..03cbc2d2a7 100644
+index 496e7ac3594..03cbc2d2a72 100644
 --- a/servers/rendering/renderer_rd/environment/gi.h
 +++ b/servers/rendering/renderer_rd/environment/gi.h
 @@ -651,6 +651,7 @@ public:
@@ -86547,7 +86547,7 @@ index 496e7ac359..03cbc2d2a7 100644
  
  		RID lightprobe_history_scroll; //used for scrolling lightprobes
 diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
-index d8a0620034..9a491a7948 100644
+index 028f18de6bc..df3457d7eb6 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 +++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.cpp
 @@ -1867,7 +1867,14 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
@@ -86566,7 +86566,7 @@ index d8a0620034..9a491a7948 100644
  			break;
  		case RSE::VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL:
  #ifdef METAL_MFXTEMPORAL_ENABLED
-@@ -3271,7 +3278,26 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
+@@ -3269,7 +3276,26 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
  
  		HashMap<Size2i, RID>::Iterator E = sdfgi_framebuffer_size_cache.find(fb_size);
  		if (!E) {
@@ -86594,7 +86594,7 @@ index d8a0620034..9a491a7948 100644
  			E = sdfgi_framebuffer_size_cache.insert(fb_size, fb);
  		}
  
-@@ -4652,6 +4678,20 @@ void RenderForwardClustered::_geometry_instance_update(RenderGeometryInstance *p
+@@ -4650,6 +4676,20 @@ void RenderForwardClustered::_geometry_instance_update(RenderGeometryInstance *p
  	ginstance->dirty_list_element.remove_from_list();
  }
  
@@ -86615,7 +86615,7 @@ index d8a0620034..9a491a7948 100644
  static RD::FramebufferFormatID _get_color_framebuffer_format_for_pipeline(RD::DataFormat p_color_format, bool p_can_be_storage, RD::TextureSamples p_samples, bool p_specular, bool p_velocity, uint32_t p_view_count) {
  	const bool multisampling = p_samples > RD::TEXTURE_SAMPLES_1;
  	RD::AttachmentFormat attachment;
-@@ -4906,14 +4946,16 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
+@@ -4904,14 +4944,16 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
  	}
  
  	if (p_global.use_sdfgi) {
@@ -86639,7 +86639,7 @@ index d8a0620034..9a491a7948 100644
  	}
  
  	// The dedicated depth passes use a different version of the surface and the shader.
-@@ -5299,6 +5341,17 @@ RenderForwardClustered::RenderForwardClustered() {
+@@ -5297,6 +5339,17 @@ RenderForwardClustered::RenderForwardClustered() {
  		}
  #endif
  
@@ -86657,7 +86657,7 @@ index d8a0620034..9a491a7948 100644
  		scene_shader.init(defines);
  	}
  
-@@ -5462,4 +5515,8 @@ RenderForwardClustered::~RenderForwardClustered() {
+@@ -5460,4 +5513,8 @@ RenderForwardClustered::~RenderForwardClustered() {
  		RD::get_singleton()->free_rid(sdfgi_framebuffer_size_cache.begin()->value);
  		sdfgi_framebuffer_size_cache.remove(sdfgi_framebuffer_size_cache.begin());
  	}
@@ -86667,7 +86667,7 @@ index d8a0620034..9a491a7948 100644
 +	}
  }
 diff --git a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
-index aff29be18d..5ff2fc6661 100644
+index aff29be18d2..5ff2fc66610 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
 +++ b/servers/rendering/renderer_rd/forward_clustered/render_forward_clustered.h
 @@ -495,6 +495,7 @@ private:
@@ -86679,7 +86679,7 @@ index aff29be18d..5ff2fc6661 100644
  	struct GeometryInstanceData;
  	class GeometryInstanceForwardClustered;
 diff --git a/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp b/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
-index ab3a4a9f4b..68ea8b1a29 100644
+index ab3a4a9f4b9..68ea8b1a295 100644
 --- a/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
 +++ b/servers/rendering/renderer_rd/forward_clustered/scene_shader_forward_clustered.cpp
 @@ -474,8 +474,13 @@ void SceneShaderForwardClustered::ShaderData::_create_pipeline(PipelineKey p_pip
@@ -86715,7 +86715,7 @@ index ab3a4a9f4b..68ea8b1a29 100644
  
  		Vector<String> color_pass_flags = {
 diff --git a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp b/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
-index 870bdbd5d2..1cc8675b98 100644
+index 870bdbd5d29..1cc8675b988 100644
 --- a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
 +++ b/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.cpp
 @@ -842,15 +842,28 @@ void RenderForwardMobile::_pre_opaque_render(RenderDataRD *p_render_data) {
@@ -87018,7 +87018,7 @@ index 870bdbd5d2..1cc8675b98 100644
  	disable_ubershaders = RD::get_singleton()->get_driver_workarounds().disable_ubershaders;
  	if (disable_ubershaders) {
 diff --git a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.h b/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.h
-index 50ca1b634b..c6f7610697 100644
+index 50ca1b634bb..c6f76106972 100644
 --- a/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.h
 +++ b/servers/rendering/renderer_rd/forward_mobile/render_forward_mobile.h
 @@ -161,6 +161,11 @@ private:
@@ -87034,7 +87034,7 @@ index 50ca1b634b..c6f7610697 100644
  
  	void _render_shadow_pass(RID p_light, RID p_shadow_atlas, int p_pass, const PagedArray<RenderGeometryInstance *> &p_instances, float p_lod_distance_multiplier = 0, float p_screen_mesh_lod_threshold = 0.0, bool p_open_pass = true, bool p_close_pass = true, bool p_clear_region = true, RenderingServerTypes::RenderInfo *p_render_info = nullptr, const Transform3D &p_main_cam_transform = Transform3D());
 diff --git a/servers/rendering/renderer_rd/pipeline_deferred_rd.h b/servers/rendering/renderer_rd/pipeline_deferred_rd.h
-index 54e512986e..322f8e6d03 100644
+index 54e512986eb..322f8e6d038 100644
 --- a/servers/rendering/renderer_rd/pipeline_deferred_rd.h
 +++ b/servers/rendering/renderer_rd/pipeline_deferred_rd.h
 @@ -66,7 +66,13 @@ protected:
@@ -87052,7 +87052,7 @@ index 54e512986e..322f8e6d03 100644
  
  	void _wait() {
 diff --git a/servers/rendering/renderer_rd/pipeline_hash_map_rd.h b/servers/rendering/renderer_rd/pipeline_hash_map_rd.h
-index 18a5ef6d7e..79db82b978 100644
+index 18a5ef6d7e1..79db82b978d 100644
 --- a/servers/rendering/renderer_rd/pipeline_hash_map_rd.h
 +++ b/servers/rendering/renderer_rd/pipeline_hash_map_rd.h
 @@ -147,9 +147,15 @@ public:
@@ -87073,7 +87073,7 @@ index 18a5ef6d7e..79db82b978 100644
  
  	void wait_for_pipeline(uint32_t p_key_hash) {
 diff --git a/servers/rendering/renderer_rd/renderer_canvas_render_rd.cpp b/servers/rendering/renderer_rd/renderer_canvas_render_rd.cpp
-index bd1eb7ad82..0ae131aeba 100644
+index bd1eb7ad824..0ae131aeba3 100644
 --- a/servers/rendering/renderer_rd/renderer_canvas_render_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_canvas_render_rd.cpp
 @@ -923,9 +923,12 @@ void RendererCanvasRenderRD::canvas_render_items(RID p_to_render_target, Item *p
@@ -87107,7 +87107,7 @@ index bd1eb7ad82..0ae131aeba 100644
  			RID rid = RD::get_singleton()->uniform_set_create(state.batch_texture_uniforms, shader.default_version_rd_shader, BATCH_UNIFORM_SET);
  			ERR_FAIL_COND_MSG(rid.is_null(), "Failed to create uniform set for batch.");
 diff --git a/servers/rendering/renderer_rd/renderer_compositor_rd.cpp b/servers/rendering/renderer_rd/renderer_compositor_rd.cpp
-index 623c24fef5..9a522f25bc 100644
+index 623c24fef56..9a522f25bc0 100644
 --- a/servers/rendering/renderer_rd/renderer_compositor_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_compositor_rd.cpp
 @@ -42,13 +42,12 @@
@@ -87126,7 +87126,7 @@ index 623c24fef5..9a522f25bc 100644
  
  	const RD::ColorSpace color_space = RD::get_singleton()->screen_get_color_space(p_screen);
 diff --git a/servers/rendering/renderer_rd/renderer_compositor_rd.h b/servers/rendering/renderer_rd/renderer_compositor_rd.h
-index 506190968a..4fa4514405 100644
+index 506190968ab..4fa4514405d 100644
 --- a/servers/rendering/renderer_rd/renderer_compositor_rd.h
 +++ b/servers/rendering/renderer_rd/renderer_compositor_rd.h
 @@ -146,7 +146,20 @@ public:
@@ -87152,7 +87152,7 @@ index 506190968a..4fa4514405 100644
  	virtual bool is_xr_enabled() const override { return RendererCompositor::is_xr_enabled(); }
  
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
-index 38540f4396..badc760684 100644
+index 38540f43961..badc760684d 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.cpp
 @@ -442,9 +442,20 @@ void RendererSceneRenderRD::_render_buffers_copy_depth_texture(const RenderDataR
@@ -87268,7 +87268,7 @@ index 38540f4396..badc760684 100644
  	memdelete(mfx_spatial);
  #endif
 diff --git a/servers/rendering/renderer_rd/renderer_scene_render_rd.h b/servers/rendering/renderer_rd/renderer_scene_render_rd.h
-index 5c13984313..e154267bed 100644
+index 5c13984313f..e154267bed2 100644
 --- a/servers/rendering/renderer_rd/renderer_scene_render_rd.h
 +++ b/servers/rendering/renderer_rd/renderer_scene_render_rd.h
 @@ -36,6 +36,7 @@
@@ -87291,7 +87291,7 @@ index 5c13984313..e154267bed 100644
  	RendererRD::Resolve *resolve_effects = nullptr;
  #ifdef METAL_ENABLED
 diff --git a/servers/rendering/renderer_rd/shader_rd.cpp b/servers/rendering/renderer_rd/shader_rd.cpp
-index b4e30f6848..08ed9c39f0 100644
+index b4e30f68485..08ed9c39f0c 100644
 --- a/servers/rendering/renderer_rd/shader_rd.cpp
 +++ b/servers/rendering/renderer_rd/shader_rd.cpp
 @@ -38,8 +38,15 @@
@@ -87371,7 +87371,7 @@ index b4e30f6848..08ed9c39f0 100644
  		stage.shader_stage = RD::ShaderStage(i);
  		if (!stage.spirv.is_empty()) {
 diff --git a/servers/rendering/renderer_rd/shader_rd.h b/servers/rendering/renderer_rd/shader_rd.h
-index 2393321008..011f0385a3 100644
+index 2393321008c..011f0385a38 100644
 --- a/servers/rendering/renderer_rd/shader_rd.h
 +++ b/servers/rendering/renderer_rd/shader_rd.h
 @@ -263,7 +263,8 @@ public:
@@ -87385,7 +87385,7 @@ index 2393321008..011f0385a3 100644
  
  	Vector<String> version_build_variant_stage_sources(RID p_version, int p_variant);
 diff --git a/servers/rendering/renderer_rd/shaders/blit.glsl b/servers/rendering/renderer_rd/shaders/blit.glsl
-index 78b22eef56..a688ebc79a 100644
+index 78b22eef560..a688ebc79a9 100644
 --- a/servers/rendering/renderer_rd/shaders/blit.glsl
 +++ b/servers/rendering/renderer_rd/shaders/blit.glsl
 @@ -188,4 +188,8 @@ void main() {
@@ -87398,7 +87398,7 @@ index 78b22eef56..a688ebc79a 100644
 +	color.a = 1.0;
  }
 diff --git a/servers/rendering/renderer_rd/shaders/canvas.glsl b/servers/rendering/renderer_rd/shaders/canvas.glsl
-index 20453071f8..66f9a3f8d1 100644
+index 20453071f8a..66f9a3f8d1c 100644
 --- a/servers/rendering/renderer_rd/shaders/canvas.glsl
 +++ b/servers/rendering/renderer_rd/shaders/canvas.glsl
 @@ -857,4 +857,5 @@ void main() {
@@ -87408,7 +87408,7 @@ index 20453071f8..66f9a3f8d1 100644
 +
  }
 diff --git a/servers/rendering/renderer_rd/shaders/canvas_occlusion.glsl b/servers/rendering/renderer_rd/shaders/canvas_occlusion.glsl
-index c3162a9c1f..007e094af6 100644
+index c3162a9c1f8..007e094af66 100644
 --- a/servers/rendering/renderer_rd/shaders/canvas_occlusion.glsl
 +++ b/servers/rendering/renderer_rd/shaders/canvas_occlusion.glsl
 @@ -118,10 +118,16 @@ layout(location = 0) out highp float sdf_buf;
@@ -87433,7 +87433,7 @@ index c3162a9c1f..007e094af6 100644
  	distance_buf = depth / constants.z_far;
  #else
 diff --git a/servers/rendering/renderer_rd/shaders/canvas_sdf.glsl b/servers/rendering/renderer_rd/shaders/canvas_sdf.glsl
-index 0fafc7d486..0a44867744 100644
+index 0fafc7d4869..0a44867744e 100644
 --- a/servers/rendering/renderer_rd/shaders/canvas_sdf.glsl
 +++ b/servers/rendering/renderer_rd/shaders/canvas_sdf.glsl
 @@ -42,7 +42,7 @@ void main() {
@@ -87446,7 +87446,7 @@ index 0fafc7d486..0a44867744 100644
  	int solid_found = 0;
  	for (int i = 0; i < s; i++) {
 diff --git a/servers/rendering/renderer_rd/shaders/canvas_uniforms_inc.glsl b/servers/rendering/renderer_rd/shaders/canvas_uniforms_inc.glsl
-index 8d8e07c228..2971a52fcf 100644
+index 8d8e07c228a..2971a52fcf6 100644
 --- a/servers/rendering/renderer_rd/shaders/canvas_uniforms_inc.glsl
 +++ b/servers/rendering/renderer_rd/shaders/canvas_uniforms_inc.glsl
 @@ -195,9 +195,10 @@ layout(set = 2, binding = 0, std430) restrict readonly buffer Transforms {
@@ -87466,7 +87466,7 @@ index 8d8e07c228..2971a52fcf 100644
 +layout(set = 3, binding = 3) uniform texture2D specular_texture;
 +layout(set = 3, binding = 4) uniform sampler texture_sampler;
 diff --git a/servers/rendering/renderer_rd/shaders/cluster_render.glsl b/servers/rendering/renderer_rd/shaders/cluster_render.glsl
-index 80d7a0b6a2..72171e46f1 100644
+index 80d7a0b6a22..72171e46f15 100644
 --- a/servers/rendering/renderer_rd/shaders/cluster_render.glsl
 +++ b/servers/rendering/renderer_rd/shaders/cluster_render.glsl
 @@ -65,9 +65,6 @@ void main() {
@@ -87528,7 +87528,7 @@ index 80d7a0b6a2..72171e46f1 100644
  #ifdef USE_ATTACHMENT
  	frag_color = vec4(float(aux));
 diff --git a/servers/rendering/renderer_rd/shaders/effects/copy.glsl b/servers/rendering/renderer_rd/shaders/effects/copy.glsl
-index 292e8cea59..cfbd1a579c 100644
+index 292e8cea59b..cfbd1a579c0 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/copy.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/copy.glsl
 @@ -87,8 +87,8 @@ void main() {
@@ -87555,7 +87555,7 @@ index 292e8cea59..cfbd1a579c 100644
  	imageStore(dest_buffer, pos + params.target, color);
 diff --git a/servers/rendering/renderer_rd/shaders/effects/copy_depth_to_fb.glsl b/servers/rendering/renderer_rd/shaders/effects/copy_depth_to_fb.glsl
 new file mode 100644
-index 0000000000..d800223cc3
+index 00000000000..d800223cc3d
 --- /dev/null
 +++ b/servers/rendering/renderer_rd/shaders/effects/copy_depth_to_fb.glsl
 @@ -0,0 +1,37 @@
@@ -87597,7 +87597,7 @@ index 0000000000..d800223cc3
 +	frag_color = texture(source_depth, uv_interp).r;
 +}
 diff --git a/servers/rendering/renderer_rd/shaders/effects/copy_to_fb.glsl b/servers/rendering/renderer_rd/shaders/effects/copy_to_fb.glsl
-index 39382a086e..e3525367c2 100644
+index 39382a086e8..e3525367c2a 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/copy_to_fb.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/copy_to_fb.glsl
 @@ -132,7 +132,8 @@ void main() {
@@ -87611,7 +87611,7 @@ index 39382a086e..e3525367c2 100644
  	vec3 normal = vec3(uv * 2.0 - 1.0, 0.0);
  	normal.z = 0.5 - 0.5 * ((normal.x * normal.x) + (normal.y * normal.y));
 diff --git a/servers/rendering/renderer_rd/shaders/effects/motion_vectors.glsl b/servers/rendering/renderer_rd/shaders/effects/motion_vectors.glsl
-index 64e2108dc9..064584cd6b 100644
+index 64e2108dc9a..064584cd6ba 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/motion_vectors.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/motion_vectors.glsl
 @@ -69,7 +69,7 @@ void main() {
@@ -87624,7 +87624,7 @@ index 64e2108dc9..064584cd6b 100644
  	} else if (motion_active) {
  		color = active_color;
 diff --git a/servers/rendering/renderer_rd/shaders/effects/resolve.glsl b/servers/rendering/renderer_rd/shaders/effects/resolve.glsl
-index 020f4e80cd..7fb003ad85 100644
+index 020f4e80cdf..7fb003ad850 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/resolve.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/resolve.glsl
 @@ -52,7 +52,7 @@ void main() {
@@ -87637,7 +87637,7 @@ index 020f4e80cd..7fb003ad85 100644
  #ifdef VOXEL_GI_RESOLVE
  	uvec2 best_voxel_gi;
 diff --git a/servers/rendering/renderer_rd/shaders/effects/smaa_edge_detection.glsl b/servers/rendering/renderer_rd/shaders/effects/smaa_edge_detection.glsl
-index 50fa81911a..9a55099adf 100644
+index 50fa81911a1..9a55099adf1 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/smaa_edge_detection.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/smaa_edge_detection.glsl
 @@ -30,7 +30,9 @@
@@ -87715,7 +87715,7 @@ index 50fa81911a..9a55099adf 100644
  	delta.w = max(max(t.r, t.g), t.b);
  
 diff --git a/servers/rendering/renderer_rd/shaders/effects/smaa_weight_calculation.glsl b/servers/rendering/renderer_rd/shaders/effects/smaa_weight_calculation.glsl
-index b92ea29402..c84a490a53 100644
+index b92ea29402c..c84a490a53d 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/smaa_weight_calculation.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/smaa_weight_calculation.glsl
 @@ -31,7 +31,9 @@
@@ -87791,7 +87791,7 @@ index b92ea29402..c84a490a53 100644
  
  		d = abs(round(fma(params.size.yy, d, -pix_coord.yy)));
 diff --git a/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl b/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
-index 94bc126d91..0887503f51 100644
+index 94bc126d91b..0887503f513 100644
 --- a/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
 +++ b/servers/rendering/renderer_rd/shaders/effects/taa_resolve.glsl
 @@ -46,7 +46,7 @@ layout(local_size_x = GROUP_SIZE, local_size_y = GROUP_SIZE, local_size_z = 1) i
@@ -87804,7 +87804,7 @@ index 94bc126d91..0887503f51 100644
  layout(rgba16f, set = 0, binding = 5) uniform restrict writeonly image2D output_buffer;
  
 diff --git a/servers/rendering/renderer_rd/shaders/environment/gi.glsl b/servers/rendering/renderer_rd/shaders/environment/gi.glsl
-index 7ec95668e7..898f9a8731 100644
+index 7ec95668e7c..898f9a87314 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/gi.glsl
 +++ b/servers/rendering/renderer_rd/shaders/environment/gi.glsl
 @@ -675,6 +675,9 @@ void process_gi(ivec2 pos, vec3 vertex, inout vec4 ambient_light, inout vec4 ref
@@ -87818,7 +87818,7 @@ index 7ec95668e7..898f9a8731 100644
  
  	uint vrs_x, vrs_y;
 diff --git a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl b/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
-index ea32726132..2e4db30035 100644
+index ea32726132b..2e4db300356 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
 +++ b/servers/rendering/renderer_rd/shaders/environment/sdfgi_direct_light.glsl
 @@ -37,9 +37,13 @@ layout(set = 0, binding = 5, std430) restrict buffer readonly ProcessVoxels {
@@ -87885,7 +87885,7 @@ index ea32726132..2e4db30035 100644
 +#endif
  }
 diff --git a/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl b/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl
-index afd2db0e12..0dd82d9c2f 100644
+index afd2db0e12b..0dd82d9c2f8 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl
 +++ b/servers/rendering/renderer_rd/shaders/environment/sdfgi_integrate.glsl
 @@ -30,7 +30,11 @@ layout(set = 0, binding = 7, std140) uniform Cascades {
@@ -87933,7 +87933,7 @@ index afd2db0e12..0dd82d9c2f 100644
 +#endif
  }
 diff --git a/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl b/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
-index f102bce9a8..94f6dc6d46 100644
+index f102bce9a8b..94f6dc6d46e 100644
 --- a/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
 +++ b/servers/rendering/renderer_rd/shaders/environment/volumetric_fog_process.glsl
 @@ -73,8 +73,6 @@ layout(rgba16f, set = 0, binding = 9) uniform restrict readonly image3D source_m
@@ -87946,7 +87946,7 @@ index f102bce9a8..94f6dc6d46 100644
  
  struct VoxelGIData {
 diff --git a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
-index de1cb92e51..9be762731a 100644
+index de1cb92e51e..9be762731a4 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
 +++ b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered.glsl
 @@ -1002,6 +1002,16 @@ layout(set = MATERIAL_UNIFORM_SET, binding = 0, std140) uniform MaterialUniforms
@@ -88018,7 +88018,7 @@ index de1cb92e51..9be762731a 100644
  
  #endif
 diff --git a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
-index 807b2fb971..540db2c95f 100644
+index 807b2fb9710..540db2c95f3 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
 +++ b/servers/rendering/renderer_rd/shaders/forward_clustered/scene_forward_clustered_inc.glsl
 @@ -5,8 +5,22 @@
@@ -88047,7 +88047,7 @@ index 807b2fb971..540db2c95f 100644
  #include "../cluster_data_inc.glsl"
  #include "../decal_data_inc.glsl"
 diff --git a/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl b/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl
-index 3b05e999a9..09c8fccd56 100644
+index d52e63d2592..31f01920614 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl
 +++ b/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl
 @@ -166,6 +166,11 @@ ivec2 multiview_uv(ivec2 uv) {
@@ -88094,7 +88094,7 @@ index 3b05e999a9..09c8fccd56 100644
  #ifdef USE_DOUBLE_PRECISION
 -			instances.data[draw_call.instance_index].prev_model_precision.xyz,
 +			instances.data[batch_instance_index].prev_model_precision.xyz,
- 			scene_data_block.prev_data.inv_view_precision,
+ 			scene_data_block.prev_data.inv_view_precision.xyz,
  #endif
  
 @@ -770,8 +780,8 @@ void main() {
@@ -88117,7 +88117,7 @@ index 3b05e999a9..09c8fccd56 100644
  #ifdef USE_DOUBLE_PRECISION
 -			instances.data[draw_call.instance_index].model_precision.xyz,
 +			instances.data[batch_instance_index].model_precision.xyz,
- 			scene_data_block.data.inv_view_precision,
+ 			scene_data_block.data.inv_view_precision.xyz,
  #endif
  #ifdef MODE_DUAL_PARABOLOID
 @@ -944,6 +954,9 @@ ivec2 multiview_uv(ivec2 uv) {
@@ -88294,7 +88294,7 @@ index 3b05e999a9..09c8fccd56 100644
  		uint light_index = (i > 3) ? ((spot_indices.y >> ((i - 4) * 8)) & 0xFF) : ((spot_indices.x >> (i * 8)) & 0xFF);
  		if (i > 0 && light_index == 0xFF) {
 diff --git a/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile_inc.glsl b/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile_inc.glsl
-index aaec338d26..445b72db4f 100644
+index aaec338d267..445b72db4f5 100644
 --- a/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile_inc.glsl
 +++ b/servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile_inc.glsl
 @@ -174,14 +174,14 @@ uint sc_directional_penumbra_shadow_samples() {
@@ -88320,7 +88320,7 @@ index aaec338d26..445b72db4f 100644
  
  uint sc_omni_lights(uint bound) {
 diff --git a/servers/rendering/renderer_rd/shaders/skeleton.glsl b/servers/rendering/renderer_rd/shaders/skeleton.glsl
-index 8348f33f33..2eacdebbe2 100644
+index 8348f33f336..2eacdebbe2a 100644
 --- a/servers/rendering/renderer_rd/shaders/skeleton.glsl
 +++ b/servers/rendering/renderer_rd/shaders/skeleton.glsl
 @@ -50,7 +50,7 @@ layout(push_constant, std430) uniform Params {
@@ -88366,7 +88366,7 @@ index 8348f33f33..2eacdebbe2 100644
  			skin_offset += params.skin_weight_offset;
  
 diff --git a/servers/rendering/renderer_rd/storage_rd/light_storage.cpp b/servers/rendering/renderer_rd/storage_rd/light_storage.cpp
-index 9904926b30..6c2f82fd5a 100644
+index 9904926b30f..6c2f82fd5ac 100644
 --- a/servers/rendering/renderer_rd/storage_rd/light_storage.cpp
 +++ b/servers/rendering/renderer_rd/storage_rd/light_storage.cpp
 @@ -48,6 +48,8 @@ LightStorage *LightStorage::get_singleton() {
@@ -88389,7 +88389,7 @@ index 9904926b30..6c2f82fd5a 100644
  }
  
 diff --git a/servers/rendering/renderer_rd/storage_rd/light_storage.h b/servers/rendering/renderer_rd/storage_rd/light_storage.h
-index 8df2444a6e..3361a89343 100644
+index 8df2444a6ea..3361a89343a 100644
 --- a/servers/rendering/renderer_rd/storage_rd/light_storage.h
 +++ b/servers/rendering/renderer_rd/storage_rd/light_storage.h
 @@ -57,6 +57,10 @@ private:
@@ -88421,7 +88421,7 @@ index 8df2444a6e..3361a89343 100644
  		const Light *light = light_owner.get_or_null(p_light);
  		ERR_FAIL_NULL_V(light, RSE::LIGHT_DIRECTIONAL);
 diff --git a/servers/rendering/renderer_rd/storage_rd/material_storage.cpp b/servers/rendering/renderer_rd/storage_rd/material_storage.cpp
-index 05f9d8841a..cdcd91b65c 100644
+index 05f9d8841ad..cdcd91b65c4 100644
 --- a/servers/rendering/renderer_rd/storage_rd/material_storage.cpp
 +++ b/servers/rendering/renderer_rd/storage_rd/material_storage.cpp
 @@ -2575,10 +2575,22 @@ void MaterialStorage::material_set_param(RID p_material, const StringName &p_par
@@ -88449,7 +88449,7 @@ index 05f9d8841a..cdcd91b65c 100644
  	}
  
 diff --git a/servers/rendering/renderer_rd/storage_rd/mesh_storage.cpp b/servers/rendering/renderer_rd/storage_rd/mesh_storage.cpp
-index 8577ffb718..d5b6aafdeb 100644
+index 8577ffb718e..d5b6aafdebf 100644
 --- a/servers/rendering/renderer_rd/storage_rd/mesh_storage.cpp
 +++ b/servers/rendering/renderer_rd/storage_rd/mesh_storage.cpp
 @@ -185,6 +185,9 @@ MeshStorage::MeshStorage() {
@@ -88664,7 +88664,7 @@ index 8577ffb718..d5b6aafdeb 100644
  
  void MeshStorage::skeleton_update_dependency(RID p_skeleton, DependencyTracker *p_instance) {
 diff --git a/servers/rendering/renderer_rd/storage_rd/mesh_storage.h b/servers/rendering/renderer_rd/storage_rd/mesh_storage.h
-index 7d161772cb..a9f2c5120f 100644
+index 7d161772cb0..a9f2c5120f8 100644
 --- a/servers/rendering/renderer_rd/storage_rd/mesh_storage.h
 +++ b/servers/rendering/renderer_rd/storage_rd/mesh_storage.h
 @@ -295,7 +295,7 @@ private:
@@ -88734,7 +88734,7 @@ index 7d161772cb..a9f2c5120f 100644
  			Vector<RD::Uniform> uniforms;
  			RD::Uniform u;
 diff --git a/servers/rendering/renderer_rd/storage_rd/texture_storage.cpp b/servers/rendering/renderer_rd/storage_rd/texture_storage.cpp
-index a5157cbe50..41cdab933c 100644
+index a5157cbe50a..41cdab933ca 100644
 --- a/servers/rendering/renderer_rd/storage_rd/texture_storage.cpp
 +++ b/servers/rendering/renderer_rd/storage_rd/texture_storage.cpp
 @@ -599,7 +599,9 @@ TextureStorage::TextureStorage() {
@@ -88870,7 +88870,7 @@ index a5157cbe50..41cdab933c 100644
  }
  
 diff --git a/servers/rendering/renderer_viewport.cpp b/servers/rendering/renderer_viewport.cpp
-index 60374910e2..1407f5b353 100644
+index 60374910e21..1407f5b353c 100644
 --- a/servers/rendering/renderer_viewport.cpp
 +++ b/servers/rendering/renderer_viewport.cpp
 @@ -168,6 +168,28 @@ void RendererViewport::_configure_3d_render_buffers(Viewport *p_viewport) {
@@ -88922,7 +88922,7 @@ index 60374910e2..1407f5b353 100644
  			WARN_PRINT_ONCE_ED("MetalFX Temporal 3D scaling is only available when using the Forward+ renderer.");
  			return;
 diff --git a/servers/rendering/rendering_device.cpp b/servers/rendering/rendering_device.cpp
-index eceb8b7ab6..30b5c4e88b 100644
+index eceb8b7ab67..30b5c4e88b7 100644
 --- a/servers/rendering/rendering_device.cpp
 +++ b/servers/rendering/rendering_device.cpp
 @@ -275,12 +275,13 @@ void RenderingDevice::_replace_dependency(RID p_dependent, RID p_old_dependency,
@@ -89927,7 +89927,7 @@ index eceb8b7ab6..30b5c4e88b 100644
  	upload_staging_buffers.max_size = MAX(upload_staging_buffers.max_size, upload_staging_buffers.block_size * 4);
  
 diff --git a/servers/rendering/rendering_device.h b/servers/rendering/rendering_device.h
-index f54a109b61..c56e64134c 100644
+index f54a109b61f..c56e64134cb 100644
 --- a/servers/rendering/rendering_device.h
 +++ b/servers/rendering/rendering_device.h
 @@ -46,6 +46,7 @@
@@ -90118,7 +90118,7 @@ index f54a109b61..c56e64134c 100644
  	void _flush_and_stall_for_all_frames(bool p_begin_frame = true);
  
 diff --git a/servers/rendering/rendering_device_commons.cpp b/servers/rendering/rendering_device_commons.cpp
-index 8315cfcbd3..a32bccb3d2 100644
+index 8315cfcbd3b..a32bccb3d25 100644
 --- a/servers/rendering/rendering_device_commons.cpp
 +++ b/servers/rendering/rendering_device_commons.cpp
 @@ -655,6 +655,32 @@ void RenderingDeviceCommons::get_compressed_image_format_block_dimensions(DataFo
@@ -90155,7 +90155,7 @@ index 8315cfcbd3..a32bccb3d2 100644
  	switch (p_format) {
  		case DATA_FORMAT_BC1_RGB_UNORM_BLOCK:
 diff --git a/servers/rendering/rendering_device_commons.h b/servers/rendering/rendering_device_commons.h
-index 0e40f75497..68dd484350 100644
+index 0e40f754971..68dd484350a 100644
 --- a/servers/rendering/rendering_device_commons.h
 +++ b/servers/rendering/rendering_device_commons.h
 @@ -1038,6 +1038,10 @@ public:
@@ -90178,7 +90178,7 @@ index 0e40f75497..68dd484350 100644
  	static uint32_t get_image_format_required_size(DataFormat p_format, uint32_t p_width, uint32_t p_height, uint32_t p_depth, uint32_t p_mipmaps, uint32_t *r_blockw = nullptr, uint32_t *r_blockh = nullptr, uint32_t *r_depth = nullptr);
  	static uint32_t get_image_required_mipmaps(uint32_t p_width, uint32_t p_height, uint32_t p_depth);
 diff --git a/servers/rendering/rendering_device_driver.cpp b/servers/rendering/rendering_device_driver.cpp
-index 1fc530fa2e..87bcc38b32 100644
+index 1fc530fa2e8..87bcc38b32d 100644
 --- a/servers/rendering/rendering_device_driver.cpp
 +++ b/servers/rendering/rendering_device_driver.cpp
 @@ -59,6 +59,17 @@ uint64_t RenderingDeviceDriver::api_trait_get(ApiTrait p_trait) {
@@ -90213,7 +90213,7 @@ index 1fc530fa2e..87bcc38b32 100644
 +
  RenderingDeviceDriver::~RenderingDeviceDriver() {}
 diff --git a/servers/rendering/rendering_device_driver.h b/servers/rendering/rendering_device_driver.h
-index e6bb1dfd62..53d5a61d33 100644
+index e6bb1dfd629..53d5a61d33c 100644
 --- a/servers/rendering/rendering_device_driver.h
 +++ b/servers/rendering/rendering_device_driver.h
 @@ -193,6 +193,16 @@ public:
@@ -90430,7 +90430,7 @@ index e6bb1dfd62..53d5a61d33 100644
  
  	virtual void set_object_name(ObjectType p_type, ID p_driver_id, const String &p_name) = 0;
 diff --git a/servers/rendering/rendering_device_graph.cpp b/servers/rendering/rendering_device_graph.cpp
-index 5518a03978..bb3d5106b6 100644
+index 5518a039785..bb3d5106b63 100644
 --- a/servers/rendering/rendering_device_graph.cpp
 +++ b/servers/rendering/rendering_device_graph.cpp
 @@ -999,12 +999,12 @@ void RenderingDeviceGraph::_run_draw_list_command(RDD::CommandBufferID p_command
@@ -90473,7 +90473,7 @@ index 5518a03978..bb3d5106b6 100644
  
  void RenderingDeviceGraph::add_draw_list_draw_indirect(RDD::BufferID p_buffer, uint32_t p_offset, uint32_t p_draw_count, uint32_t p_stride) {
 diff --git a/servers/rendering/rendering_device_graph.h b/servers/rendering/rendering_device_graph.h
-index 3c0215f14e..a587552186 100644
+index 3c0215f14ea..a587552186e 100644
 --- a/servers/rendering/rendering_device_graph.h
 +++ b/servers/rendering/rendering_device_graph.h
 @@ -616,12 +616,14 @@ private:
@@ -90503,7 +90503,7 @@ index 3c0215f14e..a587552186 100644
  	void add_draw_list_draw_indexed_indirect(RDD::BufferID p_buffer, uint32_t p_offset, uint32_t p_draw_count, uint32_t p_stride);
  	void add_draw_list_execute_commands(RDD::CommandBufferID p_command_buffer);
 diff --git a/servers/rendering/rendering_server.cpp b/servers/rendering/rendering_server.cpp
-index 319e83c72b..87e11ad176 100644
+index 319e83c72b3..87e11ad1765 100644
 --- a/servers/rendering/rendering_server.cpp
 +++ b/servers/rendering/rendering_server.cpp
 @@ -2934,6 +2934,7 @@ void RenderingServer::_bind_methods() {
@@ -90544,7 +90544,7 @@ index 319e83c72b..87e11ad176 100644
  		}
  
 diff --git a/servers/rendering/rendering_server_default.cpp b/servers/rendering/rendering_server_default.cpp
-index 82eebf5e8d..3fb4e18bf9 100644
+index 82eebf5e8db..3fb4e18bf98 100644
 --- a/servers/rendering/rendering_server_default.cpp
 +++ b/servers/rendering/rendering_server_default.cpp
 @@ -30,6 +30,8 @@
@@ -90587,7 +90587,7 @@ index 82eebf5e8d..3fb4e18bf9 100644
  #ifndef XR_DISABLED
  	if (xr_server != nullptr) {
 diff --git a/servers/rendering/rendering_server_enums.h b/servers/rendering/rendering_server_enums.h
-index eaa833a45b..3259b684d1 100644
+index eaa833a45bf..3259b684d1c 100644
 --- a/servers/rendering/rendering_server_enums.h
 +++ b/servers/rendering/rendering_server_enums.h
 @@ -474,6 +474,10 @@ enum ViewportScaling3DMode {
@@ -90611,7 +90611,7 @@ index eaa833a45b..3259b684d1 100644
  	} else if (p_mode == VIEWPORT_SCALING_3D_MODE_FSR2 || p_mode == VIEWPORT_SCALING_3D_MODE_METALFX_TEMPORAL) {
  		return VIEWPORT_SCALING_3D_TYPE_TEMPORAL;
 diff --git a/servers/rendering/storage/render_scene_buffers.cpp b/servers/rendering/storage/render_scene_buffers.cpp
-index 3736709859..fac7584e33 100644
+index 37367098595..fac7584e339 100644
 --- a/servers/rendering/storage/render_scene_buffers.cpp
 +++ b/servers/rendering/storage/render_scene_buffers.cpp
 @@ -52,7 +52,7 @@ void RenderSceneBuffersConfiguration::_bind_methods() {
@@ -90624,7 +90624,7 @@ index 3736709859..fac7584e33 100644
  	ClassDB::bind_method(D_METHOD("get_msaa_3d"), &RenderSceneBuffersConfiguration::get_msaa_3d);
  	ClassDB::bind_method(D_METHOD("set_msaa_3d", "msaa_3d"), &RenderSceneBuffersConfiguration::set_msaa_3d);
 diff --git a/thirdparty/spirv-headers/LICENSE b/thirdparty/spirv-headers/LICENSE
-index 111e0fc82d..b929b41789 100644
+index 111e0fc82d7..b929b417890 100644
 --- a/thirdparty/spirv-headers/LICENSE
 +++ b/thirdparty/spirv-headers/LICENSE
 @@ -24,4 +24,3 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
@@ -90634,7 +90634,7 @@ index 111e0fc82d..b929b41789 100644
 -
 diff --git a/thirdparty/spirv-headers/include/spirv/1.2/GLSL.std.450.h b/thirdparty/spirv-headers/include/spirv/1.2/GLSL.std.450.h
 new file mode 100644
-index 0000000000..fb8c01ec12
+index 00000000000..fb8c01ec121
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/1.2/GLSL.std.450.h
 @@ -0,0 +1,115 @@
@@ -90755,7 +90755,7 @@ index 0000000000..fb8c01ec12
 +#endif  // #ifndef GLSLstd450_H
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/DebugInfo.h b/thirdparty/spirv-headers/include/spirv/unified1/DebugInfo.h
 new file mode 100644
-index 0000000000..81880f1e9a
+index 00000000000..81880f1e9a0
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/DebugInfo.h
 @@ -0,0 +1,128 @@
@@ -90889,7 +90889,7 @@ index 0000000000..81880f1e9a
 +#endif // SPIRV_UNIFIED1_DebugInfo_H_
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/GLSL.std.450.h b/thirdparty/spirv-headers/include/spirv/unified1/GLSL.std.450.h
 new file mode 100644
-index 0000000000..fb8c01ec12
+index 00000000000..fb8c01ec121
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/GLSL.std.450.h
 @@ -0,0 +1,115 @@
@@ -91010,7 +91010,7 @@ index 0000000000..fb8c01ec12
 +#endif  // #ifndef GLSLstd450_H
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/NonSemanticClspvReflection.h b/thirdparty/spirv-headers/include/spirv/unified1/NonSemanticClspvReflection.h
 new file mode 100644
-index 0000000000..10eda0e96e
+index 00000000000..10eda0e96ef
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/NonSemanticClspvReflection.h
 @@ -0,0 +1,81 @@
@@ -91097,7 +91097,7 @@ index 0000000000..10eda0e96e
 +#endif // SPIRV_UNIFIED1_NonSemanticClspvReflection_H_
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/NonSemanticShaderDebugInfo.h b/thirdparty/spirv-headers/include/spirv/unified1/NonSemanticShaderDebugInfo.h
 new file mode 100644
-index 0000000000..a5ec8c8f99
+index 00000000000..a5ec8c8f996
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/NonSemanticShaderDebugInfo.h
 @@ -0,0 +1,157 @@
@@ -91260,7 +91260,7 @@ index 0000000000..a5ec8c8f99
 +#endif // SPIRV_UNIFIED1_NonSemanticShaderDebugInfo_H_
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/OpenCL.std.h b/thirdparty/spirv-headers/include/spirv/unified1/OpenCL.std.h
 new file mode 100644
-index 0000000000..5382de17c9
+index 00000000000..5382de17c92
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/OpenCL.std.h
 @@ -0,0 +1,385 @@
@@ -91651,7 +91651,7 @@ index 0000000000..5382de17c9
 +#endif  // #ifndef OPENCLstd_H
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/OpenCLDebugInfo100.h b/thirdparty/spirv-headers/include/spirv/unified1/OpenCLDebugInfo100.h
 new file mode 100644
-index 0000000000..39f596ff40
+index 00000000000..39f596ff40d
 --- /dev/null
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/OpenCLDebugInfo100.h
 @@ -0,0 +1,142 @@
@@ -91798,7 +91798,7 @@ index 0000000000..39f596ff40
 +
 +#endif // SPIRV_UNIFIED1_OpenCLDebugInfo100_H_
 diff --git a/thirdparty/spirv-headers/include/spirv/unified1/spirv.hpp11 b/thirdparty/spirv-headers/include/spirv/unified1/spirv.hpp11
-index 084be7121d..a6ee9bd548 100644
+index 084be7121d9..a6ee9bd548a 100644
 --- a/thirdparty/spirv-headers/include/spirv/unified1/spirv.hpp11
 +++ b/thirdparty/spirv-headers/include/spirv/unified1/spirv.hpp11
 @@ -175,6 +175,7 @@ enum class ExecutionMode : unsigned {

@@ -1,6 +1,6 @@
 diff --git a/modules/cffi/SCsub b/modules/cffi/SCsub
 new file mode 100644
-index 0000000000..8551aba09c
+index 00000000000..8551aba09cd
 --- /dev/null
 +++ b/modules/cffi/SCsub
 @@ -0,0 +1,68 @@
@@ -74,7 +74,7 @@ index 0000000000..8551aba09c
 +        env.Append(LIBS=["ffi"])
 diff --git a/modules/cffi/cffi.cpp b/modules/cffi/cffi.cpp
 new file mode 100644
-index 0000000000..0fd70965b0
+index 00000000000..0fd70965b0f
 --- /dev/null
 +++ b/modules/cffi/cffi.cpp
 @@ -0,0 +1,256 @@
@@ -336,7 +336,7 @@ index 0000000000..0fd70965b0
 +}
 diff --git a/modules/cffi/cffi.hpp b/modules/cffi/cffi.hpp
 new file mode 100644
-index 0000000000..73310f0f5e
+index 00000000000..73310f0f5e9
 --- /dev/null
 +++ b/modules/cffi/cffi.hpp
 @@ -0,0 +1,76 @@
@@ -418,7 +418,7 @@ index 0000000000..73310f0f5e
 +#endif  // __CFFI_HPP__
 diff --git a/modules/cffi/cffi_array_type.cpp b/modules/cffi/cffi_array_type.cpp
 new file mode 100644
-index 0000000000..08e583c8fb
+index 00000000000..08e583c8fb1
 --- /dev/null
 +++ b/modules/cffi/cffi_array_type.cpp
 @@ -0,0 +1,170 @@
@@ -594,7 +594,7 @@ index 0000000000..08e583c8fb
 +}
 diff --git a/modules/cffi/cffi_array_type.hpp b/modules/cffi/cffi_array_type.hpp
 new file mode 100644
-index 0000000000..7ce51bf710
+index 00000000000..7ce51bf7106
 --- /dev/null
 +++ b/modules/cffi/cffi_array_type.hpp
 @@ -0,0 +1,67 @@
@@ -668,7 +668,7 @@ index 0000000000..7ce51bf710
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_callable_function.cpp b/modules/cffi/cffi_callable_function.cpp
 new file mode 100644
-index 0000000000..9375a011d0
+index 00000000000..9375a011d08
 --- /dev/null
 +++ b/modules/cffi/cffi_callable_function.cpp
 @@ -0,0 +1,54 @@
@@ -728,7 +728,7 @@ index 0000000000..9375a011d0
 +}
 diff --git a/modules/cffi/cffi_callable_function.hpp b/modules/cffi/cffi_callable_function.hpp
 new file mode 100644
-index 0000000000..dbdd166105
+index 00000000000..dbdd166105e
 --- /dev/null
 +++ b/modules/cffi/cffi_callable_function.hpp
 @@ -0,0 +1,55 @@
@@ -790,7 +790,7 @@ index 0000000000..dbdd166105
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_compat.hpp b/modules/cffi/cffi_compat.hpp
 new file mode 100644
-index 0000000000..32ded6347a
+index 00000000000..32ded6347ab
 --- /dev/null
 +++ b/modules/cffi/cffi_compat.hpp
 @@ -0,0 +1,28 @@
@@ -824,7 +824,7 @@ index 0000000000..32ded6347a
 +}
 diff --git a/modules/cffi/cffi_function.cpp b/modules/cffi/cffi_function.cpp
 new file mode 100644
-index 0000000000..967eb30ac2
+index 00000000000..967eb30ac24
 --- /dev/null
 +++ b/modules/cffi/cffi_function.cpp
 @@ -0,0 +1,119 @@
@@ -950,7 +950,7 @@ index 0000000000..967eb30ac2
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_function.hpp b/modules/cffi/cffi_function.hpp
 new file mode 100644
-index 0000000000..4b893f5d33
+index 00000000000..4b893f5d333
 --- /dev/null
 +++ b/modules/cffi/cffi_function.hpp
 @@ -0,0 +1,83 @@
@@ -1039,7 +1039,7 @@ index 0000000000..4b893f5d33
 +#endif  // __CFFI_FUNCTION_HPP__
 diff --git a/modules/cffi/cffi_library_handle.cpp b/modules/cffi/cffi_library_handle.cpp
 new file mode 100644
-index 0000000000..4ed96a1a7a
+index 00000000000..4ed96a1a7a8
 --- /dev/null
 +++ b/modules/cffi/cffi_library_handle.cpp
 @@ -0,0 +1,116 @@
@@ -1162,7 +1162,7 @@ index 0000000000..4ed96a1a7a
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_library_handle.hpp b/modules/cffi/cffi_library_handle.hpp
 new file mode 100644
-index 0000000000..4f037cb979
+index 00000000000..4f037cb979c
 --- /dev/null
 +++ b/modules/cffi/cffi_library_handle.hpp
 @@ -0,0 +1,66 @@
@@ -1235,7 +1235,7 @@ index 0000000000..4f037cb979
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_owned_array.cpp b/modules/cffi/cffi_owned_array.cpp
 new file mode 100644
-index 0000000000..8458cf30dd
+index 00000000000..8458cf30dd2
 --- /dev/null
 +++ b/modules/cffi/cffi_owned_array.cpp
 @@ -0,0 +1,34 @@
@@ -1276,7 +1276,7 @@ index 0000000000..8458cf30dd
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_owned_array.hpp b/modules/cffi/cffi_owned_array.hpp
 new file mode 100644
-index 0000000000..d8ed80265f
+index 00000000000..d8ed80265fb
 --- /dev/null
 +++ b/modules/cffi/cffi_owned_array.hpp
 @@ -0,0 +1,54 @@
@@ -1337,7 +1337,7 @@ index 0000000000..d8ed80265f
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_owned_value.cpp b/modules/cffi/cffi_owned_value.cpp
 new file mode 100644
-index 0000000000..ce8319ceb7
+index 00000000000..ce8319ceb74
 --- /dev/null
 +++ b/modules/cffi/cffi_owned_value.cpp
 @@ -0,0 +1,47 @@
@@ -1391,7 +1391,7 @@ index 0000000000..ce8319ceb7
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_owned_value.hpp b/modules/cffi/cffi_owned_value.hpp
 new file mode 100644
-index 0000000000..94b5efb21d
+index 00000000000..94b5efb21d4
 --- /dev/null
 +++ b/modules/cffi/cffi_owned_value.hpp
 @@ -0,0 +1,53 @@
@@ -1451,7 +1451,7 @@ index 0000000000..94b5efb21d
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_pointer.cpp b/modules/cffi/cffi_pointer.cpp
 new file mode 100644
-index 0000000000..0a4567c504
+index 00000000000..0a4567c5044
 --- /dev/null
 +++ b/modules/cffi/cffi_pointer.cpp
 @@ -0,0 +1,304 @@
@@ -1762,7 +1762,7 @@ index 0000000000..0a4567c504
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_pointer.hpp b/modules/cffi/cffi_pointer.hpp
 new file mode 100644
-index 0000000000..9c448d4194
+index 00000000000..9c448d41942
 --- /dev/null
 +++ b/modules/cffi/cffi_pointer.hpp
 @@ -0,0 +1,262 @@
@@ -2031,7 +2031,7 @@ index 0000000000..9c448d4194
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_pointer_type.cpp b/modules/cffi/cffi_pointer_type.cpp
 new file mode 100644
-index 0000000000..b02a23374a
+index 00000000000..b02a23374ad
 --- /dev/null
 +++ b/modules/cffi/cffi_pointer_type.cpp
 @@ -0,0 +1,159 @@
@@ -2197,7 +2197,7 @@ index 0000000000..b02a23374a
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_pointer_type.hpp b/modules/cffi/cffi_pointer_type.hpp
 new file mode 100644
-index 0000000000..59c77df8d7
+index 00000000000..59c77df8d7c
 --- /dev/null
 +++ b/modules/cffi/cffi_pointer_type.hpp
 @@ -0,0 +1,69 @@
@@ -2273,7 +2273,7 @@ index 0000000000..59c77df8d7
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_scope.cpp b/modules/cffi/cffi_scope.cpp
 new file mode 100644
-index 0000000000..974016a83d
+index 00000000000..974016a83d9
 --- /dev/null
 +++ b/modules/cffi/cffi_scope.cpp
 @@ -0,0 +1,194 @@
@@ -2473,7 +2473,7 @@ index 0000000000..974016a83d
 +}
 diff --git a/modules/cffi/cffi_scope.hpp b/modules/cffi/cffi_scope.hpp
 new file mode 100644
-index 0000000000..937ac4a87b
+index 00000000000..937ac4a87b3
 --- /dev/null
 +++ b/modules/cffi/cffi_scope.hpp
 @@ -0,0 +1,63 @@
@@ -2542,7 +2542,7 @@ index 0000000000..937ac4a87b
 +#endif  // __CFFI_SCOPE_HPP__
 diff --git a/modules/cffi/cffi_span.cpp b/modules/cffi/cffi_span.cpp
 new file mode 100644
-index 0000000000..55df437822
+index 00000000000..55df4378221
 --- /dev/null
 +++ b/modules/cffi/cffi_span.cpp
 @@ -0,0 +1,269 @@
@@ -2818,7 +2818,7 @@ index 0000000000..55df437822
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_span.hpp b/modules/cffi/cffi_span.hpp
 new file mode 100644
-index 0000000000..9328a1d55a
+index 00000000000..9328a1d55aa
 --- /dev/null
 +++ b/modules/cffi/cffi_span.hpp
 @@ -0,0 +1,190 @@
@@ -3015,7 +3015,7 @@ index 0000000000..9328a1d55a
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_struct_type.cpp b/modules/cffi/cffi_struct_type.cpp
 new file mode 100644
-index 0000000000..a1d5488563
+index 00000000000..a1d54885635
 --- /dev/null
 +++ b/modules/cffi/cffi_struct_type.cpp
 @@ -0,0 +1,181 @@
@@ -3202,7 +3202,7 @@ index 0000000000..a1d5488563
 +}
 diff --git a/modules/cffi/cffi_struct_type.hpp b/modules/cffi/cffi_struct_type.hpp
 new file mode 100644
-index 0000000000..4c59db2a34
+index 00000000000..4c59db2a340
 --- /dev/null
 +++ b/modules/cffi/cffi_struct_type.hpp
 @@ -0,0 +1,126 @@
@@ -3335,7 +3335,7 @@ index 0000000000..4c59db2a34
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_type.cpp b/modules/cffi/cffi_type.cpp
 new file mode 100644
-index 0000000000..768e0a671e
+index 00000000000..768e0a671e7
 --- /dev/null
 +++ b/modules/cffi/cffi_type.cpp
 @@ -0,0 +1,222 @@
@@ -3564,7 +3564,7 @@ index 0000000000..768e0a671e
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_type.hpp b/modules/cffi/cffi_type.hpp
 new file mode 100644
-index 0000000000..59f539cabd
+index 00000000000..59f539cabda
 --- /dev/null
 +++ b/modules/cffi/cffi_type.hpp
 @@ -0,0 +1,146 @@
@@ -3717,7 +3717,7 @@ index 0000000000..59f539cabd
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_type_parser.cpp b/modules/cffi/cffi_type_parser.cpp
 new file mode 100644
-index 0000000000..deb0073f79
+index 00000000000..deb0073f790
 --- /dev/null
 +++ b/modules/cffi/cffi_type_parser.cpp
 @@ -0,0 +1,207 @@
@@ -3930,7 +3930,7 @@ index 0000000000..deb0073f79
 +}
 diff --git a/modules/cffi/cffi_type_parser.hpp b/modules/cffi/cffi_type_parser.hpp
 new file mode 100644
-index 0000000000..3dbe190ec7
+index 00000000000..3dbe190ec79
 --- /dev/null
 +++ b/modules/cffi/cffi_type_parser.hpp
 @@ -0,0 +1,59 @@
@@ -3996,7 +3996,7 @@ index 0000000000..3dbe190ec7
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_type_tuple.cpp b/modules/cffi/cffi_type_tuple.cpp
 new file mode 100644
-index 0000000000..45dfa16d7f
+index 00000000000..45dfa16d7f0
 --- /dev/null
 +++ b/modules/cffi/cffi_type_tuple.cpp
 @@ -0,0 +1,60 @@
@@ -4063,7 +4063,7 @@ index 0000000000..45dfa16d7f
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_type_tuple.hpp b/modules/cffi/cffi_type_tuple.hpp
 new file mode 100644
-index 0000000000..78d59afa44
+index 00000000000..78d59afa445
 --- /dev/null
 +++ b/modules/cffi/cffi_type_tuple.hpp
 @@ -0,0 +1,75 @@
@@ -4145,7 +4145,7 @@ index 0000000000..78d59afa44
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_value_tuple.cpp b/modules/cffi/cffi_value_tuple.cpp
 new file mode 100644
-index 0000000000..d2dafe8c47
+index 00000000000..d2dafe8c47a
 --- /dev/null
 +++ b/modules/cffi/cffi_value_tuple.cpp
 @@ -0,0 +1,78 @@
@@ -4230,7 +4230,7 @@ index 0000000000..d2dafe8c47
 \ No newline at end of file
 diff --git a/modules/cffi/cffi_value_tuple.hpp b/modules/cffi/cffi_value_tuple.hpp
 new file mode 100644
-index 0000000000..922882bee2
+index 00000000000..922882bee2c
 --- /dev/null
 +++ b/modules/cffi/cffi_value_tuple.hpp
 @@ -0,0 +1,82 @@
@@ -4319,7 +4319,7 @@ index 0000000000..922882bee2
 \ No newline at end of file
 diff --git a/modules/cffi/config.py b/modules/cffi/config.py
 new file mode 100644
-index 0000000000..5448d99696
+index 00000000000..5448d99696a
 --- /dev/null
 +++ b/modules/cffi/config.py
 @@ -0,0 +1,21 @@
@@ -4346,7 +4346,7 @@ index 0000000000..5448d99696
 +    ]
 diff --git a/modules/cffi/doc_classes/CFFI.xml b/modules/cffi/doc_classes/CFFI.xml
 new file mode 100644
-index 0000000000..fea52bbc99
+index 00000000000..fea52bbc99f
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFI.xml
 @@ -0,0 +1,172 @@
@@ -4524,7 +4524,7 @@ index 0000000000..fea52bbc99
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIArrayType.xml b/modules/cffi/doc_classes/CFFIArrayType.xml
 new file mode 100644
-index 0000000000..30c558506a
+index 00000000000..30c558506ad
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIArrayType.xml
 @@ -0,0 +1,30 @@
@@ -4560,7 +4560,7 @@ index 0000000000..30c558506a
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFICallableFunction.xml b/modules/cffi/doc_classes/CFFICallableFunction.xml
 new file mode 100644
-index 0000000000..c14b8ddb4d
+index 00000000000..c14b8ddb4dc
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFICallableFunction.xml
 @@ -0,0 +1,17 @@
@@ -4583,7 +4583,7 @@ index 0000000000..c14b8ddb4d
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIFunction.xml b/modules/cffi/doc_classes/CFFIFunction.xml
 new file mode 100644
-index 0000000000..0494d0afa4
+index 00000000000..0494d0afa47
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIFunction.xml
 @@ -0,0 +1,28 @@
@@ -4617,7 +4617,7 @@ index 0000000000..0494d0afa4
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFILibraryHandle.xml b/modules/cffi/doc_classes/CFFILibraryHandle.xml
 new file mode 100644
-index 0000000000..629676817f
+index 00000000000..629676817ff
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFILibraryHandle.xml
 @@ -0,0 +1,36 @@
@@ -4659,7 +4659,7 @@ index 0000000000..629676817f
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIOwnedArray.xml b/modules/cffi/doc_classes/CFFIOwnedArray.xml
 new file mode 100644
-index 0000000000..a46f472f7c
+index 00000000000..a46f472f7c2
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIOwnedArray.xml
 @@ -0,0 +1,11 @@
@@ -4676,7 +4676,7 @@ index 0000000000..a46f472f7c
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIOwnedValue.xml b/modules/cffi/doc_classes/CFFIOwnedValue.xml
 new file mode 100644
-index 0000000000..e05076614e
+index 00000000000..e05076614ea
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIOwnedValue.xml
 @@ -0,0 +1,11 @@
@@ -4693,7 +4693,7 @@ index 0000000000..e05076614e
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIPointer.xml b/modules/cffi/doc_classes/CFFIPointer.xml
 new file mode 100644
-index 0000000000..f7b58e8320
+index 00000000000..f7b58e83208
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIPointer.xml
 @@ -0,0 +1,230 @@
@@ -4929,7 +4929,7 @@ index 0000000000..f7b58e8320
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIPointerType.xml b/modules/cffi/doc_classes/CFFIPointerType.xml
 new file mode 100644
-index 0000000000..7abdf81ec4
+index 00000000000..7abdf81ec40
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIPointerType.xml
 @@ -0,0 +1,26 @@
@@ -4961,7 +4961,7 @@ index 0000000000..7abdf81ec4
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIScope.xml b/modules/cffi/doc_classes/CFFIScope.xml
 new file mode 100644
-index 0000000000..a88c57b6de
+index 00000000000..a88c57b6de3
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIScope.xml
 @@ -0,0 +1,44 @@
@@ -5011,7 +5011,7 @@ index 0000000000..a88c57b6de
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFISpan.xml b/modules/cffi/doc_classes/CFFISpan.xml
 new file mode 100644
-index 0000000000..c7c9aec762
+index 00000000000..c7c9aec7623
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFISpan.xml
 @@ -0,0 +1,196 @@
@@ -5213,7 +5213,7 @@ index 0000000000..c7c9aec762
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIStructType.xml b/modules/cffi/doc_classes/CFFIStructType.xml
 new file mode 100644
-index 0000000000..413ad3b6d2
+index 00000000000..413ad3b6d23
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIStructType.xml
 @@ -0,0 +1,28 @@
@@ -5247,7 +5247,7 @@ index 0000000000..413ad3b6d2
 +</class>
 diff --git a/modules/cffi/doc_classes/CFFIType.xml b/modules/cffi/doc_classes/CFFIType.xml
 new file mode 100644
-index 0000000000..a209174914
+index 00000000000..a209174914a
 --- /dev/null
 +++ b/modules/cffi/doc_classes/CFFIType.xml
 @@ -0,0 +1,41 @@
@@ -5294,7 +5294,7 @@ index 0000000000..a209174914
 +</class>
 diff --git a/modules/cffi/doc_classes/StreamPeerCFFIPointer.xml b/modules/cffi/doc_classes/StreamPeerCFFIPointer.xml
 new file mode 100644
-index 0000000000..ca1e36b0e0
+index 00000000000..ca1e36b0e06
 --- /dev/null
 +++ b/modules/cffi/doc_classes/StreamPeerCFFIPointer.xml
 @@ -0,0 +1,45 @@
@@ -5345,7 +5345,7 @@ index 0000000000..ca1e36b0e0
 +</class>
 diff --git a/modules/cffi/register_types.cpp b/modules/cffi/register_types.cpp
 new file mode 100644
-index 0000000000..a862b17946
+index 00000000000..a862b179462
 --- /dev/null
 +++ b/modules/cffi/register_types.cpp
 @@ -0,0 +1,51 @@
@@ -5402,7 +5402,7 @@ index 0000000000..a862b17946
 +}
 diff --git a/modules/cffi/register_types.h b/modules/cffi/register_types.h
 new file mode 100644
-index 0000000000..d483df8aac
+index 00000000000..d483df8aac3
 --- /dev/null
 +++ b/modules/cffi/register_types.h
 @@ -0,0 +1,6 @@
@@ -5414,7 +5414,7 @@ index 0000000000..d483df8aac
 +void uninitialize_cffi_module(ModuleInitializationLevel p_level);
 diff --git a/modules/cffi/stream_peer_cffi_pointer.cpp b/modules/cffi/stream_peer_cffi_pointer.cpp
 new file mode 100644
-index 0000000000..04abd59d90
+index 00000000000..04abd59d900
 --- /dev/null
 +++ b/modules/cffi/stream_peer_cffi_pointer.cpp
 @@ -0,0 +1,109 @@
@@ -5529,7 +5529,7 @@ index 0000000000..04abd59d90
 +}
 diff --git a/modules/cffi/stream_peer_cffi_pointer.hpp b/modules/cffi/stream_peer_cffi_pointer.hpp
 new file mode 100644
-index 0000000000..59d7d6713e
+index 00000000000..59d7d6713ef
 --- /dev/null
 +++ b/modules/cffi/stream_peer_cffi_pointer.hpp
 @@ -0,0 +1,47 @@
