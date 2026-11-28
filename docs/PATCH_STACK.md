@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| **`4.8-rc1`** (branch + lightweight tag, created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`** (with a docs commit above it)). The old `4.8-beta5` branch and tag were both removed 2026-11-28 (last tag `a7a5aefbe2`, the threads fix; branch tip `5da498f468f`; their commits are ancestors of `4.8-rc1`); the repo default branch was switched to `4.8-rc1` on 2026-11-28 | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
+| **`4.8-rc1`** branch (created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`**, with a docs commit above it). The repo is **tag-free** since 2026-11-28 — every tag was deleted — and the only other branch is the history-only `4.7.2`. The old `4.8-beta5` branch/tag are gone (last tag `a7a5aefbe2`, the threads fix; branch tip `5da498f468f`; their commits are ancestors of `4.8-rc1`); the repo default branch was switched to `4.8-rc1` on 2026-11-28 | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -112,7 +112,7 @@ byte-identically** (independently re-checked). Sizes: `0001` 508,662 B, `0002`
 was committed and pushed as the revert stack commit with a docs refresh above
 it, and tag `4.8-beta5` was force-moved from `cb0aa639c7` to it so fresh
 toolchain installs of that era bootstrapped the spatial-only driver/template
-(the beta5 tag was later removed 2026-11-28 and `4.8-rc1` is the current tag).
+(the beta5 tag was later removed 2026-11-28; all tags are gone and `4.8-rc1` is the current branch).
 (History: that
 revert stack's `0003` was 45,856 B; the web occlusion-culling change below grew
 it to 46,870 B.)
@@ -149,7 +149,7 @@ commit **`a7a5aefbe2`**; a docs commit follows, the branch is pushed and tag
 `godotengine/godot` master **`7c97c29779`** ("Bump version to 4.8-rc";
 `version.py` major 4 / minor 8 / patch 0 / status `rc`), **86 commits ahead** of
 the previous 4.8.0-beta pin `67421f36e5`. Upstream has **no git tag `4.8-rc1`**
-(its tags stop at `4.7.2-stable`), so `4.8-rc1` is our branch/tag name for this
+(its tags stop at `4.7.2-stable`), so `4.8-rc1` is our branch name for this
 master rc-state commit; `patches/upstream.lock` records
 `godot_tag = "master (4.8.0-rc1)"` + `godot_commit = 7c97c29779…`. The old stack
 was applied to a fresh worktree at `7c97c29779` with **`git apply --3way`**: all
@@ -172,14 +172,26 @@ worktree could not build the build-time host tool. Fix: added minimal
 `core/templates/vector.h` include `core/string/ustring.h`. Both shims are in
 the `0004` layer list (32 → 34 paths); `0004` grew 891,250 → **893,686 B**.
 
-**Provisioner/tag (patch `0001`).** `modules/grit/editor/grit_provisioner.cpp`
-now uses `PATCH_STACK_REF = "4.8-rc1"` and
-`PATCH_STACK_ARCHIVE_URL = …/archive/refs/tags/4.8-rc1.tar.gz` (was
-`4.8-beta5`), so fresh toolchain boots fetch the `4.8-rc1` stack tag. That tag
-must exist on stack commit `76d82e9993` (created/pushed with this change); the
-old `4.8-beta5` branch and tag were removed 2026-11-28 (their commits are
-ancestors of `4.8-rc1`). The repo default branch was switched from `4.8-beta5`
-to `4.8-rc1` on 2026-11-28.
+**Provisioner/bootstrap ref (patch `0001`).** `modules/grit/editor/grit_provisioner.cpp`
+uses `PATCH_STACK_REF = "4.8-rc1"` and
+`PATCH_STACK_ARCHIVE_URL = …/archive/refs/heads/4.8-rc1.tar.gz` — the **branch**
+archive, not a tag (it pointed at `…/refs/tags/4.8-rc1…` until 2026-11-28, and
+at `4.8-beta5` before that), so fresh toolchain boots fetch the current
+`4.8-rc1` branch tip. The repository is **tag-free since 2026-11-28**: the
+`4.8-rc1` and `4.8-beta5` tags were deleted, and the old `4.8-beta5` branch
+went with them (their commits are ancestors of `4.8-rc1`). The repo default
+branch was switched from `4.8-beta5` to `4.8-rc1` on 2026-11-28. This change is
++141 B in `0001` (508,734 → **508,875 B**).
+
+**Verified 2026-11-28 ~13:24 for the tag-free bootstrap switch:** applying the
+regenerated bundle to a pristine `7c97c29779` checkout (`/tmp/applytest-rc1`,
+all 1,790 layer paths) and re-diffing every layer reproduces **all 8
+`patches/*.patch` byte-identically** (`0001` **508,875 B**; the other seven
+sizes unchanged). The editor was rebuilt from the same tree at 13:24:38
+(`4.8.rc.custom_build.7c97c2977`, sha `9499ffae…`) so its embedded provisioner
+fetches the branch archive; the staged zip was rewritten (58,382,609 B) and
+the app reinstalled. The web templates are unchanged (the provisioner is
+editor-only code).
 
 **Verified 2026-11-28 ~12:31 for the 4.8-rc1 rebase:** the regenerated stack
 (`0001` 508,734 B, `0002` 203,698, `0003` 46,094, `0004` **893,686**, `0005`
@@ -188,7 +200,8 @@ layer paths) applied to a pristine `7c97c29779` checkout
 (`/tmp/applytest-rc1`, all 1,790 layer paths staged) and re-diffed per layer
 reproduces **all 8 `patches/*.patch` files byte-identically** (independently
 re-checked), with **1,790/1,790** changed worktree paths covered. Editor
-`4.8.rc.custom_build.7c97c2977` (sha `19682014…`); nothreads template zip
+`4.8.rc.custom_build.7c97c2977` (sha `19682014…` at that point; later rebuilt
+for the tag-free bootstrap, sha `9499ffae…`); nothreads template zip
 `c61caa74…` (wasm `f28e7f77…`, site 12:36:00); threaded template zip
 `f80d59e6…` (TPS export wasm 51,133,278 B). Runtime: default rc1 TPS Forward+
 WebGPU 59-60 fps VSync, pmndrs spatial active, no occlusion warning, 0 GPU
@@ -206,7 +219,7 @@ current tag, so the editor and the layout are updated together.
 
 | patch | files | contents |
 |---|---:|---|
-| `0001-modules-grit` | 39 | Fast/Grit AOT export compiler, runtime and editor plugins (adapted to 4.8 GDScript internals: `GDType` member maps, const `MethodBind` codegen, parser `resolved_type`/`type_constraint`). **4.8-rc1 rebase (2026-11-28)**: the provisioner uses `PATCH_STACK_REF = "4.8-rc1"` and the archive URL `…/archive/refs/tags/4.8-rc1.tar.gz` (was `4.8-beta5`), so fresh toolchain boots fetch the rc1 stack tag |
+| `0001-modules-grit` | 39 | Fast/Grit AOT export compiler, runtime and editor plugins (adapted to 4.8 GDScript internals: `GDType` member maps, const `MethodBind` codegen, parser `resolved_type`/`type_constraint`). **4.8-rc1 rebase (2026-11-28)**: the provisioner uses `PATCH_STACK_REF = "4.8-rc1"` and the branch archive URL `…/archive/refs/heads/4.8-rc1.tar.gz` (the repo is tag-free; it was a tag URL until 2026-11-28), so fresh toolchain boots fetch the rc1 branch |
 | `0002-modules-cffi` | 53 | CFFI module |
 | `0003-web-html5-fast-export` | 17 | "HTML5 Fast" export platform + web platform hooks (detect.py, js/engine, display server, export options). **Web occlusion culling enabled (2026-11-28)**: overrides upstream's `detect.py` `module_raycast_enabled: False` to `True` so the `raycast`/Embree CPU culler is compiled into web builds and `rendering/occlusion_culling/use_occlusion_culling` is honoured (upstream disables it for memory reasons, GH-70621 / commit `8c40edf8c0`; cost ≈+1.18 MB wasm + Embree memory; remove the override to return to the upstream stub + build-time warning). **HTML5 threads fix (2026-11-28)**: `env["threads"]` restored to upstream's config (`-pthread` in CCFLAGS/LINKFLAGS, `-sPTHREAD_POOL_SIZE=\"Module['emscriptenPoolSize']||8\"`, `-sMAXIMUM_MEMORY=2048MB`; the legacy `-sUSE_PTHREADS`/`-sPTHREAD_POOL_SIZE=0` scheme had wedged threaded startup) |
 | `0004-webgpu-driver` | 34 | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion, layered copy/initialize, per-stage SPIR-V version; push-constant ring (8 MB), sRGB view siblings, per-frame debug counters and the `rendering/webgpu/*` diagnostic settings. Forward+ additions: compute-pass usage-scope splitting (per-subresource writable+read conflicts), Tint-risk pre-scan/`OpBitcast` rewrite in `spirv_preprocess`, storage-texture format table (`rgb10a2unorm/uint`, integer 8-bit, B10G11R11→RGBA16F promotion + `rg11b10ufloat` WGSL rewrite), WGSL component-driven sample types, physical-format texture views, dimension/sample-type-correct fallback views, `depth32float-stencil8` feature gating, fragment-stage `read_write` storage buffers, unused-colour-target handling, non-negative LOD clamps; per-binding required sampler type map (combined sampler+texture layouts) so NonFiltering MSAA/depth samplers are always satisfied, in both bind-group creation and cross-shader rebinds. **Raw-WGSL compute path** (pmndrs milestone 1): `set_code_from_wgsl_compute()` container factory (fills reflection + per-stage WGSL, mechanically rewrites authored `@binding(N)` → `@binding(2*N)`, checks reflection↔WGSL pairs), and `_shader_build()` recognises the raw-stage marker (WGSL present, SPIR-V empty) and skips the Tint-output WGSL rewrites for it. **4.8-rc1 host-build fix (2026-11-28)**: added standalone shims `drivers/webgpu/tint_cli/core/os/os.h` + `drivers/webgpu/tint_cli/core/string/ustring.h` (the shim `core/templates/vector.h` now includes the ustring shim) so a **fresh** worktree can build the build-time `tint_convert_cli` host tool (`spirv_preprocess.cpp`/`.h` need `os.h`, `ustring.h` and `String`); `0004` grew 891,250 → 893,686 B |
@@ -312,11 +325,13 @@ latent fresh `tint_convert_cli` build failure. Round-trip on a pristine
   CPU-heavy scenes. See `WEBGPU_HANDOFF.md`.
 - **4.8-rc1 is an upstream master rc-state commit, not a tagged release.**
   Upstream has no `4.8-rc1` git tag (its tags stop at `4.7.2-stable`), so
-  `4.8-rc1` here is our branch/tag name for `7c97c29779` ("Bump version to
-  4.8-rc"). When upstream cuts a real tag, re-pin `patches/upstream.lock` and
-  regenerate. The repo default branch is `4.8-rc1` (switched 2026-11-28).
-  `BUILD.txt` was refreshed
-  for rc1 (12:40:30); fresh bootstrap was verified with `GRIT_ENGINE_PROBE=1`
+  `4.8-rc1` here is our branch name for `7c97c29779` ("Bump version to
+  4.8-rc"). Our own repo is **tag-free** since 2026-11-28 (branches: the
+  history-only `4.7.2` and the current `4.8-rc1`; the bootstrap fetches the
+  branch archive). When upstream cuts a real tag, re-pin
+  `patches/upstream.lock` and regenerate. The repo default branch is
+  `4.8-rc1` (switched 2026-11-28). `BUILD.txt` was refreshed for the tag-free
+  rebuild (13:25:32); fresh bootstrap was verified with `GRIT_ENGINE_PROBE=1`
   on an isolated HOME ("prepared engine source from Godot 7c97c297793c +
   4.8-rc1 patches", "engine probe ok").
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime

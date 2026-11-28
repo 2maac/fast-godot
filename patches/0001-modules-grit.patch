@@ -7720,10 +7720,10 @@ index 00000000000..72e068203e9
 +};
 diff --git a/modules/grit/editor/grit_provisioner.cpp b/modules/grit/editor/grit_provisioner.cpp
 new file mode 100644
-index 00000000000..fe82a403487
+index 00000000000..e5fa153eeb8
 --- /dev/null
 +++ b/modules/grit/editor/grit_provisioner.cpp
-@@ -0,0 +1,792 @@
+@@ -0,0 +1,794 @@
 +#include "grit_provisioner.h"
 +
 +#include "core/config/project_settings.h"
@@ -7823,10 +7823,12 @@ index 00000000000..fe82a403487
 +// was: Godot's repository at the commit pinned by the patch stack's upstream.lock,
 +// plus the 4.8-rc1 patch stack. Both archives come straight from the public
 +// GitHub repositories, so the bootstrap no longer depends on a published source
-+// archive. (The 4.7.2 line would bootstrap an Emscripten 4.0.11 toolchain, which
++// archive. The patch stack is fetched from the 4.8-rc1 *branch* (refs/heads):
++// the repository is tag-free, so there is no tag ref to depend on.
++// (The 4.7.2 line would bootstrap an Emscripten 4.0.11 toolchain, which
 +// the 4.8 engine cannot use - it requires Emscripten 6.0.1+.)
 +static constexpr const char *PATCH_STACK_REF = "4.8-rc1";
-+static constexpr const char *PATCH_STACK_ARCHIVE_URL = "https://github.com/2maac/fast-godot/archive/refs/tags/4.8-rc1.tar.gz";
++static constexpr const char *PATCH_STACK_ARCHIVE_URL = "https://github.com/2maac/fast-godot/archive/refs/heads/4.8-rc1.tar.gz";
 +
 +static String _godot_archive_url(const String &p_commit) {
 +	return vformat("https://github.com/godotengine/godot/archive/%s.tar.gz", p_commit);

@@ -21,7 +21,7 @@ The Godot source itself is a link, not content: clone it from
 The current pin is upstream master **`7c97c29779`** ("Bump version to 4.8-rc",
 `version.py` status `rc`, 86 commits after the previous 4.8.0-beta pin
 `67421f36e5`). Upstream has **no git tag named `4.8-rc1`** — that is our
-branch/tag name for this master rc-state commit; `patches/upstream.lock` calls
+branch name for this master rc-state commit; `patches/upstream.lock` calls
 it `master (4.8.0-rc1)`.
 
 **Start here:** [`docs/WEBGPU_HANDOFF.md`](docs/WEBGPU_HANDOFF.md) — current
@@ -56,19 +56,21 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 
 | ref | Godot base |
 |---|---|
-| **`4.8-rc1`** branch + lightweight tag — current stack (self-contained bundle in `patches/`) | godot master **`7c97c29779`** (4.8-rc state: `version.py` status `rc`; no upstream `4.8-rc1` git tag — that is our name) |
-| ~~`4.8-beta5` branch + tag~~ — removed 2026-11-28 (commits are ancestors of `4.8-rc1`) | godot master `67421f36e5` (4.8.0-beta) |
+| **`4.8-rc1`** branch — current stack (self-contained bundle in `patches/`) | godot master **`7c97c29779`** (4.8-rc state: `version.py` status `rc`; no upstream `4.8-rc1` git tag — that is our name) |
+| `4.7.2` branch — history only | godot 4.7.2 full-source snapshot (`d8cb1fd77c`) |
 
-The `4.8-rc1` branch and tag are created/pushed with the 2026-11-28 rebase;
-fresh toolchain boots fetch the `4.8-rc1` tag (the provisioner in patch `0001`
-now points its archive URL at it). The old `4.8-beta5` branch and tag were
-**both removed on 2026-11-28** — their commits are ancestors of `4.8-rc1`, so
-nothing was lost — and the repository **default branch is now `4.8-rc1`**
-(switched 2026-11-28).
+The repository holds **two branches and no tags**. **`4.8-rc1`** is the current
+stack, created with the 2026-11-28 rebase and the repo default branch since
+2026-11-28; **`4.7.2`** is history only. **All tags were deleted on
+2026-11-28**, so fresh toolchain boots fetch the patch-stack archive from the
+branch:
+`https://github.com/2maac/fast-godot/archive/refs/heads/4.8-rc1.tar.gz` (the
+provisioner in patch `0001` points at it). The old `4.8-beta5` branch and tag
+were removed the same day — their commits are ancestors of `4.8-rc1`, so
+nothing was lost.
 
-The `4.7.2` full-source branch is kept on the remote for history only (not
-maintained): `origin/4.7.2` = `d8cb1fd77c`. A leftover local branch `fresh`
-points at the same commit and can be deleted.
+The `4.7.2` full-source branch is not maintained; a leftover local branch
+`fresh` points at the same commit and can be deleted.
 
 ## Documentation
 
