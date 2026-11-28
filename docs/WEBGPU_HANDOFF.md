@@ -1,6 +1,6 @@
 # Fast Godot WebGPU handoff — 4.8-rc1 port
 
-Resume doc. Last updated 2026-11-28 ~12:40. **The stack is rebased onto Godot
+Resume doc. Last updated 2026-11-28 ~12:52. **The stack is rebased onto Godot
 4.8-rc1** — upstream `godotengine/godot` master **`7c97c29779`** ("Bump version
 to 4.8-rc", `version.py` status `rc`), 86 commits ahead of the previous
 4.8.0-beta pin `67421f36e5`. Upstream has **no git tag named `4.8-rc1`** (its
@@ -219,8 +219,8 @@ already have a toolchain are unaffected).
 | staged editor | `out/editor-staging/Fast_Godot_4.8.app` = **`4.8.rc.custom_build.7c97c2977`**, built from the rc1 tree 2026-11-28 12:32:05 (`/tmp/editor_rc1_final.log`: `scons: done building targets.`, 15.49 s); `Contents/MacOS/Godot` **111,257,056 B**, sha256 **`19682014…`**. `Fast_Godot_4.8-macos.zip` written 12:32:09 (58,374,768 B) |
 | installed editor | `~/Applications/Fast_Godot_4.8.app` is **updated to the same rc1 binary** (sha256 `19682014…`) |
 | web template | **Nothreads (default):** `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` written 12:36:01, **14,358,369 B**, zip sha256 **`c61caa74…`**; `godot.wasm` **51,648,673 B**, sha256 **`f28e7f77…`** (the wasm the site runs). **Threaded (opt-in):** `out/editor-staging/godot.web.template_release.wasm32.zip` written 12:37:49, **14,357,917 B**, zip sha256 **`f80d59e6…`**; its TPS export wasm is 51,133,278 B (`/tmp/site-rc1-final-threaded`). Both contain 12 `RaycastOcclusionCull` strings, 12 pmndrs strings (spatial mode 6), no temporal code, and no `[WGPU-DBG]` instrumentation strings |
-| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — default **nothreads** TPS HTML5 Fast Forward+ export published 2026-11-28 **12:36:00** (`/tmp/export_rc1_default.log`): `index.wasm` 51,648,673 B sha256 **`f28e7f77…`**, `index.pck` 987,358,944 B. Runtime check (`/tmp/rc1_default_console.log`): `Godot Engine v4.8.rc.custom_build.7c97c2977`, 59-60 fps VSync, draws/f ≈5.5-5.6k, pmndrs spatial active, **no** "Occlusion culling is disabled at build-time", 0 GPU validation errors, 0 shader errors. The **threaded** rc1 export (`/tmp/site-rc1-final-threaded`, wasm 51,133,278 B) was served with COOP/COEP on `127.0.0.1:8225` (`/tmp/rc1_threaded_final_server.log`): 59-60 fps, draws/f ≈5.2-5.3k, 0 GPU validation/shader/worker errors, no occlusion warning (`/tmp/rc1_threaded_console.log`); uncapped threaded **131.3 fps** (`/tmp/rc1_threaded_uncap2_console.log`; the previous beta stack measured 137.3 threaded vs 124 single-threaded). The default rc1 uncapped figure is **112 fps** (`/tmp/rc1_default_uncap_console.log`) |
-| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is **stale for rc1** (mtime 2026-11-28 09:59:04; it still describes the 4.8-beta5 threads-fix build, editor `4.8.beta.custom_build.582d61902`). Trust the binary/template hashes in this snapshot until the lead refreshes it; BUILD.txt is not part of `patches/` |
+| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — default **nothreads** TPS HTML5 Fast Forward+ export published 2026-11-28 **12:36:00** (`/tmp/export_rc1_default_final3.log`): `index.wasm` 51,648,673 B sha256 **`f28e7f77…`**, `index.pck` 987,358,944 B. Runtime check (`/tmp/rc1_final_default_console.log`): `Godot Engine v4.8.rc.custom_build.7c97c2977`, 59-60 fps VSync, draws/f ≈5.5-5.6k, pmndrs spatial active, **no** "Occlusion culling is disabled at build-time", 0 GPU validation errors, 0 shader errors. The **threaded** rc1 export (`/tmp/site-rc1-final-threaded`, wasm 51,133,278 B) was served with COOP/COEP on `127.0.0.1:8225` (`/tmp/rc1_threaded_final_server.log`): 59-60 fps, draws/f ≈5.2-5.3k, 0 GPU validation/shader/worker errors, no occlusion warning (`/tmp/rc1_final_threaded_console.log`); uncapped threaded **131.3 fps** (`/tmp/rc1_threaded_uncap2_console.log`; the previous beta stack measured 137.3 threaded vs 124 single-threaded). The default rc1 uncapped figure is **112 fps** (`/tmp/rc1_default_uncap_console.log`) |
+| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is **refreshed for rc1** (mtime 2026-11-28 12:40:30, 8,202 B): `Fast Godot 4.8-rc1 build`, editor `4.8.rc.custom_build.7c97c2977`, base `7c97c29779`, both template zip hashes, site wasm `f28e7f77…`; it is not part of `patches/` |
 | source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the current patch tag; editors built before the removal can no longer provision a fresh toolchain |
 
 ## 4.8 layer map
@@ -418,8 +418,8 @@ Staged build (gitignored): `out/editor-staging/`
 - `godot.web.template_release.wasm32.zip` (**opt-in threaded rc1 build**;
   written 12:37:49, 14,357,917 B, zip sha256 `f80d59e6…`; its TPS export wasm
   is 51,133,278 B in `/tmp/site-rc1-final-threaded`)
-- `Fast_Godot_4.8_BUILD.txt` — **stale for rc1** (mtime 09:59:04: still the
-  4.8-beta5 threads-fix build record); trust the hashes above
+- `Fast_Godot_4.8_BUILD.txt` — **refreshed for rc1** at 12:40:30 (8,202 B):
+  title/version/base, both template zip hashes and site wasm `f28e7f77…`
 The launchable install `~/Applications/Fast_Godot_4.8.app` is **updated to the
 same rc1 binary** (sha256 `19682014…`).
 Note: the app folder's mtime can read like an old timestamp — use
@@ -447,7 +447,7 @@ export (volumetric fog off) completed 2026-11-27 17:17 — its log bakes the
 `Sdfgi*ShaderRD` WebGPU caches — and its browser run at 17:19 reported 60 fps
 with 0 GPU validation errors and 0 shader errors (throwaway harness under
 `/tmp/node-test/`). The current site export is the **4.8-rc1 default nothreads
-build**: exported 2026-11-28 12:36:00 (`/tmp/export_rc1_default.log`) into the
+build**: exported 2026-11-28 12:36:00 (`/tmp/export_rc1_default_final3.log`) into the
 Web Server site folder — wasm 51,648,673 B sha256 `f28e7f77…`, pck 987,358,944 B;
 the exported wasm is `Godot Engine v4.8.rc.custom_build.7c97c2977` and contains
 the pmndrs spatial path, **no** temporal upscaler, and the real
@@ -1167,7 +1167,7 @@ this file's history.
 - **Verification.** The template contains the real
   `RaycastOcclusionCull`/Embree path (`RaycastOcclusionCull|raycast_occlusion`
   strings present; 12 matches in the final rc1 wasm). The rc1 nothreads TPS run
-  (`/tmp/rc1_default_console.log`) and the earlier beta runs
+  (`/tmp/rc1_final_default_console.log`) and the earlier beta runs
   (`/tmp/final_nothreads_console.log`, `/tmp/final_occl_console.log`) all have
   **0** "Occlusion culling is disabled at build-time" warnings, **0** GPU
   validation errors, **0** shader errors and 59-60 fps (5.5-5.6k draws/frame on
@@ -1235,7 +1235,7 @@ because it needs cross-origin-isolation hosting.
   draws/f ≈5.2-5.3k, **0 GPU validation errors, 0 shader errors, 0 worker
   errors**, and no "Occlusion culling is disabled at build-time" warning (the
   template also has raycast/Embree enabled). Evidence:
-  `/tmp/rc1_threaded_console.log`, `/tmp/site-rc1-final-threaded`,
+  `/tmp/rc1_final_threaded_console.log`, `/tmp/site-rc1-final-threaded`,
   `/tmp/rc1_threaded_final_server.log`; the previous beta run was
   `/tmp/threaded_final_console.log` (draws/f ≈5.2-5.6k). Uncapped measurement
   (Chrome for Testing, 960×540, `--disable-gpu-vsync
@@ -1450,12 +1450,14 @@ because it needs cross-origin-isolation hosting.
     version to 4.8-rc"; no `4.8-rc1` git tag upstream — "4.8-rc1" is our name).
     When upstream cuts a real tag, re-pin `patches/upstream.lock` and regenerate
     the stack; also switch the GitHub repo **default branch** from `4.8-beta5`
-    to `4.8-rc1` (pending; `4.8-rc1` branch + lightweight tag are created with
-    this change). Refresh `BUILD.txt` for the rc1 build when convenient (it is
-    still the beta record at doc time). The new `tint_cli` host shims are
-    minimal by design — if `spirv_preprocess.cpp` starts using more of
-    `String`/`OS`, extend the shims rather than pulling in the full engine
-    headers.
+    to `4.8-rc1` (still pending). The `4.8-rc1` branch (`a83851449`) and
+    lightweight tag (`76d82e9993`) are pushed; fresh bootstrap was verified
+    end-to-end on an isolated HOME with `GRIT_ENGINE_PROBE=1` (`/tmp/grit_engine_probe4.log`):
+    *"Grit: prepared engine source from Godot 7c97c297793c + 4.8-rc1 patches"*
+    followed by *"engine probe ok"*. `BUILD.txt` was refreshed for rc1 at
+    12:40:30. The new `tint_cli` host shims are minimal by design — if
+    `spirv_preprocess.cpp` starts using more of `String`/`OS`, extend the shims
+    rather than pulling in the full engine headers.
 
 ## Practical notes
 
@@ -1595,10 +1597,9 @@ with zero mismatches, and the moved tag archive contains
   remove the profile tree's `bin/` web artifacts (or rebuild after deleting
   them) — `/tmp/web_cleanup.log` is the cleanup rebuild that fixed it.
 - **BUILD.txt**: `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is not part of
-  `patches/`. It is **stale for rc1** at doc time (mtime 09:59:04, still the
-  4.8-beta5 threads-fix record: editor `4.8.beta.custom_build.582d61902`).
-  Trust the editor/template hashes in the Environment snapshot; refresh
-  BUILD.txt for the rc1 build when convenient (follow-up).
+  `patches/`. It is **refreshed for rc1** (mtime 12:40:30, 8,202 B): editor
+  `4.8.rc.custom_build.7c97c2977`, base `7c97c29779`, both template zip hashes
+  and site wasm `f28e7f77…`; treat it as the build record.
 - **Browser checks:** the throwaway Playwright harness used for the Forward+
   verification lives outside the repo (`/tmp/node-test/`, Chrome for Testing at
   `/tmp/chrome-test/chrome-mac-arm64/`). It serves the site on a fresh port,

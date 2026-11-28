@@ -311,7 +311,9 @@ latent fresh `tint_convert_cli` build failure. Round-trip on a pristine
   `4.8-rc1` here is our branch/tag name for `7c97c29779` ("Bump version to
   4.8-rc"). When upstream cuts a real tag, re-pin `patches/upstream.lock` and
   regenerate. The repo default branch is still `4.8-beta5` at doc time —
-  switching it to `4.8-rc1` is a pending follow-up, and `BUILD.txt` is still
-  the beta record (refresh for rc1 when convenient).
+  switching it to `4.8-rc1` is a pending follow-up. `BUILD.txt` was refreshed
+  for rc1 (12:40:30); fresh bootstrap was verified with `GRIT_ENGINE_PROBE=1`
+  on an isolated HOME ("prepared engine source from Godot 7c97c297793c +
+  4.8-rc1 patches", "engine probe ok").
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime
   only needs the keystream decoder (see the handoff).
