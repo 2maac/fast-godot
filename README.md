@@ -1,8 +1,8 @@
 # Fast Godot — patch stack
 
 This repository holds **our changes to Godot as patches**, not a copy of the
-engine. There is a single active stack (`4.8-beta5`), stored directly at the
-repository root:
+engine. There is a single active stack (**`4.8-rc1`**, rebased 2026-11-28 from
+the previous `4.8-beta5` stack), stored directly at the repository root:
 
 ```
 patches/                      # self-contained portable stack bundle:
@@ -18,6 +18,11 @@ docs/WEBGPU_DRIVER_MIGRATION.md  # archived 4.7 driver history
 
 The Godot source itself is a link, not content: clone it from
 <https://github.com/godotengine/godot> at the commit pinned in `upstream.lock`.
+The current pin is upstream master **`7c97c29779`** ("Bump version to 4.8-rc",
+`version.py` status `rc`, 86 commits after the previous 4.8.0-beta pin
+`67421f36e5`). Upstream has **no git tag named `4.8-rc1`** — that is our
+branch/tag name for this master rc-state commit; `patches/upstream.lock` calls
+it `master (4.8.0-rc1)`.
 
 **Start here:** [`docs/WEBGPU_HANDOFF.md`](docs/WEBGPU_HANDOFF.md) — current
 state, build/export flow, MSAA/ring status, encryption and open work.
@@ -49,11 +54,17 @@ Then build the editor / web template as usual (see `docs/PATCH_STACK.md`).
 
 ## Branch
 
-| branch | Godot base |
+| ref | Godot base |
 |---|---|
-| `4.8-beta5` branch and tag (self-contained stack bundle in `patches/`) | godot master `67421f36e5` (4.8.0-beta) |
+| **`4.8-rc1`** branch + lightweight tag — current stack (self-contained bundle in `patches/`) | godot master **`7c97c29779`** (4.8-rc state: `version.py` status `rc`; no upstream `4.8-rc1` git tag — that is our name) |
+| `4.8-beta5` branch + tag — history | godot master `67421f36e5` (4.8.0-beta) |
 
-`4.8-beta5` is the repository default branch (since 2026-11-26; it was `4.7.2`).
+The `4.8-rc1` branch and tag are created/pushed with the 2026-11-28 rebase;
+fresh toolchain boots fetch the `4.8-rc1` tag (the provisioner in patch `0001`
+now points its archive URL at it). The old `4.8-beta5` branch/tag remain as
+history and the repository **default branch is still `4.8-beta5` at the time of writing** —
+switching it to `4.8-rc1` is a follow-up.
+
 The `4.7.2` full-source branch is kept on the remote for history only (not
 maintained): `origin/4.7.2` = `d8cb1fd77c`. A leftover local branch `fresh`
 points at the same commit and can be deleted.

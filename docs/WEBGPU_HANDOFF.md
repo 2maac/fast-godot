@@ -1,6 +1,13 @@
-# Fast Godot WebGPU handoff — 4.8-beta5 port
+# Fast Godot WebGPU handoff — 4.8-rc1 port
 
-Resume doc. Last updated 2026-11-28 ~10:05. **Forward+ and Forward Mobile both
+Resume doc. Last updated 2026-11-28 ~12:40. **The stack is rebased onto Godot
+4.8-rc1** — upstream `godotengine/godot` master **`7c97c29779`** ("Bump version
+to 4.8-rc", `version.py` status `rc`), 86 commits ahead of the previous
+4.8.0-beta pin `67421f36e5`. Upstream has **no git tag named `4.8-rc1`** (its
+tags stop at `4.7.2-stable`), so "4.8-rc1" is our name for that master rc-state
+commit. The new branch and lightweight tag are **`4.8-rc1`** (the old
+`4.8-beta5` branch/tag remain as history; the repo default branch is still
+`4.8-beta5` until switched — a follow-up). **Forward+ and Forward Mobile both
 run on the WebGPU device, SDFGI is enabled on the WebGPU device, and
 pmndrs/upscaler milestone 1 (spatial EASU+RCAS) is implemented and
 browser-verified as a first-class Viewport scaling mode (mode 6).** The
@@ -15,24 +22,22 @@ override in patch `0003`), and HTML5 `threads=yes` is FIXED and browser-
 verified (opt-in: it needs COOP/COEP hosting, so the shipped TPS preset keeps
 `variant/thread_support=false`).**
 
-Repo state: the threads fix is stack commit **`a7a5aefbe2`** ("web: fix HTML5
-thread support (threads=yes) on WebGPU"), with a docs commit above it. Branch
-`4.8-beta5` is pushed and tag `4.8-beta5` is **force-moved from `96a71a19bf`
-to `a7a5aefbe2`** so fresh toolchain installs bootstrap the threads-fixed
-driver/template (the earlier history — revert stack, pmndrs temporal,
-occlusion-culling commit — remains below it). Branch and tag share the simple
-name but are different commits — use `refs/heads/4.8-beta5` /
-`refs/tags/4.8-beta5` when the distinction matters. Fresh toolchain installs
-fetch the tag. Verify with `git ls-remote origin refs/tags/4.8-beta5`.
+Repo state: the 4.8-rc1 rebase is **stack commit `76d82e9993`**
+(it is the commit that carries the regenerated
+`patches/` + `patches/upstream.lock` re-pin), with a docs commit above it.
+When the lead pushes, branch **`4.8-rc1`** carries that stack commit and the
+**lightweight tag `4.8-rc1`** points at it (fresh toolchain installs fetch
+that tag; the bootstrap URL in patch `0001` now names it). The old
+`4.8-beta5` branch/tag are kept as history (tag `4.8-beta5` =
+`a7a5aefbe2`, the threads fix; branch tip `5da498f468f`). Branch and tag share
+the simple name — use `refs/heads/4.8-rc1` / `refs/tags/4.8-rc1` when the
+distinction matters. Verify with `git ls-remote origin refs/tags/4.8-rc1`.
 `patches/` is a self-contained portable bundle (patch files + `layers/` +
-`upstream.lock`); the volatile build worktree is `/tmp/godot48` (HEAD
-`582d619026`) **with the Forward+/MSAA/TAA/FSR/SDFGI/pmndrs-spatial
-working-tree changes, the three kept SDFGI layer-completeness files, the web
-occlusion-culling override and the threads fixes (`platform/web/detect.py`
-upstream pthread flags + `renderer_compositor_rd.h`
-`can_create_resources_async()` fix), captured in the regenerated patch stack —
-the worktree itself is not committed**. Editor version stays
-`4.8.beta.custom_build.582d61902`. This file lives in `docs/` together with
+`upstream.lock`); the volatile build worktree is `/tmp/godot48-rc1` (detached
+at upstream `7c97c297793`, with the whole stack applied as working-tree
+changes — the tree itself is not committed; the old `/tmp/godot48` beta
+worktree is retained as history). Editor version is now
+`4.8.rc.custom_build.7c97c2977`. This file lives in `docs/` together with
 `PATCH_STACK.md`, `WGSL_COMPUTE_PATH.md`, `PMNDRS_UPSCALER_SPATIAL.md`, the two
 archived temporal research docs (`PMNDRS_TEMPORAL_PORT.md`,
 `GODOT_TEMPORAL_UPSCALER_INTEGRATION.md` — NOT SHIPPED) and the archived
@@ -40,6 +45,14 @@ migration history.
 
 Current state in one screen:
 
+- **Godot 4.8-rc1 rebase (2026-11-28)**: stack applied to upstream master
+  `7c97c29779` (86 commits above the old beta pin), editor
+  `4.8.rc.custom_build.7c97c2977`. Verified: default rc1 TPS Forward+ WebGPU
+  59-60 fps VSync (draws/f ≈5.5-5.6k), pmndrs spatial active, no occlusion
+  warning, 0 GPU validation errors, 0 shader errors; threaded rc1 also clean
+  (0 GPU/shader/worker errors), uncapped threaded 131.3 fps. Branch/tag
+  `4.8-rc1` created with the rebase; see the rc1 section and the environment
+  snapshot.
 - Forward Mobile: TPS boots with 0 validation errors (baseline from 2026-11-26).
 - Forward+: TPS boots, full 3D level, 0 validation errors, 0 SPIR-V→WGSL
   failures, ~5.8k draws/frame at 60 fps (see `docs/webgpu_forward_plus_tps.png`).
@@ -106,10 +119,9 @@ Current state in one screen:
   `variant/thread_support=false`; threading is an opt-in preset option. See the
   web-platform section.
 - The Godot Web Server site export is regenerated after each build (last
-  written 2026-11-28 09:55:13, the default nothreads build with the occlusion
-  and threads fixes; wasm sha256 `a3772909…`); browsers need a hard reload to
-  pick it up. The threaded build is opt-in and is not published to the default
-  site.
+  written 2026-11-28 12:36:00, the 4.8-rc1 default nothreads build; wasm
+  sha256 `f28e7f77…`); browsers need a hard reload to pick it up. The threaded
+  rc1 build is opt-in and is not published to the default site.
 
 **2026-11-27 (later) — browser-reported validation error fixed.** A real-Chrome
 report showed `Filtering sampler ... is incompatible with non-filtering sampler
@@ -129,8 +141,9 @@ export were regenerated.
 the TPS demo on the WebGPU device: zero WebGPU validation errors, zero
 SPIR-V→WGSL failures, 60 fps (VSync) in Chrome for Testing/Dawn, full 3D level
 (see `docs/webgpu_forward_plus_tps.png`). The patch stack was regenerated from
-the same base commit plus working-tree changes, so the editor version stays
-`4.8.beta.custom_build.582d61902`; see "Forward+ on WebGPU (2026-11-27)" below
+the same base commit plus working-tree changes, so the editor version stayed
+`4.8.beta.custom_build.582d61902` (then; the current rc1 build is
+`4.8.rc.custom_build.7c97c2977`); see "Forward+ on WebGPU (2026-11-27)" below
 for what changed and the remaining limitations.
 
 ## Where to start (docs map)
@@ -138,7 +151,7 @@ for what changed and the remaining limitations.
 | doc | status |
 |---|---|
 | `README.md` | repo mechanics (patch stack, tools, rules) |
-| **this file** | current state: toolchain, build/export, Forward+ (incl. MSAA/TAA/SDFGI), pmndrs spatial upscaler (mode 6), web occlusion culling, HTML5 threads (fixed, opt-in), browser verification, MSAA/ring fixes, encryption, temporal-attempt history, open work |
+| **this file** | current state (stack rebased to **Godot 4.8-rc1**): toolchain, build/export, Forward+ (incl. MSAA/TAA/SDFGI), pmndrs spatial upscaler (mode 6), web occlusion culling, HTML5 threads (fixed, opt-in), browser verification, MSAA/ring fixes, encryption, temporal-attempt history, open work |
 | `PATCH_STACK.md` (same folder) | what every patch layer contains; apply/regenerate commands |
 | `WGSL_COMPUTE_PATH.md` (same folder) | raw-WGSL compute path in the WebGPU driver/RD: API, binding convention, as-built notes |
 | `PMNDRS_UPSCALER_SPATIAL.md` (same folder) | pmndrs/upscaler spatial-path port spec: vendored WGSL provenance, constants layout, per-pass bindings, integration plan (shipped, mode 6) |
@@ -155,12 +168,13 @@ The repo is a **patch stack**, not a Godot fork checkout:
   the 4.8 stack. The full-source `4.7.2` branch remains on the remote for
   history only (`origin/4.7.2` = `d8cb1fd77c`, a Godot 4.7.2 tree); a leftover
   local branch `fresh` still points at that same commit and can be deleted.
-- The 4.8 stack (branch and tag `4.8-beta5`, repo default branch) is a
-  **self-contained portable bundle in `patches/`**: patch files
-  (`0001-…0099-*.patch`), the `layers/*.files` regeneration lists and
-  `upstream.lock` (the Godot pin) all live there; ported onto godot `master`
-  @ `67421f36e5` (4.8.0-beta). Copying `patches/` + `tools/apply.sh` reproduces
-  the stack elsewhere. Only one stack exists now.
+- The 4.8 stack (branch and tag `4.8-rc1`; the `4.8-beta5` branch/tag are the
+  previous stack, kept as history) is a **self-contained portable bundle in
+  `patches/`**: patch files (`0001-…0099-*.patch`), the `layers/*.files`
+  regeneration lists and `upstream.lock` (the Godot pin) all live there;
+  ported onto godot `master` @ `7c97c29779` (4.8-rc1 rc state; no upstream git
+  tag for it). Copying `patches/` + `tools/apply.sh` reproduces the stack
+  elsewhere. Only one active stack exists.
 - `tools/apply.sh <godot-checkout>` applies the bundle (every `patches/*.patch`
   in order); `tools/make-patches.sh <godot-checkout>` regenerates it with
   `git diff --binary`
@@ -172,8 +186,10 @@ The repo is a **patch stack**, not a Godot fork checkout:
 
 | ref | commit | notes |
 |---|---|---|
-| branch `4.8-beta5` = `origin/4.8-beta5` | revert stack commit + docs refresh | docs tip (HEAD) is the docs refresh above the **revert stack commit**; both are committed and pushed. History below them: temporal milestone-2 commit `cb0aa639c7` (pushed, then superseded by the revert), `d097fa2ce3`/`59b7ef60a9` docs, `91a0a3e8e4` (first-class pmndrs spatial mode 6), `d8b3d583ae` (raw-WGSL path + pmndrs spatial upscaler). Branch and tag share the simple name (use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when the ambiguity matters) |
-| tag `4.8-beta5` | revert stack commit | engine/patch-stack tip: raw-WGSL compute path + **pmndrs spatial upscaler + first-class pmndrs spatial Viewport scaling mode (mode 6)** on top of Forward+/MSAA/TAA/FSR/SDFGI, **plus the SDFGI layer-completeness fix**; the pmndrs temporal milestone 2 is **not** in this stack. **Force-moved 2026-11-28 from `cb0aa639c7` (the temporal stack) to the revert stack commit**, and the branch pushed, so fresh toolchain installs bootstrap the spatial-only driver/template. Lightweight tag (`git cat-file -t refs/tags/4.8-beta5` → `commit`); verify with `git ls-remote origin refs/tags/4.8-beta5` |
+| branch `4.8-rc1` = `origin/4.8-rc1` | 4.8-rc1 stack commit `76d82e9993` | **current stack branch**, created and pushed with the rebase (a docs commit sits above it). Base: upstream master `7c97c29779` (4.8-rc1 rc state). Branch and tag share the simple name (use `refs/heads/4.8-rc1` / `refs/tags/4.8-rc1` when the ambiguity matters). Repo default branch is still `4.8-beta5` until switched — follow-up |
+| tag `4.8-rc1` | same 4.8-rc1 stack commit | **current engine/patch-stack tag**, lightweight, created and pushed with the rebase so fresh toolchain installs bootstrap the 4.8-rc1 driver/template (patch `0001`'s provisioner points its archive URL at this tag). Verify with `git ls-remote origin refs/tags/4.8-rc1` |
+| branch `4.8-beta5` (history) | `5da498f468f` (docs/chore above tag); tag = `a7a5aefbe2` | previous stack branch/tag, kept as history: the threads fix `a7a5aefbe2` plus docs (`ed3dbf540e9`, `5da498f468f`). Earlier history: temporal revert, `cb0aa639c7` (superseded), `91a0a3e8e4` spatial mode 6, `d8b3d583ae` raw-WGSL + pmndrs spatial. Still the repo default branch until the switch |
+| tag `4.8-beta5` (history) | `a7a5aefbe2` | previous shipped tag (threads fix): raw-WGSL compute path + pmndrs spatial upscaler/mode 6 + SDFGI + occlusion culling + fixed HTML5 threads on the 4.8.0-beta base; no pmndrs temporal. Kept as history after the rc1 rebase |
 | `origin/4.7.2` | `d8cb1fd77c` | full-source **Godot 4.7.2** snapshot (single parentless commit), history only, not maintained |
 | ~~tag `4.8-beta5-source`~~ | — | **release + tag removed 2026-11-26.** It held a parentless 4.8 source snapshot (`35e42f7d`, re-cut from the wrong 4.7.2 tree earlier that day) and the `fast-godot-4.8-beta5-src.zip` asset. Editors built before 2026-11-26 hardcoded that asset URL for first-use provisioning and can no longer bootstrap a fresh toolchain. New builds use Godot's repo + the `4.8-beta5` patch tag |
 
@@ -187,30 +203,34 @@ subsection under Build / toolchain. The old release asset and its tag were
 and can no longer provision a fresh toolchain (exports from machines that
 already have a toolchain are unaffected).
 
-## Environment snapshot (verified on this machine, 2026-11-28 ~10:05)
+## Environment snapshot (verified on this machine, 2026-11-28 ~12:40)
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` (**repository default branch**). The threads fix is stack commit **`a7a5aefbe2`** ("web: fix HTML5 thread support (threads=yes) on WebGPU"); a docs commit follows it, the branch is pushed and tag `4.8-beta5` is **force-moved from `96a71a19bf` to `a7a5aefbe2`** (below it remain the occlusion-culling commit `96a71a19bf`, the revert stack and the pmndrs history). Current patch sizes: `0003` 46,060 B, `0004` 891,250 B, `0005` 5,941,474 B; `0005` layer list 160 paths (159 + `renderer_compositor_rd.h`); 0 `PMNDRS_TEMPORAL`/`PmndrsTemporal`/`pmndrs_temporal` references. Branch and tag share the simple name — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate |
-| engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
+| patch stack repo | branch **`4.8-rc1`** = `origin/4.8-rc1` — created/pushed with the 4.8-rc1 rebase (stack commit `76d82e9993`; a docs commit sits above it). **Lightweight tag `4.8-rc1`** points at the same stack commit, so fresh toolchain installs bootstrap the rc1 driver/template (patch `0001`'s provisioner now names this tag). The old **`4.8-beta5` branch/tag are kept as history** (tag `a7a5aefbe2`, branch tip `5da498f468f`); the repo default branch is still `4.8-beta5` until switched (follow-up). Base/`upstream.lock`: upstream master **`7c97c29779`** (4.8-rc1 rc state; upstream has no git tag `4.8-rc1` — that is our name). Patch sizes: `0001` 508,734 B, `0002` 203,698 B, `0003` 46,094 B, `0004` **893,686 B**, `0005` 5,941,786 B, `0006` 15,133,768 B, `0007` 3,541,650 B, `0099` 29,738 B; 1,790 layer paths total (`0004` 34, `0005` 160) |
+| engine base | Godot `master` @ **`7c97c29779`** ("Bump version to 4.8-rc"; `version.py` major 4 / minor 8 / patch 0 / status `"rc"`), pinned in `patches/upstream.lock` — **86 commits ahead** of the previous 4.8.0-beta pin `67421f36e5`. Upstream tags stop at `4.7.2-stable`: there is no `4.8-rc1` git tag upstream, so "4.8-rc1" is our name for this master rc-state commit |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
-| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **spatial-only mode 6 + SDFGI layer-completeness fix + the web occlusion-culling override + the two threads fixes: 54 modified files + 3 new `effects/pmndrs_upscaler*` files (57 changed paths)**. New vs the previous state: `platform/web/detect.py` (occlusion override **and** upstream pthread flags restored) and `servers/rendering/renderer_rd/renderer_compositor_rd.h` (`can_create_resources_async()` false under `WEBGPU_ENABLED`); the temporal code is still absent. Volatile and not pushed; the patch stack was regenerated from it 2026-11-28 ~09:58, so a fresh checkout + `tools/apply.sh` reproduces the build tree |
-| patch round-trip | 2026-11-28 ~09:58: applying the full regenerated stack (**incl. the threads fixes**) to a pristine `67421f36e5` checkout (`/tmp/applytest`, all 1,788 layer paths staged) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (independently re-checked; `0001` 508,662 B, `0002` 203,592 B, **`0003` 46,060 B** (was 46,870 — pthread flags restored), `0004` 891,250 B, **`0005` 5,941,474 B** (was 5,940,065 — compositor fix), `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B; `0005` layer list 160 paths) |
-| layer completeness | all **57/57** worktree-changed paths are covered by the union of `patches/layers/*.files` (re-checked after the threads fixes; `0005`'s layer list gained `servers/rendering/renderer_rd/renderer_compositor_rd.h`, 159 → 160 paths). The per-layer round-trip check only diffs the *listed* paths, so it cannot detect an omitted file: three SDFGI files (`servers/rendering/renderer_rd/environment/gi.h`, `…/shaders/environment/gi.glsl`, `…/shaders/environment/sdfgi_integrate.glsl`) had been missing from every layer list and were added in the (kept) M2 completeness fix (layer list 156 → 159 paths, `0005` 5,936,829 → 5,940,065 B); the threads fix then added `renderer_compositor_rd.h` (→ 160) and grew `0005` to 5,941,474 B |
-| other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
-| toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
-| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta + the current stack, **re-synced from `/tmp/godot48` for the threads-fix builds** (on disk: `platform/web/detect.py` 2026-11-28 09:25:30 — occlusion override + upstream pthread flags; `renderer_compositor_rd.h` 09:48:33 — `can_create_resources_async()` fix; the temporal effect files are still gone) |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.582d61902`; **unchanged by the web-platform changes** (they are web-build config / renderer-in-template changes): still the reverted-tree build 2026-11-28 00:52:28, `Contents/MacOS/Godot` 110,961,808 B, sha256 `cd72898f…`. `Fast_Godot_4.8-macos.zip` written 00:54:48 (58,090,118 B) |
-| installed editor | `~/Applications/Fast_Godot_4.8.app` is **updated to the same reverted binary** (sha256 `cd72898f…`) |
-| web template | rebuilt from the threads-fix tree and packaged by the 09:55/09:56 exports. **Nothreads (default):** `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` written 09:55:14, **14,357,776 B**, zip sha256 **`6c7b60a5…`**; `godot.wasm` **51,648,024 B**, sha256 **`a3772909…`**. **Threaded (opt-in):** `out/editor-staging/godot.web.template_release.wasm32.zip` written 09:56:46, **14,351,252 B**, zip sha256 **`24510b78…`**; its TPS export wasm is 51,132,649 B (`/tmp/site-threaded-final`). Both contain the real `RaycastOcclusionCull`/Embree path (~12 matching strings), the pmndrs **spatial** effect (mode 6) and **no** temporal code; the final wasm has **no** `[WGPU-DBG]` instrumentation strings |
-| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — default **nothreads** TPS HTML5 Fast Forward+ export published 2026-11-28 **09:55:13** (`/tmp/export_final_nothreads.log`): `index.wasm` 51,648,024 B sha256 **`a3772909…`**, `index.pck` 987,358,768 B. Final nothreads browser check (`/tmp/final_nothreads_console.log`, 09:59): 59-60 fps, 0 GPU validation errors, 0 shader errors, 0 "Occlusion culling is disabled at build-time" lines. The **threaded** TPS export (opt-in test build, `/tmp/site-threaded-final`, wasm 51,132,649 B) was served on `127.0.0.1:8223` with COOP/COEP and ran at 59-60 fps with 0 errors (`/tmp/threaded_final_console.log`, 09:57). Hard-reload browsers to pick up the default export |
-| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` was **refreshed 2026-11-28 09:59:04** (7,702 B) and now covers **both** builds: the nothreads build (editor sha `cd72898f…`, template zip `6c7b60a5…`, wasm `a3772909…`) and the fixed/opt-in threaded build, plus the occlusion-culling notes. Its Site export paragraph now describes the 09:55/09:56 batch (wasm `a3772909…`). BUILD.txt is not part of `patches/` |
-| source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before the removal can no longer provision a fresh toolchain |
+| build worktree | **`/tmp/godot48-rc1`** — detached at upstream `7c97c297793` with the whole stack applied as working-tree changes (**1,790 changed paths = the 1,790 layer-listed paths**; 161 modified / 1,615 added / 12 deleted / 2 added-then-modified at the index level after `git add`). The rebase was applied with `git apply --3way`; the patch stack was regenerated from it 2026-11-28 ~12:30, so a fresh checkout of `7c97c29779` + `tools/apply.sh` reproduces it. The old `/tmp/godot48` beta worktree (`port48` @ `582d619026`) is retained as history |
+| patch round-trip | 2026-11-28 ~12:31: applying the full regenerated rc1 stack to a pristine checkout of `7c97c29779` (`/tmp/applytest-rc1`, all **1,790** layer paths staged) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (independently re-checked; sizes as in the row above). The rebase had exactly **one conflict**, in `servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl`: resolved by keeping our `batch_instance_index` rename and taking rc1's new `.xyz` on `prev_data.inv_view_precision` / `data.inv_view_precision` (rc1 made those precision-aware vec4 accesses); every other stack file applied cleanly |
+| layer completeness | all **1,790/1,790** changed paths are covered by the union of `patches/layers/*.files` (the worktree status set exactly matches the layer union after the rebase). `0004`'s layer list gained `tint_cli/core/os/os.h` and `tint_cli/core/string/ustring.h` (**34** paths, was 32). The per-layer round-trip check only diffs the *listed* paths, so still cross-check `git status` against the union |
+| other worktrees | `/tmp/godot48` (old 4.8-beta5 build tree, history) and `/tmp/ref472` (detached `d8cb1fd77c`, 4.7.2 reference only) |
+| toolchain bootstrap | downloads `godotengine/godot` @ `7c97c29779` (~76 MB) + the `fast-godot` tag **`4.8-rc1`** archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly. Patch `0001`'s provisioner `PATCH_STACK_REF` / `PATCH_STACK_ARCHIVE_URL` now name `4.8-rc1` (was `4.8-beta5`) |
+| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8-rc1 + the current stack, **re-synced for the rc1 builds** (`version.py` on disk 2026-11-28 11:57:40 with status `rc`; the new tint_cli shims on disk 12:14:26) |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = **`4.8.rc.custom_build.7c97c2977`**, built from the rc1 tree 2026-11-28 12:32:05 (`/tmp/editor_rc1_final.log`: `scons: done building targets.`, 15.49 s); `Contents/MacOS/Godot` **111,257,056 B**, sha256 **`19682014…`**. `Fast_Godot_4.8-macos.zip` written 12:32:09 (58,374,768 B) |
+| installed editor | `~/Applications/Fast_Godot_4.8.app` is **updated to the same rc1 binary** (sha256 `19682014…`) |
+| web template | **Nothreads (default):** `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` written 12:36:01, **14,358,369 B**, zip sha256 **`c61caa74…`**; `godot.wasm` **51,648,673 B**, sha256 **`f28e7f77…`** (the wasm the site runs). **Threaded (opt-in):** `out/editor-staging/godot.web.template_release.wasm32.zip` written 12:37:49, **14,357,917 B**, zip sha256 **`f80d59e6…`**; its TPS export wasm is 51,133,278 B (`/tmp/site-rc1-final-threaded`). Both contain 12 `RaycastOcclusionCull` strings, 12 pmndrs strings (spatial mode 6), no temporal code, and no `[WGPU-DBG]` instrumentation strings |
+| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — default **nothreads** TPS HTML5 Fast Forward+ export published 2026-11-28 **12:36:00** (`/tmp/export_rc1_default.log`): `index.wasm` 51,648,673 B sha256 **`f28e7f77…`**, `index.pck` 987,358,944 B. Runtime check (`/tmp/rc1_default_console.log`): `Godot Engine v4.8.rc.custom_build.7c97c2977`, 59-60 fps VSync, draws/f ≈5.5-5.6k, pmndrs spatial active, **no** "Occlusion culling is disabled at build-time", 0 GPU validation errors, 0 shader errors. The **threaded** rc1 export (`/tmp/site-rc1-final-threaded`, wasm 51,133,278 B) was served with COOP/COEP on `127.0.0.1:8225` (`/tmp/rc1_threaded_final_server.log`): 59-60 fps, draws/f ≈5.2-5.3k, 0 GPU validation/shader/worker errors, no occlusion warning (`/tmp/rc1_threaded_console.log`); uncapped threaded **131.3 fps** (`/tmp/rc1_threaded_uncap2_console.log`; the previous beta stack measured 137.3 threaded vs 124 single-threaded). The default rc1 uncapped figure is **112 fps** (`/tmp/rc1_default_uncap_console.log`) |
+| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is **stale for rc1** (mtime 2026-11-28 09:59:04; it still describes the 4.8-beta5 threads-fix build, editor `4.8.beta.custom_build.582d61902`). Trust the binary/template hashes in this snapshot until the lead refreshes it; BUILD.txt is not part of `patches/` |
+| source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the current patch tag; editors built before the removal can no longer provision a fresh toolchain |
 
 ## 4.8 layer map
 
 1. `0001-modules-grit` — Fast/Grit AOT compiler (adapted to 4.8 GDScript
    internals: GDType member maps, const MethodBind, parser resolved_type).
+   **4.8-rc1 rebase (2026-11-28):** the Grit provisioner now uses
+   `PATCH_STACK_REF = "4.8-rc1"` and
+   `PATCH_STACK_ARCHIVE_URL = …/archive/refs/tags/4.8-rc1.tar.gz` (was
+   `4.8-beta5`), so fresh toolchain boots fetch the rc1 stack tag.
 2. `0002-modules-cffi`.
 3. `0003-web-html5-fast-export` — HTML5 Fast platform + web hooks. **Web
    occlusion culling enabled (2026-11-28)**: overrides upstream's
@@ -242,7 +262,16 @@ already have a toolchain are unaffected).
    `_shader_build()` recognises the raw stage marker (WGSL present, SPIR-V
    empty) and skips the Tint-output WGSL rewrites for it. (The M2 temporal
    attempt briefly added raw-WGSL sample-type auto-layout and depth-only views
-   here; **both were reverted with milestone 2** — `0004` is back to 891,250 B.)
+   here; **both were reverted with milestone 2**.) **4.8-rc1 rebase
+   (2026-11-28): added the standalone host-tool shims
+   `drivers/webgpu/tint_cli/core/os/os.h` and
+   `drivers/webgpu/tint_cli/core/string/ustring.h` (the pre-existing
+   `core/templates/vector.h` shim now includes the ustring shim), fixing a
+   latent fresh-build failure of `tint_convert_cli`: `spirv_preprocess.cpp`
+   includes `core/os/os.h`/`core/string/ustring.h` and `spirv_preprocess.h`
+   uses `String`, which the shim tree did not provide — old trees only worked
+   because `bin/tint_convert_cli` was prebuilt. `0004` is now **893,686 B**
+   and its layer list is **34** paths (was 32).
 5. `0005-engine-renderer-patches` — batching (`batch_instance_index`), shader
    container format override, driver traits, GDScript native-call hooks, export
    window, WGSL shader baker plugin, icons/splash, frame profiler. Forward+:
@@ -321,8 +350,9 @@ There is exactly **one toolchain** for the whole project (4.7.2 was dropped):
 The first-use bootstrap (`modules/grit/editor/grit_provisioner.cpp`, patch 0001)
 builds the toolchain's engine source the same way this editor is built:
 
-1. download `https://github.com/2maac/fast-godot/archive/refs/tags/4.8-beta5.tar.gz`
-   (~8 MB) — the patch stack;
+1. download `https://github.com/2maac/fast-godot/archive/refs/tags/4.8-rc1.tar.gz`
+   (~8 MB) — the patch stack (the provisioner's `PATCH_STACK_ARCHIVE_URL`, patch
+   `0001`, now names the `4.8-rc1` tag; it was `4.8-beta5`);
 2. read `godot_commit` from its `patches/upstream.lock` (the single pin);
 3. download `https://github.com/godotengine/godot/archive/<commit>.tar.gz` (~76 MB);
 4. apply the archive's `patches/*.patch` files in order with the system
@@ -337,17 +367,19 @@ Consequences:
   otherwise); first-use downloads total ~84 MB;
 - the source-release asset/tag were **removed 2026-11-26**; editors built before
   that date lose fresh-toolchain provisioning (existing toolchains keep working);
-- **the `4.8-beta5` tag is what fresh installs fetch**: it is a lightweight tag
-  (`git cat-file -t refs/tags/4.8-beta5` → `commit`). History: last moved on
-  2026-11-27 to `529407b9fc` (SDFGI tip), then to `91a0a3e8e4` (pmndrs spatial
-  mode 6), then briefly to `cb0aa639c7` (pmndrs temporal milestone 2), and then
-  **force-moved on 2026-11-28 from `cb0aa639c7` to the revert stack commit**
-  (spatial-only mode 6 + SDFGI layer-completeness fix), with the branch pushed
-  and the docs refresh above it. So new toolchains build the
-  SDFGI/FSR/Forward+/pmndrs-spatial driver/template (no temporal mode) and read
-  the self-contained `patches/` bundle. Move the tag again when engine-side
-  fixes land; docs commits after a move sit on the branch above it, and
-  editor-only changes don't matter for template builds;
+- **the `4.8-rc1` tag is what fresh installs fetch** (since the 2026-11-28
+  rebase): a lightweight tag on stack commit `76d82e9993` (the provisioner in
+  patch `0001` references it). The old `4.8-beta5`
+  tag remains as history (last value `a7a5aefbe2`, the threads fix; it was
+  moved several times earlier that day: `529407b9fc` SDFGI tip → `91a0a3e8e4`
+  spatial mode 6 → `cb0aa639c7` temporal → revert stack). Fresh installs now
+  bootstrap the **4.8-rc1** driver/template (base upstream master
+  `7c97c29779`) and read the self-contained `patches/` bundle. `4.8-rc1` is
+  our tag name: upstream has no such git tag yet (its tags stop at
+  `4.7.2-stable`), so the tag reference resolves only on this repo. Move the
+  current tag again when engine-side fixes land; docs commits after a move sit
+  on the branch above it, and editor-only changes don't matter for template
+  builds;
 - `GRIT_ENGINE_PROBE=1` exercises just the source step headlessly
   (`GRIT_DOWNLOAD_NOW=1` still runs the whole toolchain bootstrap).
 
@@ -362,38 +394,34 @@ scons platform=macos arch=arm64 target=editor \
   vulkan_sdk_path=$HOME/fast_godot_toolchain/moltenvk \
   tests=no debug_symbols=no angle=no production=yes
 ```
-The current 4.8 build tree is a **volatile linked git worktree of this repo at
-`/tmp/godot48`** (`git worktree list` shows it; branch `port48`, HEAD
-`582d619026` **plus uncommitted Forward+/MSAA/TAA/FSR/SDFGI/pmndrs-spatial
-changes and the three kept SDFGI layer-completeness files** — not pushed; the
-pmndrs temporal code was removed by the 2026-11-28 revert). Those engine changes
-were regenerated into `patches/*.patch` and the committed part is on the repo
-branch (`b81f3de2c1` MSAA/TAA, `f799881f28` FSR/SDFGI injection, `529407b9fc`
-SDFGI enabled, `d8b3d583ae` raw-WGSL path + pmndrs milestone 1, `91a0a3e8e4`
-first-class pmndrs spatial Viewport mode 6; the temporal commit `cb0aa639c7` was
-superseded by the revert stack commit); the patch stack is the source of
-truth. Ancestors:
-bundle-lock bootstrap `582d619026`, patches/ layout `cdc0907bf6`, ring hardening
+The current 4.8 build tree is the **volatile git worktree `/tmp/godot48-rc1`**
+— detached at upstream `7c97c297793` (4.8-rc1) with the whole stack applied as
+working-tree changes (**1,790 changed paths = the 1,790 layer-listed paths**;
+the rebase used `git apply --3way` with one resolved shader conflict, see the
+rc1 section). The old `/tmp/godot48` worktree (`port48` @ `582d619026`, the
+4.8.0-beta stack) is retained as history and is not used by rc1 builds. The
+patch stack is the source of truth: regenerate from `/tmp/godot48-rc1`, or
+apply the repo's `patches/*.patch` files to a fresh checkout of `7c97c29779`
+if `/tmp` is wiped. Ancestors of the beta worktree (historical): bundle-lock
+bootstrap `582d619026`, patches/ layout `cdc0907bf6`, ring hardening
 `9267990dcd`, source bootstrap `130ed7f48d`, MSAA mitigation `a495fc3e93`,
-pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
-`patches/*.patch` files to a fresh Godot checkout.
+pack-key port `834c3d4fc2`.
 
 Staged build (gitignored): `out/editor-staging/`
-- `Fast_Godot_4.8.app` (`4.8.beta.custom_build.582d61902`, Fast Godot icon,
-  ad-hoc signed; **reverted-tree build 2026-11-28 00:52:28**, 110,961,808 B —
-  the editor is unchanged by the web-platform changes) and
-  `Fast_Godot_4.8-macos.zip` (written 00:54:48, 58,090,118 B)
-- `godot.web.template_release.wasm32.nothreads.zip` (default build; written
-  2026-11-28 09:55:14, **14,357,776 B**, zip sha256 `6c7b60a5…`; its
-  `godot.wasm` sha256 `a3772909…` is the one the site export runs; spatial mode
-  6 + occlusion culling, threads=no, no temporal)
-- `godot.web.template_release.wasm32.zip` (**opt-in threaded build**; written
-  09:56:46, 14,351,252 B, zip sha256 `24510b78…`; its TPS export wasm is
-  51,132,649 B in `/tmp/site-threaded-final`)
-- `Fast_Godot_4.8_BUILD.txt` (refreshed 2026-11-28 09:59:04, 7,702 B, covering
-  both builds; Site-export paragraph matches the 09:55/09:56 batch)
+- `Fast_Godot_4.8.app` (**`4.8.rc.custom_build.7c97c2977`**, Fast Godot icon,
+  ad-hoc signed; **rc1-tree build 2026-11-28 12:32:05**, 111,257,056 B) and
+  `Fast_Godot_4.8-macos.zip` (written 12:32:09, 58,374,768 B)
+- `godot.web.template_release.wasm32.nothreads.zip` (default rc1 build; written
+  2026-11-28 12:36:01, **14,358,369 B**, zip sha256 `c61caa74…`; its
+  `godot.wasm` sha256 `f28e7f77…` is the one the site export runs; spatial
+  mode 6 + occlusion culling, threads=no, no temporal)
+- `godot.web.template_release.wasm32.zip` (**opt-in threaded rc1 build**;
+  written 12:37:49, 14,357,917 B, zip sha256 `f80d59e6…`; its TPS export wasm
+  is 51,133,278 B in `/tmp/site-rc1-final-threaded`)
+- `Fast_Godot_4.8_BUILD.txt` — **stale for rc1** (mtime 09:59:04: still the
+  4.8-beta5 threads-fix build record); trust the hashes above
 The launchable install `~/Applications/Fast_Godot_4.8.app` is **updated to the
-same binary** (sha256 `cd72898f…`).
+same rc1 binary** (sha256 `19682014…`).
 Note: the app folder's mtime can read like an old timestamp — use
 `Contents/MacOS/Godot` mtime/version.
 
@@ -418,17 +446,18 @@ it boots at 59-60 fps with 0 GPU validation errors. The SDFGI verification
 export (volumetric fog off) completed 2026-11-27 17:17 — its log bakes the
 `Sdfgi*ShaderRD` WebGPU caches — and its browser run at 17:19 reported 60 fps
 with 0 GPU validation errors and 0 shader errors (throwaway harness under
-`/tmp/node-test/`). The current site export is the **default nothreads build
-with the threads fixes**: exported 2026-11-28 09:55:13 (`/tmp/export_final_nothreads.log`)
-into the Web Server site folder — wasm 51,648,024 B sha256 `a3772909…`, pck
-987,358,768 B; the exported wasm contains the pmndrs spatial path, **no**
-temporal upscaler, and the real Embree/RaycastOcclusionCull path. The
-**threaded** build is opt-in and was exported separately 2026-11-28 09:56
-(`/tmp/export_final_threads.log`) into `/tmp/site-threaded-final` (wasm
-51,132,649 B) for the verification run; it is not published to the default
-site. Earlier exports remain as history: the occlusion-only build
-(2026-11-28 02:15:57, wasm `e50a901b…`), the reverted spatial-only build
-(00:54:36, wasm `98ac9e82…`), the M2 temporal build (00:28:52, wasm
+`/tmp/node-test/`). The current site export is the **4.8-rc1 default nothreads
+build**: exported 2026-11-28 12:36:00 (`/tmp/export_rc1_default.log`) into the
+Web Server site folder — wasm 51,648,673 B sha256 `f28e7f77…`, pck 987,358,944 B;
+the exported wasm is `Godot Engine v4.8.rc.custom_build.7c97c2977` and contains
+the pmndrs spatial path, **no** temporal upscaler, and the real
+Embree/RaycastOcclusionCull path. The **threaded rc1** build is opt-in and was
+exported separately 2026-11-28 12:25 (`/tmp/export_rc1_threaded.log`) into
+`/tmp/site-rc1-final-threaded` (wasm 51,133,278 B) for the verification run; it is
+not published to the default site. Earlier exports remain as history: the
+beta threads-fix build (2026-11-28 09:55:13, wasm `a3772909…`), the
+occlusion-only build (02:15:57, wasm `e50a901b…`), the reverted spatial-only
+build (00:54:36, wasm `98ac9e82…`), the M2 temporal build (00:28:52, wasm
 `3fab49b3…`), the spatial-mode build (2026-11-27 21:53:27, wasm `3b25ba0b…`)
 and the 20:47 bool-setting A/B (`/tmp/site-pmndrs`, `/tmp/site-fsr1`).
 
@@ -440,9 +469,10 @@ and the 20:47 bool-setting A/B (`/tmp/site-pmndrs`, `/tmp/site-fsr1`).
    from the site dir — never reuse a port that may still have an old server).
 3. Open `index.html` in a Chromium with WebGPU (Chrome for Testing or Chrome/
    Brave with `--enable-unsafe-webgpu` if needed) and capture the console.
-4. Expect: `WebGPU 1.0 - Forward+ - Using Device #0`, the TPS menu, then the
-   level after PLAY; `[PERF] fps≈60 draws/f≈5.7k RingOF=0` in gameplay; and
-   **0** `GPUValidationError` / `SPIR-V to WGSL failed` lines.
+4. Expect: `Godot Engine v4.8.rc.custom_build.7c97c2977` (rc1 base),
+   `WebGPU 1.0 - Forward+ - Using Device #0`, the TPS menu, then the level after
+   PLAY; `[PERF] fps≈60 draws/f≈5.5-5.6k RingOF=0` in gameplay; and **0**
+   `GPUValidationError` / `SPIR-V to WGSL failed` lines.
 5. Repeat with the demo's settings screen to exercise MSAA 4x, TAA and SDFGI
    (all three were verified 2026-11-27 with 0 errors; SDFGI was verified with
    volumetric fog off and the GI type set to SDFGI). Enabling a setting persists
@@ -489,7 +519,7 @@ and the 20:47 bool-setting A/B (`/tmp/site-pmndrs`, `/tmp/site-fsr1`).
    before loading — otherwise SharedArrayBuffer/workers are unavailable. Expect
    the same as the nothreads build (60 fps VSync, 0 GPU/shader/worker errors,
    no occlusion warning); the final verification used `/tmp/serve_coop_log.py`
-   on 127.0.0.1:8223 (`/tmp/threaded_final_console.log`). Remember the Grit
+   on 127.0.0.1:8225 (`/tmp/threaded_final_console.log`). Remember the Grit
    stale-staging gotcha below when switching a profile tree between threads
    modes.
 
@@ -1136,11 +1166,12 @@ this file's history.
   remove the override to return to upstream's memory-optimized default.
 - **Verification.** The template contains the real
   `RaycastOcclusionCull`/Embree path (`RaycastOcclusionCull|raycast_occlusion`
-  strings present; ~12 matches in the final wasm). The final nothreads TPS run
-  (`/tmp/final_nothreads_console.log`, 09:59, and the earlier 40 s run
-  `/tmp/final_occl_console.log`) has **0** "Occlusion culling is disabled at
-  build-time" warnings, **0** GPU validation errors, **0** shader errors and
-  59-60 fps (5.2-5.6k draws/frame).
+  strings present; 12 matches in the final rc1 wasm). The rc1 nothreads TPS run
+  (`/tmp/rc1_default_console.log`) and the earlier beta runs
+  (`/tmp/final_nothreads_console.log`, `/tmp/final_occl_console.log`) all have
+  **0** "Occlusion culling is disabled at build-time" warnings, **0** GPU
+  validation errors, **0** shader errors and 59-60 fps (5.5-5.6k draws/frame on
+  rc1).
 - **Measured culling yield on the TPS test camera: zero.** Temporary
   instrumentation (removed afterwards) showed the path active — scenario
   `instances=1`, HZ buffer **30×16** with `hz_min` dropping **4194.36 → 315.08**
@@ -1199,15 +1230,20 @@ because it needs cross-origin-isolation hosting.
   `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy:
   require-corp` (e.g. `/tmp/serve_coop_log.py`) so `crossOriginIsolated ===
   true` (required for SharedArrayBuffer/workers).
-- **Verification (2026-11-28 ~09:57).** Threaded TPS export: engine up in
-  ~3.4 s, menu → PLAY loads the full level, **59-60 fps with VSync**, draws/f
-  ≈5.2-5.6k, **0 GPU validation errors, 0 shader errors, 0 worker errors**, and
-  no "Occlusion culling is disabled at build-time" warning (the template also
-  has raycast/Embree enabled). Evidence: `/tmp/threaded_final_console.log`,
-  `/tmp/site-threaded-final`, `/tmp/export_final_threads.log`. Uncapped
-  measurement (Chrome for Testing, 960×540, `--disable-gpu-vsync
-  --disable-frame-rate-limit`): **threaded 137.3 fps vs single-threaded
-  124 fps (~+11% CPU headroom)**; normal play is VSync-capped at 60 for both.
+- **Verification (2026-11-28; rc1 threaded run at ~12:25).** Threaded TPS
+  export (rc1): menu → PLAY loads the full level, **59-60 fps with VSync**,
+  draws/f ≈5.2-5.3k, **0 GPU validation errors, 0 shader errors, 0 worker
+  errors**, and no "Occlusion culling is disabled at build-time" warning (the
+  template also has raycast/Embree enabled). Evidence:
+  `/tmp/rc1_threaded_console.log`, `/tmp/site-rc1-final-threaded`,
+  `/tmp/rc1_threaded_final_server.log`; the previous beta run was
+  `/tmp/threaded_final_console.log` (draws/f ≈5.2-5.6k). Uncapped measurement
+  (Chrome for Testing, 960×540, `--disable-gpu-vsync
+  --disable-frame-rate-limit`): **rc1 threaded 131.3 fps**
+  (`/tmp/rc1_threaded_uncap2_console.log`); on the previous beta stack it was
+  **threaded 137.3 vs single-threaded 124 fps (~+11% CPU headroom)**, and the
+  default rc1 uncapped figure is measured after the rebase (not recorded here).
+  Normal play is VSync-capped at 60 for both.
 - **Deployment caveat — why it stays opt-in.** Threaded builds require
   cross-origin isolation headers (SharedArrayBuffer); a plain static host
   (`python3 -m http.server`, most simple hosting) will **not** work. The shipped
@@ -1218,23 +1254,77 @@ because it needs cross-origin-isolation hosting.
 
 ### C. Artifacts / Grit gotcha
 
-- Patch `0003` is **46,060 B** after the threads fix (the `detect.py` change
-  restores the upstream pthread flags on top of the occlusion override: +12/−22
-  vs the occlusion-only commit `96a71a19bf`); patch `0005` is **5,941,474 B**
-  (+26 for the `can_create_resources_async()` fix), and its layer list gained
-  `servers/rendering/renderer_rd/renderer_compositor_rd.h` (159 → **160**
-  paths). Round-trip re-verified on a pristine `67421f36e5` (all 8 patches
-  byte-identical, 09:58; coverage 57/57); the editor is unchanged.
-- Templates: nothreads `godot.web.template_release.wasm32.nothreads.zip` (09:55:14,
-  zip sha `6c7b60a5…`, wasm sha `a3772909…`) and the staged threaded
-  `godot.web.template_release.wasm32.zip` (09:56:46, zip sha `24510b78…`; TPS
-  export wasm 51,132,649 B in `/tmp/site-threaded-final`).
+- The rc1 stack is regenerated and round-trip-verified on a pristine
+  `7c97c29779` checkout (all 8 patches byte-identical, coverage **1,790/1,790**;
+  `0003` 46,094 B, `0004` 893,686 B, `0005` 5,941,786 B — full sizes in the
+  environment snapshot). Patch `0004` carries the tint_cli host shims that fix
+  a latent fresh-build failure; `0005`'s layer list is 160 paths (`0004`'s is
+  34 after gaining the two shim files).
+- Templates (rc1): nothreads `godot.web.template_release.wasm32.nothreads.zip`
+  (12:36:01, zip sha `c61caa74…`, wasm sha `f28e7f77…`) and the staged threaded
+  `godot.web.template_release.wasm32.zip` (12:37:49, zip sha `f80d59e6…`; TPS
+  export wasm 51,133,278 B in `/tmp/site-rc1-final-threaded`).
 - **Grit template-staging gotcha:** switching a Grit profile tree between
   `threads=no` and `threads=yes` can leave stale shared web staging
   (`bin/.web_zip` and the non-suffixed template files), so a later **nothreads**
   export can silently package the **threaded** wasm. Clean the profile tree's
   `bin/` web artifacts (or rebuild after removing them —
   `/tmp/web_cleanup.log`) when switching variants.
+
+## Godot 4.8-rc1 rebase (2026-11-28)
+
+- **Base.** Upstream `godotengine/godot` master **`7c97c29779`** ("Bump version
+  to 4.8-rc"; `version.py` major 4 / minor 8 / patch 0 / status `"rc"`),
+  **86 commits ahead** of the previous 4.8.0-beta pin `67421f36e5`. Upstream
+  has **no git tag `4.8-rc1`** (tags stop at `4.7.2-stable`), so "4.8-rc1" is
+  our name for this master rc-state commit; `patches/upstream.lock` now records
+  `godot_tag = "master (4.8.0-rc1)"` + `godot_commit = 7c97c29779…`.
+- **Rebase mechanics.** The old stack was applied to a fresh worktree at
+  `7c97c29779` with `git apply --3way`. Exactly **one conflict**: in
+  `servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl`
+  rc1 made `prev_data.inv_view_precision` / `data.inv_view_precision`
+  precision-aware vec4 accesses, while our patch's context expected the old
+  form. Resolution: keep our `batch_instance_index` rename and take rc1's new
+  `.xyz` on those two accesses. Every other stack file applied cleanly.
+- **Latent host-build bug fixed (fresh builds).** `drivers/webgpu/tint_cli`
+  (the standalone shim tree used to build the build-time `tint_convert_cli`
+  host tool) lacked `core/os/os.h` and `core/string/ustring.h`, although
+  `drivers/webgpu/spirv_preprocess.cpp` includes both and
+  `spirv_preprocess.h` uses `String`. Old trees only worked because
+  `bin/tint_convert_cli` was prebuilt, so a fresh worktree failed to build the
+  tool. Fix (patch `0004`): added minimal
+  `drivers/webgpu/tint_cli/core/os/os.h` and
+  `drivers/webgpu/tint_cli/core/string/ustring.h` shims (a small `String` over
+  `std::string` + `itos`), and the existing
+  `drivers/webgpu/tint_cli/core/templates/vector.h` shim now includes
+  `core/string/ustring.h`. `0004` is **893,686 B** (was 891,250) and its layer
+  list is **34** paths (was 32).
+- **Provisioner / tag.** `modules/grit/editor/grit_provisioner.cpp` (patch
+  `0001`) now sets `PATCH_STACK_REF = "4.8-rc1"` and
+  `PATCH_STACK_ARCHIVE_URL = https://github.com/2maac/fast-godot/archive/refs/tags/4.8-rc1.tar.gz`
+  (was `4.8-beta5`), so fresh toolchain boots fetch the `4.8-rc1` stack tag.
+  That tag must exist on stack commit `76d82e9993` (created/pushed with this
+  change); the old `4.8-beta5` branch/tag stay as history. The repo default
+  branch is still `4.8-beta5` at doc time — switching it to `4.8-rc1` is a
+  follow-up, not claimed done.
+- **Regenerated stack.** `0001` 508,734 B, `0002` 203,698 B, `0003` 46,094 B,
+  `0004` 893,686 B, `0005` 5,941,786 B, `0006` 15,133,768 B, `0007` 3,541,650 B,
+  `0099` 29,738 B; 1,790 layer paths total (1,790 changed worktree paths, all
+  covered). Round-trip on a pristine `7c97c29779` reproduces all 8 patches
+  byte-identically.
+- **Builds/artifacts.** Editor `4.8.rc.custom_build.7c97c2977` (sha `19682014…`,
+  built 12:32:05); nothreads template zip `c61caa74…` (wasm `f28e7f77…`), site
+  published 12:36:00; threaded template zip `f80d59e6…` (TPS export wasm
+  51,133,278 B in `/tmp/site-rc1-final-threaded`). Details in the environment
+  snapshot.
+- **Runtime verification (Chrome for Testing, TPS Forward+ WebGPU).** Default
+  rc1: 59-60 fps VSync, draws/f ≈5.5-5.6k, pmndrs spatial active, no occlusion
+  warning, 0 GPU validation errors, 0 shader errors. Threaded rc1 (served with
+  COOP/COEP, `crossOriginIsolated`): 59-60 fps VSync, draws/f ≈5.2-5.3k, same
+  clean errors and warning, uncapped **131.3 fps**
+  (`/tmp/rc1_threaded_uncap2_console.log`; previous beta stack: 137.3 threaded
+  vs 124 single-threaded). The default rc1 uncapped figure is measured after
+  the rebase (not recorded here).
 
 ## Open issues / next steps
 
@@ -1274,7 +1364,8 @@ because it needs cross-origin-isolation hosting.
    ref nor asset exists on `origin` anymore. Only editors built before the new
    bootstrap used it.
 9. **Toolchain bootstrap integrity**: the source step pins its inputs by commit
-   and tag (`patches/upstream.lock`'s `godot_commit`, patch tag `4.8-beta5`) and applies
+   and tag (`patches/upstream.lock`'s `godot_commit`, patch tag `4.8-rc1`,
+   previously `4.8-beta5`) and applies
    them with system git, but nothing verifies the downloaded tarballs beyond
    HTTPS, and the patch tag is mutable (force-pushable). A silently moved tag
    changes what fresh installs build. Pinning the stack by commit inside the
@@ -1341,18 +1432,30 @@ because it needs cross-origin-isolation hosting.
     disabling it) should be watched on large scenes. See the web-platform
     section.
 15. **Web `threads=yes` — FIXED and browser-verified (2026-11-28), opt-in.**
-    Threaded templates now boot and play the TPS level (59-60 fps VSync,
-    0 GPU/shader/worker errors; uncapped 137.3 vs 124 fps single-threaded,
-    ~+11%). Fixes: upstream pthread flags restored in `platform/web/detect.py`
-    (`-pthread` + `PTHREAD_POOL_SIZE=Module['emscriptenPoolSize']||8` +
-    `MAXIMUM_MEMORY=2048MB`; the legacy `-sUSE_PTHREADS`/pool=0 scheme caused
-    the startup wedge) and `can_create_resources_async()` returns false under
-    `WEBGPU_ENABLED` so threaded resource creation goes through the render
-    server command queue on the render/main thread. It stays opt-in because it
-    needs COOP/COEP hosting for `crossOriginIsolated`; the shipped preset keeps
+    Threaded templates boot and play the TPS level on both the beta and rc1
+    stacks (59-60 fps VSync, 0 GPU/shader/worker errors; uncapped 131.3 fps on
+    rc1 threaded, 137.3 vs 124 fps single-threaded on the beta stack). Fixes:
+    upstream pthread flags restored in `platform/web/detect.py` (`-pthread` +
+    `PTHREAD_POOL_SIZE=Module['emscriptenPoolSize']||8` + `MAXIMUM_MEMORY=2048MB`;
+    the legacy `-sUSE_PTHREADS`/pool=0 scheme caused the startup wedge) and
+    `can_create_resources_async()` returns false under `WEBGPU_ENABLED` so
+    threaded resource creation goes through the render server command queue on
+    the render/main thread. It stays opt-in because it needs COOP/COEP hosting
+    for `crossOriginIsolated`; the shipped preset keeps
     `variant/thread_support=false`. Do not advertise threads as universally
     available, and note threaded gains only matter above 60 Hz or in CPU-heavy
     scenes. See the web-platform section.
+16. **4.8-rc1 rebase follow-ups (2026-11-28).** The base is an upstream master
+    rc-state commit that upstream has **not tagged** (`7c97c29779`, "Bump
+    version to 4.8-rc"; no `4.8-rc1` git tag upstream — "4.8-rc1" is our name).
+    When upstream cuts a real tag, re-pin `patches/upstream.lock` and regenerate
+    the stack; also switch the GitHub repo **default branch** from `4.8-beta5`
+    to `4.8-rc1` (pending; `4.8-rc1` branch + lightweight tag are created with
+    this change). Refresh `BUILD.txt` for the rc1 build when convenient (it is
+    still the beta record at doc time). The new `tint_cli` host shims are
+    minimal by design — if `spirv_preprocess.cpp` starts using more of
+    `String`/`OS`, extend the shims rather than pulling in the full engine
+    headers.
 
 ## Practical notes
 
@@ -1366,20 +1469,20 @@ because it needs cross-origin-isolation hosting.
 - Release tags can be force-updated (one was re-cut and then removed on
   2026-11-26). Verify with `git ls-remote origin refs/tags/<tag>` after any move.
 - The `4.8-beta5-source` release/asset was **removed 2026-11-26**. New builds
-  bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before
-  the removal can no longer provision a fresh toolchain, so keep their existing
-  toolchains or reinstall from a current build.
-- **Keep the `4.8-beta5` tag pointing at the stack you ship**: fresh toolchain
-  installs download it. It was moved on 2026-11-27 ~23:45 to `91a0a3e8e4`
-  (raw-WGSL path + pmndrs milestone 1 + first-class pmndrs spatial mode),
-  briefly to `cb0aa639c7` for the pmndrs temporal milestone 2, and then
-  **force-moved on 2026-11-28 from `cb0aa639c7` to the revert stack commit**
-  (spatial-only mode 6 + SDFGI layer-completeness fix) with the branch pushed
-  and the docs refresh above it. The tag is lightweight; after any move,
-  force-update the remote tag and re-check the archive
-  (`git ls-remote origin refs/tags/4.8-beta5`), and keep the docs commit above
-  it (docs-only changes don't affect template builds).
-  First-use provisioning also needs system `git` on the machine.
+  bootstrap from Godot's repo + the current patch tag (`4.8-rc1`); editors
+  built before the removal can no longer provision a fresh toolchain, so keep
+  their existing toolchains or reinstall from a current build.
+- **Keep the stack tag pointing at the stack you ship**: fresh toolchain
+  installs download it. The current tag is **`4.8-rc1`** (created with the
+  2026-11-28 rebase on stack commit `76d82e9993`; patch `0001`'s provisioner
+  references it). The old **`4.8-beta5` tag stays as history** (last value
+  `a7a5aefbe2`, the threads fix; earlier moves that day:
+  `529407b9fc` → `91a0a3e8e4` → `cb0aa639c7` → revert stack). Tags are
+  lightweight; after any move, force-update the remote tag and re-check the
+  archive (`git ls-remote origin refs/tags/4.8-rc1`), and keep the docs commit
+  above it (docs-only changes don't affect template builds). Note `4.8-rc1` is
+  our tag name — upstream has no such git tag, so the reference resolves only
+  on this repo. First-use provisioning also needs system `git` on the machine.
 - Layout (2026-11-26): the patch stack became a **self-contained portable
   bundle in `patches/`** (patch files + `layers/` + `upstream.lock`, no version
   subfolder), and this handoff + the migration history moved into `docs/` (the
@@ -1387,7 +1490,7 @@ because it needs cross-origin-isolation hosting.
   coupled: editor builds before the layout change look for `patches/4.8-beta5/`
   (and `upstream.lock` at the archive root) and cannot bootstrap from the current
   tag; rebuild the editor whenever the bundle layout changes (current matching
-  build: `4.8.beta.custom_build.582d61902`).
+  build: `4.8.rc.custom_build.7c97c2977`).
 - **Adding files to a layer**: a new source file only lands in `patches/` if its
   path is listed in the matching `patches/layers/*.files`. `tools/make-patches.sh`
   marks every untracked layer-listed file intent-to-add before diffing
@@ -1402,18 +1505,34 @@ because it needs cross-origin-isolation hosting.
   `shaders/environment/gi.glsl`, `shaders/environment/sdfgi_integrate.glsl`) had
   been missing from every layer list; they were added in the M2 regeneration and
   are **kept after the revert** (that is why the `0005` layer list grew from 156
-  to 159 paths and `0005` from 5,936,829 B; after the threads fix it is 160
-  paths / 5,941,474 B).
-  When regenerating, cross-check every `git -C /tmp/godot48 status` path against
-  the union of all layer lists in addition to running the round-trip — after the
-  threads fixes that is **57/57** covered (`0005`'s layer list gained
-  `renderer_compositor_rd.h`; `0003` already listed
-  `platform/web/detect.py`).
+  to 159 paths and `0005` from 5,936,829 B; the threads fix took it to 160
+  paths / 5,941,474 B, and the rc1 rebase regenerated it at 160 paths /
+  5,941,786 B). The rc1 rebase also added the two `tint_cli` host shims to
+  `0004` (32 → 34 paths). Current totals: **1,790 layer paths** and
+  **1,790/1,790** worktree-changed paths covered.
+  When regenerating, cross-check every `git -C /tmp/godot48-rc1 status` path
+  against the union of all layer lists in addition to running the round-trip.
 - **Round-trip check after regenerating**: apply the full `patches/` bundle to a
   pristine checkout of the pinned commit and re-diff each layer with its
-  `layers/*.files` list; the 2026-11-28 ~09:58 round trip (incl. the threads
-  fixes) is byte-identical for all 8 layers (`0003` 46,060 B, `0004` 891,250 B,
-  `0005` 5,941,474 B; see the Environment snapshot).
+  `layers/*.files` list; the 2026-11-28 ~12:31 rc1 round trip is byte-identical
+  for all 8 layers (`0003` 46,094 B, `0004` 893,686 B, `0005` 5,941,786 B — full
+  sizes in the Environment snapshot; 1,790 layer paths).
+- **Host `tint_convert_cli` shims (rc1, 2026-11-28)**: a **fresh** worktree
+  could not build the build-time `tint_convert_cli` host tool because
+  `drivers/webgpu/spirv_preprocess.cpp` includes `core/os/os.h` /
+  `core/string/ustring.h` and `spirv_preprocess.h` uses `String`, while the
+  standalone shim tree (`drivers/webgpu/tint_cli/`) only had
+  `core/templates/{vector,hash_map,hash_set}.h`. Old trees only worked because
+  `bin/tint_convert_cli` was prebuilt. Patch `0004` now adds minimal
+  `tint_cli/core/os/os.h` + `tint_cli/core/string/ustring.h` shims and the
+  `tint_cli/core/templates/vector.h` shim includes the ustring shim. If a
+  fresh `scons platform=web` fails in `tint_convert_cli` with missing
+  `os.h`/`ustring.h`, the layer list or the shims were not applied.
+- **4.8-rc1 naming**: upstream has no git tag `4.8-rc1` (its tags stop at
+  `4.7.2-stable`); `patches/upstream.lock` pins `godot_commit 7c97c29779`
+  ("Bump version to 4.8-rc", `version.py` status `rc`) and calls it
+  `master (4.8.0-rc1)`. `4.8-rc1` is our branch/tag name; when upstream cuts a
+  real tag, re-pin and regenerate.
 
 Verified 2026-11-26: copying **only** `patches/` + `tools/apply.sh` and applying
 them to a fresh Godot `67421f36e5` checkout reproduced all 16,064 worktree files
@@ -1422,26 +1541,24 @@ with zero mismatches, and the moved tag archive contains
 - Ref naming (2026-11-26): the remote branch was renamed from `patches/4.8-beta5`
   to plain `4.8-beta5` (same name as the tag and the local branch; the patch
   files live at the repo root). Use full refs when the ambiguity matters.
-  `4.8-beta5` is the repository **default branch** since 2026-11-26 (was
-  `4.7.2`), so pushes to it no longer trigger GitHub's "recent pushes → compare
-  & pull request" banner; `4.7.2` stays history-only.
+  `4.8-beta5` has been the repository **default branch** since 2026-11-26 (was
+  `4.7.2`); the new `4.8-rc1` branch is created with the rebase and switching
+  the default branch to it is a pending follow-up (not claimed done). `4.7.2`
+  stays history-only.
 - One SDK (Emscripten 6.0.12) serves everything; do not pin a second version.
-- The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
-  the pass-boundary ring flush, the white-box pack-key port, the raw-WGSL
-  compute path, the pmndrs spatial effect (mode 6), the three kept SDFGI
-  layer-completeness files, the **web occlusion-culling override and upstream
-  pthread flags** in `platform/web/detect.py`, and the **threads
-  `can_create_resources_async()` fix** in
-  `servers/rendering/renderer_rd/renderer_compositor_rd.h`; the pmndrs
-  **temporal** code was removed with the revert (see the milestone-2 history
-  section). Re-apply the repo's `patches/*.patch` files to a fresh checkout to
-  reproduce it.
+- The **current** macOS editor build tree is **`/tmp/godot48-rc1`** — detached
+  at upstream `7c97c297793` with the whole stack applied (1,790 changed paths;
+  see the rc1 section for the one resolved shader conflict and the tint_cli
+  shim fix). The old `/tmp/godot48` (4.8.0-beta stack) is retained as history.
+  Re-apply the repo's `patches/*.patch` files to a fresh checkout of
+  `7c97c29779` to reproduce the rc1 tree (or apply to the beta pin for the old
+  one).
 - Ring diagnostics: `rendering/webgpu/debug_frames` prints `passFlush=` and
   `ringOF=` per frame; `passFlush` is normal on heavy frames, `ringOF` must stay
   0 (it now means a single pass exceeded the whole ring).
 - `GODOT_VERSION_HASH_OVERRIDE` is set by `tools/grit_build.py` from the editor
   version hash so baked shader cache keys match the runtime template.
-- After committing in `/tmp/godot48`, explicitly force `core/version_hash.gen.cpp`
+- After committing in `/tmp/godot48-rc1` (or the old `/tmp/godot48`), explicitly force `core/version_hash.gen.cpp`
   to regenerate (delete it and its object, rebuild, check `--version` shows the
   new HEAD). On 2026-11-26 a rebuild after committing kept the previous hash
   (`834c3d4fc`) until forced; a stale hash changes ShaderRD cache keys, so
@@ -1478,11 +1595,10 @@ with zero mismatches, and the moved tag archive contains
   remove the profile tree's `bin/` web artifacts (or rebuild after deleting
   them) — `/tmp/web_cleanup.log` is the cleanup rebuild that fixed it.
 - **BUILD.txt**: `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is not part of
-  `patches/`. It was refreshed for the threads fix (09:59:04, 7,702 B; editor
-  sha `cd72898f…`, nothreads template zip `6c7b60a5…`, wasm `a3772909…`) and
-  covers both the default and threaded builds (including the fixed-threads
-  section and the occlusion notes); its Site-export paragraph now matches the
-  09:55/09:56 export batch.
+  `patches/`. It is **stale for rc1** at doc time (mtime 09:59:04, still the
+  4.8-beta5 threads-fix record: editor `4.8.beta.custom_build.582d61902`).
+  Trust the editor/template hashes in the Environment snapshot; refresh
+  BUILD.txt for the rc1 build when convenient (follow-up).
 - **Browser checks:** the throwaway Playwright harness used for the Forward+
   verification lives outside the repo (`/tmp/node-test/`, Chrome for Testing at
   `/tmp/chrome-test/chrome-mac-arm64/`). It serves the site on a fresh port,

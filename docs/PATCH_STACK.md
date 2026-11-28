@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; the threads fix is stack commit **`a7a5aefbe2`** ("web: fix HTML5 thread support (threads=yes) on WebGPU") with a docs commit above it; branch pushed and tag `4.8-beta5` **force-moved from `96a71a19bf` to `a7a5aefbe2`**. History below it: the occlusion-culling commit `96a71a19bf`, the temporal revert, pmndrs milestone-2 commit `cb0aa639c7` (superseded), spatial mode-6 commit `91a0a3e8e4` and milestone-1 stack `d8b3d583ae`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| **`4.8-rc1`** (branch + lightweight tag, created/pushed with the 2026-11-28 rebase; the stack commit is **`76d82e9993`** (with a docs commit above it)). The old `4.8-beta5` branch/tag are kept as history (tag = `a7a5aefbe2`, the threads fix; branch tip `5da498f468f`); the repo default branch is still `4.8-beta5` until switched — follow-up | godot `master` at **`7c97c29779`** (`4.8-rc` state: `version.py` status `rc`; 86 commits after `67421f36e5`; upstream has **no** `4.8-rc1` git tag — that is our name), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -28,8 +28,8 @@ lives in the patch stack (`tools/toolchain/download_toolchain.sh` +
 Regenerating binary layers: the committed patches contain 23 `GIT binary patch`
 hunks (8 in `0005`, 15 in `0007`); `make-patches.sh` passes `--binary` to both
 `git diff` calls (fixed 2026-11-26), so regeneration keeps them. The script also
-accepts linked worktrees (e.g. `/tmp/godot48`, whose `.git` is a file) and runs
-on macOS's bash 3.2.
+accepts linked worktrees (live ones: `/tmp/godot48-rc1`, whose `.git` is a file;
+the old `/tmp/godot48` beta tree is history) and runs on macOS's bash 3.2.
 
 **New files must be listed in a layer.** `make-patches.sh` marks every untracked
 file from the layer lists intent-to-add before diffing (`git add -N -f`), so a
@@ -45,6 +45,9 @@ scaling-mode change added six existing paths to `0005`
 `servers/rendering/rendering_server_enums.h`,
 `servers/rendering/storage/render_scene_buffers.cpp`,
 `doc/classes/{Viewport,RenderingServer}.xml`), growing the layer to 156 paths.
+The 2026-11-28 rc1 rebase added two new host-shim files to `0004` via this path
+(`drivers/webgpu/tint_cli/core/os/os.h`,
+`drivers/webgpu/tint_cli/core/string/ustring.h`; `0004` layer 32 → 34 paths).
 
 **Layer completeness (important).** The per-layer round-trip check only re-diffs
 the paths *listed* in `layers/*.files`, so it **cannot detect an omitted file**.
@@ -56,10 +59,10 @@ could not reproduce the SDFGI build even though its round-trip looked clean.
 The regeneration added them to `0005` and they are **kept after the temporal
 revert** (layer list 156 → 159 paths, `0005` 5,936,829 → 5,940,065 B). The
 threads fix then added `servers/rendering/renderer_rd/renderer_compositor_rd.h`
-to `0005` (→ **160** paths, `0005` **5,941,474 B**), and all **57/57**
-worktree-changed paths are now covered (`0003` already contained
-`platform/web/detect.py`). Regeneration must cross-check
-`git -C /tmp/godot48 status` paths against the union of all layer lists in
+to `0005` (→ **160** paths, `0005` **5,941,474 B**). After the 2026-11-28 rc1
+rebase the totals are **1,790 layer paths** (`0004` **34**, `0005` 160) and
+**1,790/1,790** worktree-changed paths covered. Regeneration must cross-check
+`git -C /tmp/godot48-rc1 status` paths against the union of all layer lists in
 addition to the round-trip.
 
 **M2 temporal attempt — reverted.** The pmndrs temporal milestone 2
@@ -139,6 +142,55 @@ evidence build: threaded TPS export boots, loads and plays at 60 fps VSync with
 commit **`a7a5aefbe2`**; a docs commit follows, the branch is pushed and tag
 `4.8-beta5` force-moved from `96a71a19bf` to `a7a5aefbe2`.
 
+**Rebased to Godot 4.8-rc1 (2026-11-28).** The stack now applies to upstream
+`godotengine/godot` master **`7c97c29779`** ("Bump version to 4.8-rc";
+`version.py` major 4 / minor 8 / patch 0 / status `rc`), **86 commits ahead** of
+the previous 4.8.0-beta pin `67421f36e5`. Upstream has **no git tag `4.8-rc1`**
+(its tags stop at `4.7.2-stable`), so `4.8-rc1` is our branch/tag name for this
+master rc-state commit; `patches/upstream.lock` records
+`godot_tag = "master (4.8.0-rc1)"` + `godot_commit = 7c97c29779…`. The old stack
+was applied to a fresh worktree at `7c97c29779` with **`git apply --3way`**: all
+files applied cleanly except **one conflict** in
+`servers/rendering/renderer_rd/shaders/forward_mobile/scene_forward_mobile.glsl`
+— rc1 made `prev_data.inv_view_precision` / `data.inv_view_precision`
+precision-aware vec4 accesses and our patch's context expected the old form.
+Resolution: keep our `batch_instance_index` rename and take rc1's new `.xyz` on
+those two accesses.
+
+**Latent fresh-build bug fixed (host tool, patch `0004`).**
+`drivers/webgpu/spirv_preprocess.cpp` includes `core/os/os.h` and
+`core/string/ustring.h`, and `spirv_preprocess.h` uses `String`, but the
+standalone shim tree the `tint_convert_cli` build uses
+(`drivers/webgpu/tint_cli/`) only had `core/templates/{vector,hash_map,hash_set}.h`.
+Old trees only worked because `bin/tint_convert_cli` was prebuilt; a fresh
+worktree could not build the build-time host tool. Fix: added minimal
+`drivers/webgpu/tint_cli/core/os/os.h` + `core/string/ustring.h` shims (a small
+`String` over `std::string` + `itos`) and made the shim
+`core/templates/vector.h` include `core/string/ustring.h`. Both shims are in
+the `0004` layer list (32 → 34 paths); `0004` grew 891,250 → **893,686 B**.
+
+**Provisioner/tag (patch `0001`).** `modules/grit/editor/grit_provisioner.cpp`
+now uses `PATCH_STACK_REF = "4.8-rc1"` and
+`PATCH_STACK_ARCHIVE_URL = …/archive/refs/tags/4.8-rc1.tar.gz` (was
+`4.8-beta5`), so fresh toolchain boots fetch the `4.8-rc1` stack tag. That tag
+must exist on stack commit `76d82e9993` (created/pushed with this change); the
+old `4.8-beta5` branch/tag stay as history. The repo default branch is still
+`4.8-beta5` — switching it is a follow-up.
+
+**Verified 2026-11-28 ~12:31 for the 4.8-rc1 rebase:** the regenerated stack
+(`0001` 508,734 B, `0002` 203,698, `0003` 46,094, `0004` **893,686**, `0005`
+**5,941,786**, `0006` 15,133,768, `0007` 3,541,650, `0099` 29,738 B; 1,790
+layer paths) applied to a pristine `7c97c29779` checkout
+(`/tmp/applytest-rc1`, all 1,790 layer paths staged) and re-diffed per layer
+reproduces **all 8 `patches/*.patch` files byte-identically** (independently
+re-checked), with **1,790/1,790** changed worktree paths covered. Editor
+`4.8.rc.custom_build.7c97c2977` (sha `19682014…`); nothreads template zip
+`c61caa74…` (wasm `f28e7f77…`, site 12:36:00); threaded template zip
+`f80d59e6…` (TPS export wasm 51,133,278 B). Runtime: default rc1 TPS Forward+
+WebGPU 59-60 fps VSync, pmndrs spatial active, no occlusion warning, 0 GPU
+validation/shader errors; threaded rc1 likewise (0 GPU/shader/worker errors),
+uncapped threaded 131.3 fps.
+
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,
 no version subfolder). The editor's toolchain bootstrap reads `patches/*.patch`
@@ -146,14 +198,14 @@ and `patches/upstream.lock` from the stack archive; editor builds that predate
 the layout change look for `patches/4.8-beta5/` and cannot bootstrap from the
 current tag, so the editor and the layout are updated together.
 
-## `4.8-beta5` patches
+## `4.8-rc1` patches
 
 | patch | files | contents |
 |---|---:|---|
-| `0001-modules-grit` | 39 | Fast/Grit AOT export compiler, runtime and editor plugins (adapted to 4.8 GDScript internals: `GDType` member maps, const `MethodBind` codegen, parser `resolved_type`/`type_constraint`) |
+| `0001-modules-grit` | 39 | Fast/Grit AOT export compiler, runtime and editor plugins (adapted to 4.8 GDScript internals: `GDType` member maps, const `MethodBind` codegen, parser `resolved_type`/`type_constraint`). **4.8-rc1 rebase (2026-11-28)**: the provisioner uses `PATCH_STACK_REF = "4.8-rc1"` and the archive URL `…/archive/refs/tags/4.8-rc1.tar.gz` (was `4.8-beta5`), so fresh toolchain boots fetch the rc1 stack tag |
 | `0002-modules-cffi` | 53 | CFFI module |
 | `0003-web-html5-fast-export` | 17 | "HTML5 Fast" export platform + web platform hooks (detect.py, js/engine, display server, export options). **Web occlusion culling enabled (2026-11-28)**: overrides upstream's `detect.py` `module_raycast_enabled: False` to `True` so the `raycast`/Embree CPU culler is compiled into web builds and `rendering/occlusion_culling/use_occlusion_culling` is honoured (upstream disables it for memory reasons, GH-70621 / commit `8c40edf8c0`; cost ≈+1.18 MB wasm + Embree memory; remove the override to return to the upstream stub + build-time warning). **HTML5 threads fix (2026-11-28)**: `env["threads"]` restored to upstream's config (`-pthread` in CCFLAGS/LINKFLAGS, `-sPTHREAD_POOL_SIZE=\"Module['emscriptenPoolSize']||8\"`, `-sMAXIMUM_MEMORY=2048MB`; the legacy `-sUSE_PTHREADS`/`-sPTHREAD_POOL_SIZE=0` scheme had wedged threaded startup) |
-| `0004-webgpu-driver` | 32 | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion, layered copy/initialize, per-stage SPIR-V version; push-constant ring (8 MB), sRGB view siblings, per-frame debug counters and the `rendering/webgpu/*` diagnostic settings. Forward+ additions: compute-pass usage-scope splitting (per-subresource writable+read conflicts), Tint-risk pre-scan/`OpBitcast` rewrite in `spirv_preprocess`, storage-texture format table (`rgb10a2unorm/uint`, integer 8-bit, B10G11R11→RGBA16F promotion + `rg11b10ufloat` WGSL rewrite), WGSL component-driven sample types, physical-format texture views, dimension/sample-type-correct fallback views, `depth32float-stencil8` feature gating, fragment-stage `read_write` storage buffers, unused-colour-target handling, non-negative LOD clamps; per-binding required sampler type map (combined sampler+texture layouts) so NonFiltering MSAA/depth samplers are always satisfied, in both bind-group creation and cross-shader rebinds. **Raw-WGSL compute path** (pmndrs milestone 1): `set_code_from_wgsl_compute()` container factory (fills reflection + per-stage WGSL, mechanically rewrites authored `@binding(N)` → `@binding(2*N)`, checks reflection↔WGSL pairs), and `_shader_build()` recognises the raw-stage marker (WGSL present, SPIR-V empty) and skips the Tint-output WGSL rewrites for it |
+| `0004-webgpu-driver` | 34 | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion, layered copy/initialize, per-stage SPIR-V version; push-constant ring (8 MB), sRGB view siblings, per-frame debug counters and the `rendering/webgpu/*` diagnostic settings. Forward+ additions: compute-pass usage-scope splitting (per-subresource writable+read conflicts), Tint-risk pre-scan/`OpBitcast` rewrite in `spirv_preprocess`, storage-texture format table (`rgb10a2unorm/uint`, integer 8-bit, B10G11R11→RGBA16F promotion + `rg11b10ufloat` WGSL rewrite), WGSL component-driven sample types, physical-format texture views, dimension/sample-type-correct fallback views, `depth32float-stencil8` feature gating, fragment-stage `read_write` storage buffers, unused-colour-target handling, non-negative LOD clamps; per-binding required sampler type map (combined sampler+texture layouts) so NonFiltering MSAA/depth samplers are always satisfied, in both bind-group creation and cross-shader rebinds. **Raw-WGSL compute path** (pmndrs milestone 1): `set_code_from_wgsl_compute()` container factory (fills reflection + per-stage WGSL, mechanically rewrites authored `@binding(N)` → `@binding(2*N)`, checks reflection↔WGSL pairs), and `_shader_build()` recognises the raw-stage marker (WGSL present, SPIR-V empty) and skips the Tint-output WGSL rewrites for it. **4.8-rc1 host-build fix (2026-11-28)**: added standalone shims `drivers/webgpu/tint_cli/core/os/os.h` + `drivers/webgpu/tint_cli/core/string/ustring.h` (the shim `core/templates/vector.h` now includes the ustring shim) so a **fresh** worktree can build the build-time `tint_convert_cli` host tool (`spirv_preprocess.cpp`/`.h` need `os.h`, `ustring.h` and `String`); `0004` grew 891,250 → 893,686 B |
 | `0005-engine-renderer-patches` | 160 | engine/renderer/editor patches the driver needs: batching (`batch_instance_index`), shader container format override, driver traits, GDScript native-call hooks, export window, WGSL shader baker plugin, frame profiler, **white-box PCK encryption** (`core_builders.py` table network, `FileAccessEncrypted::open_and_parse_keystream`, pack loader keystream branches), icons/splash. Forward+: HTML5 Fast accepts `forward_plus`; cluster builder renders with plain atomics and a real colour attachment (`USE_ATTACHMENT` variant) when side-effect-only passes are unsupported; scene shader identity subgroup macros + `NO_IMAGE_ATOMICS`; FSR1/FSR2 fp16 variant gating; FSR2 WebGPU paths (B10G11R11→RGBA16F via the driver, no image atomics, no-subgroup SPD, rgba16f output); FSR1 upscales through a storage-capable intermediate; SDFGI enabled on WebGPU (RGBA16F light/probe storage+sample textures, dummy occlusion binding with occlusion disabled, integer voxel-GI default + GI binding pin, colour-framebuffer SDF pipeline with an explicit pass); volumetric-fog dead binding removed; TAA previous-velocity buffer uses RGBA16F on WebGPU (RG16F has no storage format). **pmndrs milestone 1**: raw-WGSL RenderingDevice API (`WGSLUniform`/`WGSLShaderData`, `RenderingDevice::shader_create_from_wgsl()`, shared private `_shader_register()`, default-failing non-pure `RenderingDeviceDriver::shader_create_from_wgsl()`, `SUPPORTS_RAW_WGSL_COMPUTE` feature), the `RendererRD::PmndrsSpatial` spatial upscaler (EASU+RCAS WGSL vendored from pmndrs/upscaler v0.6.0 commit `f6e52098…`, new `effects/pmndrs_upscaler*` files) and the **first-class pmndrs scaling mode** (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` / `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6, appended after `SCALING_3D_MODE_NEAREST` so old values are unchanged, `*_MAX` = 7; `rendering/scaling_3d/mode` hint `pmndrs (Spatial - Fast):6`; enum docs in `doc/classes/{Viewport,RenderingServer}.xml`; Forward+-only guard + spatial fallback semantics in `renderer_viewport.cpp`; mode-6 → PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`; the old `rendering/scaling_3d/pmndrs_spatial` bool was removed. **HTML5 threads fix (2026-11-28)**: `renderer_compositor_rd.h` `can_create_resources_async()` returns false under `WEBGPU_ENABLED`, so texture/buffer creation during threaded scene loading is queued to the render/main thread instead of running emdawnwebgpu on a pthread (which failed with "Cannot read properties of undefined (reading 'createTexture')"). Layer list is 160 paths: the 156 above + the three SDFGI completeness files `environment/gi.h`, `shaders/environment/gi.glsl`, `shaders/environment/sdfgi_integrate.glsl` + `renderer_compositor_rd.h` for the threads fix; the M2 temporal entries were removed by the revert) |
 | `0006-thirdparty-vendored` | 1217 | vendored Tint + SPIRV-Tools for the export-time SPIR-V→WGSL bake |
 | `0007-tools-fixtures-docs` | 251 | tools/ (grit_build.py, toolchain provisioning), test_project/, docs, webgpu notes/tests, SPIR-V fixtures |
@@ -171,7 +223,7 @@ Windows `.ico`, docs images and the SPIR-V shader-corpus fixtures.
   the same toolchain script.
 - macOS editor: `vulkan_sdk_path` pointing at the toolchain's MoltenVK.
 - First-use toolchain bootstrap: downloads Godot's source at
-  `patches/upstream.lock`'s commit plus the `4.8-beta5` stack archive and applies
+  `patches/upstream.lock`'s commit plus the `4.8-rc1` stack archive and applies
   it with the system `git apply`; needs git on the machine
   (`GRIT_ENGINE_PROBE=1` tests just that step).
 
@@ -205,6 +257,18 @@ and plays at 60 fps VSync with 0 GPU/shader/worker errors (uncapped 137.3 vs
 plus `can_create_resources_async()=false` under `WEBGPU_ENABLED`. It stays
 **opt-in** (needs COOP/COEP hosting for `crossOriginIsolated`), so the shipped
 preset keeps `variant/thread_support=false`. Details in `WEBGPU_HANDOFF.md`.
+
+4.8-rc1 rebase (2026-11-28): the stack applies to upstream master `7c97c29779`
+(4.8-rc state; no upstream tag — our name), editor `4.8.rc.custom_build.7c97c2977`.
+The rc1 editor/templates were built and the TPS demo re-exported: default rc1
+nothreads export 59-60 fps VSync with pmndrs spatial active, no occlusion
+warning, 0 GPU/shader errors; threaded rc1 export likewise (0 GPU/shader/worker
+errors) and 131.3 fps uncapped. The one shader conflict
+(`scene_forward_mobile.glsl`) was resolved by keeping `batch_instance_index`
+and taking rc1's `.xyz` precision-aware accesses; the `0004` host shims fix a
+latent fresh `tint_convert_cli` build failure. Round-trip on a pristine
+`7c97c29779` reproduces all 8 patches byte-identically. See
+`WEBGPU_HANDOFF.md`.
 
 ## Known gaps
 
@@ -242,5 +306,12 @@ preset keeps `variant/thread_support=false`. Details in `WEBGPU_HANDOFF.md`.
   plain static host does not provide — so the shipped preset keeps
   `variant/thread_support=false`. Threaded gains only matter above 60 Hz or in
   CPU-heavy scenes. See `WEBGPU_HANDOFF.md`.
+- **4.8-rc1 is an upstream master rc-state commit, not a tagged release.**
+  Upstream has no `4.8-rc1` git tag (its tags stop at `4.7.2-stable`), so
+  `4.8-rc1` here is our branch/tag name for `7c97c29779` ("Bump version to
+  4.8-rc"). When upstream cuts a real tag, re-pin `patches/upstream.lock` and
+  regenerate. The repo default branch is still `4.8-beta5` at doc time —
+  switching it to `4.8-rc1` is a pending follow-up, and `BUILD.txt` is still
+  the beta record (refresh for rc1 when convenient).
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime
   only needs the keystream decoder (see the handoff).
