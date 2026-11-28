@@ -7,3 +7,16 @@ __pycache__/
 # macOS / local-only artifacts
 .DS_Store
 .metadata_never_index
+
+# Engine source trees must never live in this patch-stack repo root; the engine
+# is applied from patches into worktrees (tools/apply.sh). Ignore accidental
+# extractions (e.g. of the upstream tarball) so they can't be committed.
+/core/
+/doc/
+/drivers/
+/editor/
+/misc/
+/scene/
+/servers/
+/test_project/
+/tests/
