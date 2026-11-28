@@ -1,6 +1,6 @@
 # Fast Godot WebGPU handoff — 4.8-rc1 port
 
-Resume doc. Last updated 2026-11-28 ~13:40. **The stack is rebased onto Godot
+Resume doc. Last updated 2026-11-28 ~13:38. **The stack is rebased onto Godot
 4.8-rc1** — upstream `godotengine/godot` master **`7c97c29779`** ("Bump version
 to 4.8-rc", `version.py` status `rc`), 86 commits ahead of the previous
 4.8.0-beta pin `67421f36e5`. Upstream has **no git tag named `4.8-rc1`** (its
@@ -1330,7 +1330,10 @@ because it needs cross-origin-isolation hosting.
   reinstalled. **All tags were then deleted** locally and on `origin`
   (`4.8-rc1`, the Godot reference tags and `up-4.7.2`); the repository now has
   exactly two branches, `4.7.2` and `4.8-rc1`. The web templates are
-  unchanged — the provisioner is editor-only code.
+  unchanged — the provisioner is editor-only code. Fresh bootstrap from the
+  deleted-tag replacement (the branch archive) was re-verified with
+  `GRIT_ENGINE_PROBE=1` on an isolated HOME (`/tmp/grit_engine_probe5.log`,
+  ~13:37: "prepared engine source … + 4.8-rc1 patches", "engine probe ok").
 - **Regenerated stack.** `0001` **508,875 B**, `0002` 203,698 B, `0003` 46,094 B,
   `0004` 893,686 B, `0005` 5,941,786 B, `0006` 15,133,768 B, `0007` 3,541,650 B,
   `0099` 29,738 B; 1,790 layer paths total (1,790 changed worktree paths, all
@@ -1483,8 +1486,11 @@ because it needs cross-origin-isolation hosting.
     (`refs/heads/4.8-rc1`). Fresh bootstrap was verified end-to-end on an
     isolated HOME with `GRIT_ENGINE_PROBE=1` (`/tmp/grit_engine_probe4.log`):
     *"Grit: prepared engine source from Godot 7c97c297793c + 4.8-rc1 patches"*
-    followed by *"engine probe ok"*. `BUILD.txt` was refreshed for the
-    tag-free rebuild at 13:25:32. The new `tint_cli` host shims are minimal by
+    followed by *"engine probe ok"*. **Re-verified 2026-11-28 ~13:37 after the
+    tag deletion, from the branch archive** (`/tmp/grit_engine_probe5.log`,
+    HOME `/tmp/grit-probe-tagfree`): the same two lines, and the prepared
+    tree's provisioner contains the `refs/heads/4.8-rc1` URL. `BUILD.txt`
+    was refreshed for the tag-free rebuild at 13:25:32. The new `tint_cli` host shims are minimal by
     design — if
     `spirv_preprocess.cpp` starts using more of `String`/`OS`, extend the shims
     rather than pulling in the full engine headers.
@@ -1502,6 +1508,11 @@ because it needs cross-origin-isolation hosting.
   locally and on `origin` (`4.8-rc1`, the Godot reference tags and
   `up-4.7.2`). Refs are the two branches only — `4.8-rc1` (current) and
   `4.7.2` (history); verify with `git ls-remote origin`.
+- **Editor builds made before 2026-11-28 ~13:25 embed the deleted tag URL**
+  (`…/refs/tags/4.8-rc1.tar.gz`), so their first-use toolchain bootstrap now
+  fails. Reinstall from the tag-free build (editor sha256 `9499ffae…`,
+  `4.8.rc.custom_build.7c97c2977`, rebuilt 13:24:38) or patch the provisioner
+  to the branch URL; existing toolchains on a machine keep working.
 - The `4.8-beta5-source` release/asset was **removed 2026-11-26**. New builds
   bootstrap from Godot's repo + the current patch **branch** (`4.8-rc1`);
   editors built before the removal can no longer provision a fresh toolchain,

@@ -240,7 +240,7 @@ Windows `.ico`, docs images and the SPIR-V shader-corpus fixtures.
   the same toolchain script.
 - macOS editor: `vulkan_sdk_path` pointing at the toolchain's MoltenVK.
 - First-use toolchain bootstrap: downloads Godot's source at
-  `patches/upstream.lock`'s commit plus the `4.8-rc1` stack archive and applies
+  `patches/upstream.lock`'s commit plus the `4.8-rc1` **branch** archive and applies
   it with the system `git apply`; needs git on the machine
   (`GRIT_ENGINE_PROBE=1` tests just that step).
 
@@ -331,8 +331,14 @@ latent fresh `tint_convert_cli` build failure. Round-trip on a pristine
   branch archive). When upstream cuts a real tag, re-pin
   `patches/upstream.lock` and regenerate. The repo default branch is
   `4.8-rc1` (switched 2026-11-28). `BUILD.txt` was refreshed for the tag-free
-  rebuild (13:25:32); fresh bootstrap was verified with `GRIT_ENGINE_PROBE=1`
-  on an isolated HOME ("prepared engine source from Godot 7c97c297793c +
-  4.8-rc1 patches", "engine probe ok").
+  rebuild (13:25:32). The bootstrap was **re-verified from the branch archive**
+  on 2026-11-28 ~13:37 with `GRIT_ENGINE_PROBE=1` on an isolated HOME
+  (`/tmp/grit_engine_probe5.log`): "prepared engine source from Godot
+  7c97c297793c + 4.8-rc1 patches", then "engine probe ok"; the prepared tree's
+  provisioner carries the `refs/heads/4.8-rc1` URL.
+- **Editors built before 2026-11-28 ~13:25 embed the deleted `4.8-rc1` tag
+  URL**, so their first-use toolchain bootstrap fails now; reinstall from the
+  tag-free build (`9499ffae…`, editor built 13:24:38) or repoint the embedded
+  provisioner at the branch URL. Existing toolchains keep working.
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime
   only needs the keystream decoder (see the handoff).
