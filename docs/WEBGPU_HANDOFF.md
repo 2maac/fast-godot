@@ -1,6 +1,6 @@
 # Fast Godot WebGPU handoff — 4.8-beta5 port
 
-Resume doc. Last updated 2026-11-28 ~02:25. **Forward+ and Forward Mobile both
+Resume doc. Last updated 2026-11-28 ~10:05. **Forward+ and Forward Mobile both
 run on the WebGPU device, SDFGI is enabled on the WebGPU device, and
 pmndrs/upscaler milestone 1 (spatial EASU+RCAS) is implemented and
 browser-verified as a first-class Viewport scaling mode (mode 6).** The
@@ -10,26 +10,28 @@ temporal code was removed (not just the UI), and the stack is back to the
 spatial-only mode-6 state plus the SDFGI layer-completeness fix. The two
 temporal research docs are kept as archived research, clearly marked
 **IMPLEMENTED THEN REVERTED — NOT SHIPPED**. **Web platform (2026-11-28):
-occlusion culling is now compiled into the web/WebGPU template (raycast/Embree
-override in patch `0003`), and `threads=yes` was built and tested but is
-broken in this fork — it is NOT shipped; the preset stays
-`variant/thread_support=false`.**
+occlusion culling is compiled into the web/WebGPU template (raycast/Embree
+override in patch `0003`), and HTML5 `threads=yes` is FIXED and browser-
+verified (opt-in: it needs COOP/COEP hosting, so the shipped TPS preset keeps
+`variant/thread_support=false`).**
 
-Repo state: commits up to `94a9c0144a` are pushed (including the revert stack
-and its docs refresh); tag `4.8-beta5` = `d5638f1b61` (revert stack). The
-**web occlusion-culling change is committed next** (working `patches/0003`
-only), after which the branch is pushed and tag `4.8-beta5` force-moved from
-`d5638f1b61` to the new stack commit. Branch and tag share the simple name but
-are different commits — use `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` when
-the distinction matters. Fresh toolchain installs fetch the tag, i.e. the
-current (spatial-only + web-occlusion) driver/template. Verify with
-`git ls-remote origin refs/tags/4.8-beta5`. `patches/` is a self-contained
-portable bundle (patch files + `layers/` + `upstream.lock`); the volatile build
-worktree is `/tmp/godot48` (HEAD `582d619026`) **with the
-Forward+/MSAA/TAA/FSR/SDFGI/pmndrs-spatial working-tree changes, the three kept
-SDFGI layer-completeness files and the web occlusion-culling override in
-`platform/web/detect.py`, captured in the regenerated patch stack — the worktree
-itself is not committed**. Editor version stays
+Repo state: the threads fix is stack commit **`a7a5aefbe2`** ("web: fix HTML5
+thread support (threads=yes) on WebGPU"), with a docs commit above it. Branch
+`4.8-beta5` is pushed and tag `4.8-beta5` is **force-moved from `96a71a19bf`
+to `a7a5aefbe2`** so fresh toolchain installs bootstrap the threads-fixed
+driver/template (the earlier history — revert stack, pmndrs temporal,
+occlusion-culling commit — remains below it). Branch and tag share the simple
+name but are different commits — use `refs/heads/4.8-beta5` /
+`refs/tags/4.8-beta5` when the distinction matters. Fresh toolchain installs
+fetch the tag. Verify with `git ls-remote origin refs/tags/4.8-beta5`.
+`patches/` is a self-contained portable bundle (patch files + `layers/` +
+`upstream.lock`); the volatile build worktree is `/tmp/godot48` (HEAD
+`582d619026`) **with the Forward+/MSAA/TAA/FSR/SDFGI/pmndrs-spatial
+working-tree changes, the three kept SDFGI layer-completeness files, the web
+occlusion-culling override and the threads fixes (`platform/web/detect.py`
+upstream pthread flags + `renderer_compositor_rd.h`
+`can_create_resources_async()` fix), captured in the regenerated patch stack —
+the worktree itself is not committed**. Editor version stays
 `4.8.beta.custom_build.582d61902`. This file lives in `docs/` together with
 `PATCH_STACK.md`, `WGSL_COMPUTE_PATH.md`, `PMNDRS_UPSCALER_SPATIAL.md`, the two
 archived temporal research docs (`PMNDRS_TEMPORAL_PORT.md`,
@@ -90,14 +92,24 @@ Current state in one screen:
   (template wasm 50,471,223 → 51,648,024 B) plus Embree's memory; no TPS win
   measured (the TPS test camera never has an instance fully covered by the
   baked occluder). See the web-platform section below.
-- **`threads=yes` web builds are BROKEN in this fork — not shipped.** A
-  threaded template builds and the engine starts, but the page then wedges
-  (loading overlay never hides, main thread unresponsive); reproduced with and
-  without Embree. The export preset stays `variant/thread_support=false`. See
-  the web-platform section.
+- **HTML5 `threads=yes` is FIXED and browser-verified (2026-11-28), opt-in.**
+  Threaded web templates now boot and play the TPS level at 60 fps VSync with 0
+  GPU/shader/worker errors (uncapped 137.3 fps vs 124 fps single-threaded).
+  Two fixes: upstream pthread flags restored in `platform/web/detect.py`
+  (`-pthread` + `PTHREAD_POOL_SIZE=Module['emscriptenPoolSize']||8` +
+  `MAXIMUM_MEMORY=2048MB`; the fork's legacy `-sUSE_PTHREADS`/pool=0 scheme
+  caused the startup wedge), and `can_create_resources_async()` returns false
+  under `WEBGPU_ENABLED` so threaded resource creation is queued to the
+  render/main thread instead of calling emdawnwebgpu off-thread
+  (`createTexture of undefined`). Threaded builds need COOP `same-origin` +
+  COEP `require-corp` hosting, so the shipped preset keeps
+  `variant/thread_support=false`; threading is an opt-in preset option. See the
+  web-platform section.
 - The Godot Web Server site export is regenerated after each build (last
-  written 2026-11-28 02:15:57, the occlusion-enabled single-threaded build;
-  wasm sha256 `e50a901b…`); browsers need a hard reload to pick it up.
+  written 2026-11-28 09:55:13, the default nothreads build with the occlusion
+  and threads fixes; wasm sha256 `a3772909…`); browsers need a hard reload to
+  pick it up. The threaded build is opt-in and is not published to the default
+  site.
 
 **2026-11-27 (later) — browser-reported validation error fixed.** A real-Chrome
 report showed `Filtering sampler ... is incompatible with non-filtering sampler
@@ -126,7 +138,7 @@ for what changed and the remaining limitations.
 | doc | status |
 |---|---|
 | `README.md` | repo mechanics (patch stack, tools, rules) |
-| **this file** | current state: toolchain, build/export, Forward+ (incl. MSAA/TAA/SDFGI), pmndrs spatial upscaler (mode 6), web occlusion culling + threads investigation, browser verification, MSAA/ring fixes, encryption, temporal-attempt history, open work |
+| **this file** | current state: toolchain, build/export, Forward+ (incl. MSAA/TAA/SDFGI), pmndrs spatial upscaler (mode 6), web occlusion culling, HTML5 threads (fixed, opt-in), browser verification, MSAA/ring fixes, encryption, temporal-attempt history, open work |
 | `PATCH_STACK.md` (same folder) | what every patch layer contains; apply/regenerate commands |
 | `WGSL_COMPUTE_PATH.md` (same folder) | raw-WGSL compute path in the WebGPU driver/RD: API, binding convention, as-built notes |
 | `PMNDRS_UPSCALER_SPATIAL.md` (same folder) | pmndrs/upscaler spatial-path port spec: vendored WGSL provenance, constants layout, per-pass bindings, integration plan (shipped, mode 6) |
@@ -175,24 +187,24 @@ subsection under Build / toolchain. The old release asset and its tag were
 and can no longer provision a fresh toolchain (exports from machines that
 already have a toolchain are unaffected).
 
-## Environment snapshot (verified on this machine, 2026-11-28 ~02:25)
+## Environment snapshot (verified on this machine, 2026-11-28 ~10:05)
 
 | item | actual value |
 |---|---|
-| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` (**repository default branch**); pushed commits go up to `94a9c0144a`, and tag `4.8-beta5` = `d5638f1b61` (the revert stack: spatial-only mode 6 + SDFGI layer-completeness fix). The **web occlusion-culling change is in the working `patches/0003` only** (46,870 B) and is **committed next** (branch pushed, then tag `4.8-beta5` force-moved from `d5638f1b61` to the new stack commit). Current patch sizes: `0003` 46,870 B, `0004` 891,250 B, `0005` 5,940,065 B; `0005` layer list 159 paths; 0 `PMNDRS_TEMPORAL`/`PmndrsTemporal`/`pmndrs_temporal` references. Branch and tag share the simple name — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate |
+| patch stack repo | branch `4.8-beta5` = `origin/4.8-beta5` (**repository default branch**). The threads fix is stack commit **`a7a5aefbe2`** ("web: fix HTML5 thread support (threads=yes) on WebGPU"); a docs commit follows it, the branch is pushed and tag `4.8-beta5` is **force-moved from `96a71a19bf` to `a7a5aefbe2`** (below it remain the occlusion-culling commit `96a71a19bf`, the revert stack and the pmndrs history). Current patch sizes: `0003` 46,060 B, `0004` 891,250 B, `0005` 5,941,474 B; `0005` layer list 160 paths (159 + `renderer_compositor_rd.h`); 0 `PMNDRS_TEMPORAL`/`PmndrsTemporal`/`pmndrs_temporal` references. Branch and tag share the simple name — `refs/heads/4.8-beta5` / `refs/tags/4.8-beta5` disambiguate |
 | engine base | Godot `master` @ `67421f36e5` (4.8.0-beta), pinned in `patches/upstream.lock`; still an ancestor of the worktree HEAD |
 | object model | this repo is a **partial clone** of `godotengine/godot` with `blob:none` promisor packs, so Godot-history blobs are fetched from upstream on demand. `port48` carries 87,467 commits not on `origin`, so full-source refs are pushed as single parentless snapshots instead (as `origin/4.7.2` is) |
-| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **spatial-only mode 6 + SDFGI layer-completeness fix + the web occlusion-culling override: 53 modified files + 3 new `effects/pmndrs_upscaler*` files (56 changed paths)** — the new modification vs the revert state is `platform/web/detect.py` (`module_raycast_enabled: True`); the temporal code is still absent. Volatile and not pushed; the patch stack was regenerated from it 2026-11-28 ~02:16, so a fresh checkout + `tools/apply.sh` reproduces the build tree |
-| patch round-trip | 2026-11-28 ~02:16: applying the full regenerated stack (**revert stack + the web occlusion-culling override**) to a pristine `67421f36e5` checkout (`/tmp/applytest`, all 1,787 layer paths staged) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (independently re-checked; `0001` 508,662 B, `0002` 203,592 B, **`0003` 46,870 B** (was 45,856 — `detect.py` override), `0004` 891,250 B, `0005` 5,940,065 B, `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B; `0005` layer list 159 paths) |
-| layer completeness | all **56/56** worktree-changed paths are covered by the union of `patches/layers/*.files` (re-checked after the web occlusion-culling override; `0003`'s layer already listed `platform/web/detect.py`). The per-layer round-trip check only diffs the *listed* paths, so it cannot detect an omitted file: three SDFGI files (`servers/rendering/renderer_rd/environment/gi.h`, `…/shaders/environment/gi.glsl`, `…/shaders/environment/sdfgi_integrate.glsl`) had been missing from every layer list and were added in the (kept) M2 completeness fix — that is why the spatial-only layer list is 159 paths (156 pre-M2 + 3) and `0005` is 5,940,065 B rather than the pre-M2 5,936,829 B |
+| build worktree | `/tmp/godot48` — branch `port48`, HEAD `582d619026` (bundle upstream.lock bootstrap; `cdc0907bf6` patches/ layout, `9267990dcd` ring hardening, `130ed7f48d` bootstrap, `a495fc3e93` ring mitigation and `834c3d4fc2` pack-key port are ancestors) **spatial-only mode 6 + SDFGI layer-completeness fix + the web occlusion-culling override + the two threads fixes: 54 modified files + 3 new `effects/pmndrs_upscaler*` files (57 changed paths)**. New vs the previous state: `platform/web/detect.py` (occlusion override **and** upstream pthread flags restored) and `servers/rendering/renderer_rd/renderer_compositor_rd.h` (`can_create_resources_async()` false under `WEBGPU_ENABLED`); the temporal code is still absent. Volatile and not pushed; the patch stack was regenerated from it 2026-11-28 ~09:58, so a fresh checkout + `tools/apply.sh` reproduces the build tree |
+| patch round-trip | 2026-11-28 ~09:58: applying the full regenerated stack (**incl. the threads fixes**) to a pristine `67421f36e5` checkout (`/tmp/applytest`, all 1,788 layer paths staged) and re-diffing each layer with its `patches/layers/*.files` path list reproduces **all 8 `patches/*.patch` files byte-identically** (independently re-checked; `0001` 508,662 B, `0002` 203,592 B, **`0003` 46,060 B** (was 46,870 — pthread flags restored), `0004` 891,250 B, **`0005` 5,941,474 B** (was 5,940,065 — compositor fix), `0006` 15,131,334 B, `0007` 3,541,178 B, `0099` 29,700 B; `0005` layer list 160 paths) |
+| layer completeness | all **57/57** worktree-changed paths are covered by the union of `patches/layers/*.files` (re-checked after the threads fixes; `0005`'s layer list gained `servers/rendering/renderer_rd/renderer_compositor_rd.h`, 159 → 160 paths). The per-layer round-trip check only diffs the *listed* paths, so it cannot detect an omitted file: three SDFGI files (`servers/rendering/renderer_rd/environment/gi.h`, `…/shaders/environment/gi.glsl`, `…/shaders/environment/sdfgi_integrate.glsl`) had been missing from every layer list and were added in the (kept) M2 completeness fix (layer list 156 → 159 paths, `0005` 5,936,829 → 5,940,065 B); the threads fix then added `renderer_compositor_rd.h` (→ 160) and grew `0005` to 5,941,474 B |
 | other worktree | `/tmp/ref472` — detached at `d8cb1fd77c` (the 4.7.2 full-source tree, reference only) |
 | toolchain bootstrap | downloads `godotengine/godot` @ `67421f36e5` (~76 MB) + the `fast-godot` tag `4.8-beta5` archive (~8 MB) and applies the stack with the system **git**; `GRIT_ENGINE_PROBE=1` runs just this step headlessly |
-| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta + the current stack, **re-synced from `/tmp/godot48` for the web occlusion-culling build** (`platform/web/detect.py` on disk 2026-11-28 02:02:21 with `module_raycast_enabled: True`; the temporal effect files are still gone) |
-| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.582d61902`; **unchanged by the web occlusion-culling change** (`detect.py` is web-build config only): still the reverted-tree build 2026-11-28 00:52:28, `Contents/MacOS/Godot` 110,961,808 B, sha256 `cd72898f…`. `Fast_Godot_4.8-macos.zip` written 00:54:48 (58,090,118 B) |
+| toolchain (single SDK) | `~/fast_godot_toolchain`, 6.4 GB: Emscripten 6.0.12, Python 3.12.16 (+ zstandard 0.25.0), SCons 4.11.1, MoltenVK 1.4.2, `engine/source` = 4.8.0-beta + the current stack, **re-synced from `/tmp/godot48` for the threads-fix builds** (on disk: `platform/web/detect.py` 2026-11-28 09:25:30 — occlusion override + upstream pthread flags; `renderer_compositor_rd.h` 09:48:33 — `can_create_resources_async()` fix; the temporal effect files are still gone) |
+| staged editor | `out/editor-staging/Fast_Godot_4.8.app` = `4.8.beta.custom_build.582d61902`; **unchanged by the web-platform changes** (they are web-build config / renderer-in-template changes): still the reverted-tree build 2026-11-28 00:52:28, `Contents/MacOS/Godot` 110,961,808 B, sha256 `cd72898f…`. `Fast_Godot_4.8-macos.zip` written 00:54:48 (58,090,118 B) |
 | installed editor | `~/Applications/Fast_Godot_4.8.app` is **updated to the same reverted binary** (sha256 `cd72898f…`) |
-| web template | rebuilt from the occlusion-enabled tree (`/tmp/web_final_occl.log` 02:12, `scons: done building targets.`) and packaged by the 02:15 export: `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` written 02:16:00, **14,357,777 B**; `godot.wasm` **51,648,024 B** (was 50,471,223, +1.18 MB), wasm sha256 **`e50a901b…`**, zip sha256 **`3c351ef0…`**. It now contains the real `RaycastOcclusionCull`/Embree path (13 `RaycastOcclusionCull|raycast_occlusion` strings) as well as the pmndrs **spatial** effect (mode 6); no temporal code |
-| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — TPS demo HTML5 Fast **Forward+** export re-run from the occlusion-enabled tree, written 2026-11-28 **02:15:57** (`/tmp/export_occl_final3.log`): `index.wasm` 51,648,024 B sha256 `e50a901b…` (same as the template), `index.pck` 987,358,768 B. The final browser check (`/tmp/final_occl_console.log`, 02:17) has **0** "Occlusion culling is disabled at build-time" lines, 0 GPU validation errors, 0 shader errors, 59-60 fps. Hard-reload browsers to pick it up |
-| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` was **refreshed 2026-11-28 02:17:27** (7,029 B) for the occlusion-enabled build (occlusion-culling and threads-investigation changelog; editor sha `cd72898f…`, template zip sha `3c351ef0…`, wasm `e50a901b…`). Its **Site export paragraph is stale**, though: it still says the site was updated 00:54:36 with wasm `98ac9e82…` — trust the site row above, not that paragraph. BUILD.txt is not part of `patches/` |
+| web template | rebuilt from the threads-fix tree and packaged by the 09:55/09:56 exports. **Nothreads (default):** `out/editor-staging/godot.web.template_release.wasm32.nothreads.zip` written 09:55:14, **14,357,776 B**, zip sha256 **`6c7b60a5…`**; `godot.wasm` **51,648,024 B**, sha256 **`a3772909…`**. **Threaded (opt-in):** `out/editor-staging/godot.web.template_release.wasm32.zip` written 09:56:46, **14,351,252 B**, zip sha256 **`24510b78…`**; its TPS export wasm is 51,132,649 B (`/tmp/site-threaded-final`). Both contain the real `RaycastOcclusionCull`/Embree path (~12 matching strings), the pmndrs **spatial** effect (mode 6) and **no** temporal code; the final wasm has **no** `[WGPU-DBG]` instrumentation strings |
+| export test site | `~/Library/Application Support/Godot/app_userdata/Godot Web Server/site/` — default **nothreads** TPS HTML5 Fast Forward+ export published 2026-11-28 **09:55:13** (`/tmp/export_final_nothreads.log`): `index.wasm` 51,648,024 B sha256 **`a3772909…`**, `index.pck` 987,358,768 B. Final nothreads browser check (`/tmp/final_nothreads_console.log`, 09:59): 59-60 fps, 0 GPU validation errors, 0 shader errors, 0 "Occlusion culling is disabled at build-time" lines. The **threaded** TPS export (opt-in test build, `/tmp/site-threaded-final`, wasm 51,132,649 B) was served on `127.0.0.1:8223` with COOP/COEP and ran at 59-60 fps with 0 errors (`/tmp/threaded_final_console.log`, 09:57). Hard-reload browsers to pick up the default export |
+| build record | `out/editor-staging/Fast_Godot_4.8_BUILD.txt` was **refreshed 2026-11-28 09:59:04** (7,702 B) and now covers **both** builds: the nothreads build (editor sha `cd72898f…`, template zip `6c7b60a5…`, wasm `a3772909…`) and the fixed/opt-in threaded build, plus the occlusion-culling notes. Its Site export paragraph now describes the 09:55/09:56 batch (wasm `a3772909…`). BUILD.txt is not part of `patches/` |
 | source release | **removed 2026-11-26** (was tag `4.8-beta5-source` = `35e42f7d` + `fast-godot-4.8-beta5-src.zip`). New builds bootstrap from Godot's repo + the `4.8-beta5` patch tag; editors built before the removal can no longer provision a fresh toolchain |
 
 ## 4.8 layer map
@@ -209,7 +221,12 @@ already have a toolchain are unaffected).
    hitting the stub. Embree is vendored in-tree (`thirdparty/embree`, 337
    tracked files) and wasm32 builds it with SIMD; cost ≈1.18 MB extra wasm plus
    Embree's memory. Remove the override to return to upstream's
-   memory-optimized default.
+   memory-optimized default. **HTML5 threads=yes fixed (2026-11-28)**: the
+   `env["threads"]` block was restored to upstream's configuration (`-pthread`
+   in CCFLAGS/LINKFLAGS, `-sPTHREAD_POOL_SIZE="Module['emscriptenPoolSize']||8"`,
+   `-sMAXIMUM_MEMORY=2048MB`, plus the existing `PTHREAD_NO_RENAME` define and
+   DEFAULT_PTHREAD_STACK_SIZE); the fork's legacy `-sUSE_PTHREADS=1` +
+   `PTHREAD_POOL_SIZE=0` scheme had caused the threaded-startup wedge.
 4. `0004-webgpu-driver` — komm64/4.7 WebGPU driver rebased to 4.8
    (`buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`,
    readback/upload conversion, layered copy/init, per-stage SPIR-V version).
@@ -251,12 +268,21 @@ already have a toolchain are unaffected).
    guard + spatial fallback semantics in `renderer_viewport.cpp`, and mode-6 →
    PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`.
    The old `rendering/scaling_3d/pmndrs_spatial` bool setting was removed.
-   **Layer completeness (kept):** the `0005` list is **159 paths** — the 156 of
-   the spatial-only stack plus three SDFGI files that had been missing from
-   every layer list (`environment/gi.h`, `shaders/environment/gi.glsl`,
+   **HTML5 threads fix (2026-11-28):**
+   `servers/rendering/renderer_rd/renderer_compositor_rd.h`
+   `can_create_resources_async()` now returns **false** under
+   `#ifdef WEBGPU_ENABLED`, so threaded resource loading queues texture/buffer
+   creation through the render-server command queue on the render/main thread
+   instead of calling emdawnwebgpu from a pthread (which failed with
+   "Cannot read properties of undefined (reading 'createTexture')"); that path
+   is now in the `0005` layer list.
+   **Layer completeness (kept):** the `0005` list is **160 paths** — 156 base
+   paths + the three SDFGI files that had been missing from every layer list
+   (`environment/gi.h`, `shaders/environment/gi.glsl`,
    `shaders/environment/sdfgi_integrate.glsl`), added so the stack can
-   reproduce the SDFGI build (`0005` is 5,940,065 B for that reason). The M2
-   temporal effect/mode-7 entries were removed with the revert.
+   reproduce the SDFGI build, + `renderer_compositor_rd.h` for the threads fix
+   (`0005` is 5,941,474 B for that reason). The M2 temporal effect/mode-7
+   entries were removed with the revert.
 6. `0006-thirdparty-vendored` — Tint + SPIRV-Tools.
 7. `0007-tools-fixtures-docs` — tools/, toolchain, test_project, docs.
 8. `0099-misc`.
@@ -354,16 +380,20 @@ pack-key port `834c3d4fc2`. If `/tmp` is wiped, rebuild by applying the repo's
 
 Staged build (gitignored): `out/editor-staging/`
 - `Fast_Godot_4.8.app` (`4.8.beta.custom_build.582d61902`, Fast Godot icon,
-  ad-hoc signed; **reverted-tree build 2026-11-28 00:52:28**, 110,961,808 B) and
+  ad-hoc signed; **reverted-tree build 2026-11-28 00:52:28**, 110,961,808 B —
+  the editor is unchanged by the web-platform changes) and
   `Fast_Godot_4.8-macos.zip` (written 00:54:48, 58,090,118 B)
-- `godot.web.template_release.wasm32.nothreads.zip` (rebuilt from the reverted
-  tree; written 2026-11-28 00:54:48, 14,088,322 B; its `godot.wasm` sha256
-  `98ac9e82…` is the one the site export runs; spatial mode 6 only, no temporal)
-- `Fast_Godot_4.8_BUILD.txt` (refreshed 2026-11-28 00:56:07 for the revert build;
-  its Site-export paragraph is stale — it still mentions the 00:28-00:36 M2
-  export and a "pmndrs Temporal" button — trust the binary/template hashes)
+- `godot.web.template_release.wasm32.nothreads.zip` (default build; written
+  2026-11-28 09:55:14, **14,357,776 B**, zip sha256 `6c7b60a5…`; its
+  `godot.wasm` sha256 `a3772909…` is the one the site export runs; spatial mode
+  6 + occlusion culling, threads=no, no temporal)
+- `godot.web.template_release.wasm32.zip` (**opt-in threaded build**; written
+  09:56:46, 14,351,252 B, zip sha256 `24510b78…`; its TPS export wasm is
+  51,132,649 B in `/tmp/site-threaded-final`)
+- `Fast_Godot_4.8_BUILD.txt` (refreshed 2026-11-28 09:59:04, 7,702 B, covering
+  both builds; Site-export paragraph matches the 09:55/09:56 batch)
 The launchable install `~/Applications/Fast_Godot_4.8.app` is **updated to the
-same reverted binary** (sha256 `cd72898f…`).
+same binary** (sha256 `cd72898f…`).
 Note: the app folder's mtime can read like an old timestamp — use
 `Contents/MacOS/Godot` mtime/version.
 
@@ -388,16 +418,19 @@ it boots at 59-60 fps with 0 GPU validation errors. The SDFGI verification
 export (volumetric fog off) completed 2026-11-27 17:17 — its log bakes the
 `Sdfgi*ShaderRD` WebGPU caches — and its browser run at 17:19 reported 60 fps
 with 0 GPU validation errors and 0 shader errors (throwaway harness under
-`/tmp/node-test/`). The current site export is the **occlusion-enabled
-single-threaded build**: exported 2026-11-28 02:15:57 from the tree with the
-`detect.py` raycast override (`/tmp/export_occl_final3.log`) into the Web Server
-site folder — wasm 51,648,024 B sha256 `e50a901b…`, pck 987,358,768 B; the
-exported wasm contains the pmndrs spatial path, **no** temporal upscaler, and
-the real Embree/RaycastOcclusionCull path. Earlier exports remain as history:
-the reverted spatial-only build (2026-11-28 00:54:36, wasm `98ac9e82…`), the M2
-temporal build (00:28:52, wasm `3fab49b3…`), the spatial-mode build
-(2026-11-27 21:53:27, wasm `3b25ba0b…`) and the 20:47 bool-setting A/B
-(`/tmp/site-pmndrs`, `/tmp/site-fsr1`).
+`/tmp/node-test/`). The current site export is the **default nothreads build
+with the threads fixes**: exported 2026-11-28 09:55:13 (`/tmp/export_final_nothreads.log`)
+into the Web Server site folder — wasm 51,648,024 B sha256 `a3772909…`, pck
+987,358,768 B; the exported wasm contains the pmndrs spatial path, **no**
+temporal upscaler, and the real Embree/RaycastOcclusionCull path. The
+**threaded** build is opt-in and was exported separately 2026-11-28 09:56
+(`/tmp/export_final_threads.log`) into `/tmp/site-threaded-final` (wasm
+51,132,649 B) for the verification run; it is not published to the default
+site. Earlier exports remain as history: the occlusion-only build
+(2026-11-28 02:15:57, wasm `e50a901b…`), the reverted spatial-only build
+(00:54:36, wasm `98ac9e82…`), the M2 temporal build (00:28:52, wasm
+`3fab49b3…`), the spatial-mode build (2026-11-27 21:53:27, wasm `3b25ba0b…`)
+and the 20:47 bool-setting A/B (`/tmp/site-pmndrs`, `/tmp/site-fsr1`).
 
 ### Browser verification recipe (Forward+)
 
@@ -447,6 +480,18 @@ temporal build (00:28:52, wasm `3fab49b3…`), the spatial-mode build
    TPS has `rendering/occlusion_culling/use_occlusion_culling=true` and a baked
    `OccluderInstance3D`; note that no TPS cull *win* was measured (see the
    web-platform section).
+9. To test the **threaded** build: set the TPS export preset
+   `variant/thread_support=true` and export (the editor passes `threads` to
+   `tools/grit_build.py`, scons builds `threads=yes`, and the template loses the
+   `.nothreads` suffix). Serve the export with `Cross-Origin-Opener-Policy:
+   same-origin` + `Cross-Origin-Embedder-Policy: require-corp` (a plain static
+   server will not work) and check `crossOriginIsolated === true` in the page
+   before loading — otherwise SharedArrayBuffer/workers are unavailable. Expect
+   the same as the nothreads build (60 fps VSync, 0 GPU/shader/worker errors,
+   no occlusion warning); the final verification used `/tmp/serve_coop_log.py`
+   on 127.0.0.1:8223 (`/tmp/threaded_final_console.log`). Remember the Grit
+   stale-staging gotcha below when switching a profile tree between threads
+   modes.
 
 Grit build performance/cancel fixes in the 4.8 stack:
 - host `tint_convert_cli` cached under `$toolchain/tint-cli-cache`
@@ -790,7 +835,7 @@ sample-type auto-layout, `_depth_only_view` depth-only views and the
 drivers/ platform/ modules/` → **0 hits**; mode 7 absent; `SCALING_3D_MODE_MAX`
 = **7**; patch stack spatial-only (`0004` 891,250 B, `0005` 5,940,065 B, layer
 list 159 paths, 0 temporal symbols in the patches; all 55/55 changed worktree
-paths covered at that point — 56/56 after the later web `detect.py` override;
+paths covered at that point — 57/57 after the later web-platform changes;
 round-trip all 8 patches byte-identical). The kept SDFGI
 layer-completeness files came from the same regeneration and stay (see the
 environment snapshot). The TPS demo was re-exported spatial-only (temporal
@@ -1069,9 +1114,9 @@ mismatches, and their bake missed scene materials). Those four classes are each
 addressed in our stack as described above; the comparison document is kept in
 this file's history.
 
-## Web platform (HTML5 Fast): occlusion culling enabled; threads=yes broken (2026-11-28)
+## Web platform (HTML5 Fast): occlusion culling enabled; threads=yes fixed and verified (opt-in) (2026-11-28)
 
-### A. Occlusion culling is now enabled in web/WebGPU builds (in the working patch stack; committed next)
+### A. Occlusion culling is enabled in web/WebGPU builds (committed in `96a71a19bf`)
 
 - **Background.** Godot's occlusion culling is implemented **only** in the
   `raycast` module (`modules/raycast`, CPU Embree). Upstream
@@ -1089,12 +1134,13 @@ this file's history.
   and builds for wasm32 with SIMD. Cost: template wasm
   **50,471,223 → 51,648,024 B (+1.18 MB, +2.3%)** plus Embree's runtime memory;
   remove the override to return to upstream's memory-optimized default.
-- **Verification.** The template now contains the real
-  `RaycastOcclusionCull`/Embree path (13 `RaycastOcclusionCull|raycast_occlusion`
-  strings in the wasm). The final 40 s TPS run (`/tmp/final_occl_console.log`,
-  02:17) has **0** "Occlusion culling is disabled at build-time" warnings, **0**
-  GPU validation errors, **0** shader errors and 59-60 fps
-  (5.5-5.9k draws/frame).
+- **Verification.** The template contains the real
+  `RaycastOcclusionCull`/Embree path (`RaycastOcclusionCull|raycast_occlusion`
+  strings present; ~12 matches in the final wasm). The final nothreads TPS run
+  (`/tmp/final_nothreads_console.log`, 09:59, and the earlier 40 s run
+  `/tmp/final_occl_console.log`) has **0** "Occlusion culling is disabled at
+  build-time" warnings, **0** GPU validation errors, **0** shader errors and
+  59-60 fps (5.2-5.6k draws/frame).
 - **Measured culling yield on the TPS test camera: zero.** Temporary
   instrumentation (removed afterwards) showed the path active — scenario
   `instances=1`, HZ buffer **30×16** with `hz_min` dropping **4194.36 → 315.08**
@@ -1109,41 +1155,80 @@ this file's history.
   override in `platform/web/detect.py` (patch `0003`) — the template returns to
   upstream's stub with the build-time warning and ~1.2 MB smaller wasm.
 
-### B. `threads=yes` was built and tested, but is BROKEN in this fork (NOT shipped)
+### B. `threads=yes` was broken, then FIXED and browser-verified (opt-in)
 
-- **How it was built.** TPS export preset `variant/thread_support=true` → the
+**History:** on 2026-11-28 ~01:30-02:20 a threaded template was built and
+tested for the first time and it **wedged** (engine logged its init lines, then
+the main thread stopped responding, loading overlay never hid, CDP
+`Runtime.evaluate` timed out); it was documented as "broken / not shipped".
+Later that morning (~09:20-09:56) both root causes were found and fixed, and
+the threaded build is now **verified working** — it stays **opt-in** only
+because it needs cross-origin-isolation hosting.
+
+- **Root cause 1 — legacy pthread flags.** The fork's `platform/web/detect.py`
+  had replaced upstream Godot 4.8's known-good `env["threads"]` configuration
+  with legacy/unknown Emscripten settings (`-sUSE_PTHREADS=1`,
+  `-sPTHREAD_POOL_SIZE=0`, `-sPTHREAD_POOL_SIZE_STRICT=0`,
+  `-sWASM_MEM_MAX=2048MB`; `USE_PTHREADS` is a deprecated alias, `WASM_MEM_MAX`
+  legacy). That compiled without the `__EMSCRIPTEN_PTHREADS__` macro and
+  spawned every pthread lazily during startup, wedging the page while the main
+  thread was inside the wasm entry point. **Fix:** restored upstream's
+  configuration in `detect.py` — `-pthread` in `CCFLAGS` and `LINKFLAGS`,
+  `-sPTHREAD_POOL_SIZE="Module['emscriptenPoolSize']||8"`,
+  `-sMAXIMUM_MEMORY=2048MB` (plus the existing `PTHREAD_NO_RENAME` define and
+  `DEFAULT_PTHREAD_STACK_SIZE`).
+- **Root cause 2 — async resource creation on a pthread.**
+  `servers/rendering/renderer_rd/renderer_compositor_rd.h`
+  `can_create_resources_async()` returned `true`, so the render server's
+  texture-create fast path (`FUNCRIDTEX*` macros in
+  `servers/rendering/rendering_server_default.h`) executed
+  `TextureStorage::texture_2d_initialize` immediately on the calling thread.
+  Threaded scene loading therefore ran WebGPU calls on a pthread where the
+  emdawnwebgpu `GPUDevice` JS object does not exist; workers died with
+  `Uncaught TypeError: Cannot read properties of undefined (reading
+  'createTexture')` and the TPS level load stopped. **Fix:** under
+  `#ifdef WEBGPU_ENABLED`, `can_create_resources_async()` now returns **false**,
+  routing resource creation (textures, buffers, ...) through the render-server
+  command queue, which executes on the render/main thread (verified
+  `create_thread=0`: no separate render thread is used).
+  Both fixes are the only product changes; all temporary `[WGPU-DBG]`
+  instrumentation was removed, and the final wasm contains none.
+- **How it is built.** TPS export preset `variant/thread_support=true` → the
   editor passes `threads` to `tools/grit_build.py` → scons `threads=yes` → a
-  template without the `.nothreads` suffix. Served with COOP `same-origin` +
-  COEP `require-corp` headers (e.g. `/tmp/serve_coop.py`) so
-  `crossOriginIsolated === true` (required for SharedArrayBuffer threading).
-- **Result: the page wedges.** The template builds and the engine starts
-  (console prints `Godot Engine v4.8.beta.custom_build.582d61902` and
-  `WebGPU 1.0 - Forward+ - Using Device #0`), but the loading overlay never
-  hides, the main thread stops responding (CDP `Runtime.evaluate` times out;
-  Chromium DevTools attach times out), and the tab must be closed. Reproduced
-  with the occlusion module **both enabled and disabled** → Embree is not the
-  cause. Artifacts: `/tmp/export_threaded*.log`, `/tmp/site-threaded3`,
-  `/tmp/thz`, `/tmp/threaded3_server.log`, `/tmp/chrome_threaded2.log`.
-- **Root cause not isolated.** Likely candidates: this fork's Emscripten-6
-  pthread worker bootstrap in the modularized web build (the patched `detect.py`
-  uses `-sUSE_PTHREADS=1` / `-sPTHREAD_POOL_SIZE=0`, while upstream uses
-  `-pthread` + `PTHREAD_POOL_SIZE=Module['emscriptenPoolSize']||8`), and/or the
-  main-thread-bound WebGPU/emdawnwebgpu driver.
-- **Decision: not shipped.** The preset default stays
-  `variant/thread_support=false` (static-host friendly); do not advertise
-  threads as available. Any future threaded build needs COOP/COEP hosting, a
-  fixed pthread bootstrap and a benchmark before shipping.
-- **Baseline:** the single-threaded TPS build runs **124 fps uncapped** (Chrome
-  for Testing, 960×540, `--disable-gpu-vsync --disable-frame-rate-limit`,
-  in-game `[PERF]` lines) vs 60 fps VSync — ~2x headroom at 60 Hz, so threads
-  would only matter for >60 Hz or CPU-heavier scenes (baseline recorded in
-  BUILD.txt 02:17).
+  template without the `.nothreads` suffix. Serve it with
+  `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy:
+  require-corp` (e.g. `/tmp/serve_coop_log.py`) so `crossOriginIsolated ===
+  true` (required for SharedArrayBuffer/workers).
+- **Verification (2026-11-28 ~09:57).** Threaded TPS export: engine up in
+  ~3.4 s, menu → PLAY loads the full level, **59-60 fps with VSync**, draws/f
+  ≈5.2-5.6k, **0 GPU validation errors, 0 shader errors, 0 worker errors**, and
+  no "Occlusion culling is disabled at build-time" warning (the template also
+  has raycast/Embree enabled). Evidence: `/tmp/threaded_final_console.log`,
+  `/tmp/site-threaded-final`, `/tmp/export_final_threads.log`. Uncapped
+  measurement (Chrome for Testing, 960×540, `--disable-gpu-vsync
+  --disable-frame-rate-limit`): **threaded 137.3 fps vs single-threaded
+  124 fps (~+11% CPU headroom)**; normal play is VSync-capped at 60 for both.
+- **Deployment caveat — why it stays opt-in.** Threaded builds require
+  cross-origin isolation headers (SharedArrayBuffer); a plain static host
+  (`python3 -m http.server`, most simple hosting) will **not** work. The shipped
+  TPS preset therefore keeps `variant/thread_support=false` (static-host
+  friendly) and threading is a preset option for capable hosts. At 60 Hz there
+  is 2x headroom single-threaded, so threads only matter for >60 Hz or
+  CPU-heavier scenes.
 
 ### C. Artifacts / Grit gotcha
 
-- Patch `0003` is 46,870 B (detect.py change ≈+22/−5); round-trip re-verified
-  on a pristine `67421f36e5` (all 8 patches byte-identical, 02:16); the editor
-  is unchanged (`detect.py` is web-build config only).
+- Patch `0003` is **46,060 B** after the threads fix (the `detect.py` change
+  restores the upstream pthread flags on top of the occlusion override: +12/−22
+  vs the occlusion-only commit `96a71a19bf`); patch `0005` is **5,941,474 B**
+  (+26 for the `can_create_resources_async()` fix), and its layer list gained
+  `servers/rendering/renderer_rd/renderer_compositor_rd.h` (159 → **160**
+  paths). Round-trip re-verified on a pristine `67421f36e5` (all 8 patches
+  byte-identical, 09:58; coverage 57/57); the editor is unchanged.
+- Templates: nothreads `godot.web.template_release.wasm32.nothreads.zip` (09:55:14,
+  zip sha `6c7b60a5…`, wasm sha `a3772909…`) and the staged threaded
+  `godot.web.template_release.wasm32.zip` (09:56:46, zip sha `24510b78…`; TPS
+  export wasm 51,132,649 B in `/tmp/site-threaded-final`).
 - **Grit template-staging gotcha:** switching a Grit profile tree between
   `threads=no` and `threads=yes` can leave stale shared web staging
   (`bin/.web_zip` and the non-suffixed template files), so a later **nothreads**
@@ -1255,14 +1340,19 @@ this file's history.
     Embree memory cost (+1.18 MB wasm and runtime memory, upstream's reason for
     disabling it) should be watched on large scenes. See the web-platform
     section.
-15. **Web `threads=yes` is broken in this fork (2026-11-28, NOT shipped).**
-    A threaded template builds, engine boots, then the page wedges (main thread
-    unresponsive; reproduced with/without Embree). Preset stays
-    `variant/thread_support=false`; do not advertise threads. Root cause not
-    isolated — investigate the Emscripten-6 pthread bootstrap in the
-    modularized build and the main-thread-bound WebGPU driver before any retry,
-    and require COOP/COEP hosting. Baseline for comparison: 124 fps uncapped
-    single-threaded (60 fps VSync). See the web-platform section.
+15. **Web `threads=yes` — FIXED and browser-verified (2026-11-28), opt-in.**
+    Threaded templates now boot and play the TPS level (59-60 fps VSync,
+    0 GPU/shader/worker errors; uncapped 137.3 vs 124 fps single-threaded,
+    ~+11%). Fixes: upstream pthread flags restored in `platform/web/detect.py`
+    (`-pthread` + `PTHREAD_POOL_SIZE=Module['emscriptenPoolSize']||8` +
+    `MAXIMUM_MEMORY=2048MB`; the legacy `-sUSE_PTHREADS`/pool=0 scheme caused
+    the startup wedge) and `can_create_resources_async()` returns false under
+    `WEBGPU_ENABLED` so threaded resource creation goes through the render
+    server command queue on the render/main thread. It stays opt-in because it
+    needs COOP/COEP hosting for `crossOriginIsolated`; the shipped preset keeps
+    `variant/thread_support=false`. Do not advertise threads as universally
+    available, and note threaded gains only matter above 60 Hz or in CPU-heavy
+    scenes. See the web-platform section.
 
 ## Practical notes
 
@@ -1311,17 +1401,19 @@ this file's history.
   omitted file**. Three SDFGI files (`environment/gi.h`,
   `shaders/environment/gi.glsl`, `shaders/environment/sdfgi_integrate.glsl`) had
   been missing from every layer list; they were added in the M2 regeneration and
-  are **kept after the revert** (that is why the spatial-only `0005` layer list
-  is 159 paths and `0005` is 5,940,065 B instead of the pre-M2 5,936,829 B).
+  are **kept after the revert** (that is why the `0005` layer list grew from 156
+  to 159 paths and `0005` from 5,936,829 B; after the threads fix it is 160
+  paths / 5,941,474 B).
   When regenerating, cross-check every `git -C /tmp/godot48 status` path against
   the union of all layer lists in addition to running the round-trip — after the
-  web occlusion-culling override that is **56/56** covered (`0003` already
-  listed `platform/web/detect.py`).
+  threads fixes that is **57/57** covered (`0005`'s layer list gained
+  `renderer_compositor_rd.h`; `0003` already listed
+  `platform/web/detect.py`).
 - **Round-trip check after regenerating**: apply the full `patches/` bundle to a
   pristine checkout of the pinned commit and re-diff each layer with its
-  `layers/*.files` list; the 2026-11-28 ~02:16 round trip (revert stack + the web
-  occlusion-culling override) is byte-identical for all 8 layers (`0003` 46,870
-  B, `0004` 891,250 B, `0005` 5,940,065 B; see the Environment snapshot).
+  `layers/*.files` list; the 2026-11-28 ~09:58 round trip (incl. the threads
+  fixes) is byte-identical for all 8 layers (`0003` 46,060 B, `0004` 891,250 B,
+  `0005` 5,941,474 B; see the Environment snapshot).
 
 Verified 2026-11-26: copying **only** `patches/` + `tools/apply.sh` and applying
 them to a fresh Godot `67421f36e5` checkout reproduced all 16,064 worktree files
@@ -1337,10 +1429,13 @@ with zero mismatches, and the moved tag archive contains
 - The macOS editor build tree `/tmp/godot48` also carries the ring mitigation,
   the pass-boundary ring flush, the white-box pack-key port, the raw-WGSL
   compute path, the pmndrs spatial effect (mode 6), the three kept SDFGI
-  layer-completeness files and the **web occlusion-culling override** in
-  `platform/web/detect.py`; the pmndrs **temporal** code was removed with the
-  revert (see the milestone-2 history section). Re-apply the repo's
-  `patches/*.patch` files to a fresh checkout to reproduce it.
+  layer-completeness files, the **web occlusion-culling override and upstream
+  pthread flags** in `platform/web/detect.py`, and the **threads
+  `can_create_resources_async()` fix** in
+  `servers/rendering/renderer_rd/renderer_compositor_rd.h`; the pmndrs
+  **temporal** code was removed with the revert (see the milestone-2 history
+  section). Re-apply the repo's `patches/*.patch` files to a fresh checkout to
+  reproduce it.
 - Ring diagnostics: `rendering/webgpu/debug_frames` prints `passFlush=` and
   `ringOF=` per frame; `passFlush` is normal on heavy frames, `ringOF` must stay
   0 (it now means a single pass exceeded the whole ring).
@@ -1366,24 +1461,28 @@ with zero mismatches, and the moved tag archive contains
   override in `detect.py` (upstream's stub + warning return). **No TPS win was
   measured** (see the web-platform section); benchmark a scene that actually has
   occluded instances before relying on it.
-- **Threads are broken here (2026-11-28)**: `threads=yes` builds boot then wedge
-  the page; do **not** ship a threaded template. Keep
-  `variant/thread_support=false`. Any retry needs COOP/COEP hosting
-  (`crossOriginIsolated`), a fixed Emscripten-6 pthread bootstrap and a
-  benchmark; baseline is 124 fps uncapped single-threaded vs 60 fps VSync.
+- **Threads are fixed but opt-in (2026-11-28)**: `threads=yes` templates boot
+  and play (60 fps VSync, 0 errors; 137.3 vs 124 fps uncapped). To test one,
+  set the preset `variant/thread_support=true`, export, and serve it with
+  COOP `same-origin` + COEP `require-corp` headers so `crossOriginIsolated ===
+  true` (a plain static server will not work). The shipped preset stays
+  `variant/thread_support=false`. If a threaded build wedges again, check the
+  `detect.py` pthread flags (`-pthread` +
+  `-sPTHREAD_POOL_SIZE="Module['emscriptenPoolSize']||8"` +
+  `-sMAXIMUM_MEMORY=2048MB`) and `can_create_resources_async()` (must be false
+  under `WEBGPU_ENABLED`), and remember the stale-staging gotcha below.
 - **Grit template-staging gotcha**: switching a Grit profile tree between
   `threads=no` and `threads=yes` can leave stale shared web staging
   (`bin/.web_zip` and non-suffixed template files), so a later **nothreads**
   export can silently package the threaded wasm. After switching variants,
   remove the profile tree's `bin/` web artifacts (or rebuild after deleting
   them) — `/tmp/web_cleanup.log` is the cleanup rebuild that fixed it.
-- **BUILD.txt caveat**: `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is not
-  part of `patches/`. It was refreshed for the occlusion-enabled build
-  (02:17:27, 7,029 B; editor sha `cd72898f…`, template `3c351ef0…`, wasm
-  `e50a901b…`, with the occlusion-culling and threads changelog), but its
-  **Site-export paragraph is stale** — it still says the site was updated
-  00:54:36 with wasm `98ac9e82…`. Trust the site row and the template/editor
-  hashes in the Environment snapshot over that paragraph.
+- **BUILD.txt**: `out/editor-staging/Fast_Godot_4.8_BUILD.txt` is not part of
+  `patches/`. It was refreshed for the threads fix (09:59:04, 7,702 B; editor
+  sha `cd72898f…`, nothreads template zip `6c7b60a5…`, wasm `a3772909…`) and
+  covers both the default and threaded builds (including the fixed-threads
+  section and the occlusion notes); its Site-export paragraph now matches the
+  09:55/09:56 export batch.
 - **Browser checks:** the throwaway Playwright harness used for the Forward+
   verification lives outside the repo (`/tmp/node-test/`, Chrome for Testing at
   `/tmp/chrome-test/chrome-mac-arm64/`). It serves the site on a fresh port,
@@ -1409,5 +1508,6 @@ with zero mismatches, and the moved tag archive contains
   now also **sanitizes a stale saved filter**: after the temporal revert a
   saved value `>= SCALING_3D_MODE_MAX` (e.g. the removed temporal mode 7) is
   reset to FSR 1 in `settings.gd`, and the menu's unknown-value fallback selects
-  FSR 1 instead of FSR 2. The current site build is the occlusion-enabled
-  single-threaded export (2026-11-28 02:15:57).
+  FSR 1 instead of FSR 2. The current site build is the default nothreads
+  export with the occlusion + threads fixes (2026-11-28 09:55:13); the threaded
+  build is opt-in and is not what the default site serves.

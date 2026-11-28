@@ -5,7 +5,7 @@ active stack:
 
 | stack | base |
 |---|---|
-| `4.8-beta5` (branch and tag, repository default branch; pushed commits go up to `94a9c0144a`, tag `4.8-beta5` = `d5638f1b61` the revert stack; **the web occlusion-culling change is in the working `patches/0003` only and is committed next**, after which the branch is pushed and tag `4.8-beta5` force-moved from `d5638f1b61` to the new stack commit; history below it: the temporal revert, pmndrs milestone-2 commit `cb0aa639c7` (superseded), spatial mode-6 commit `91a0a3e8e4` and milestone-1 stack `d8b3d583ae`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
+| `4.8-beta5` (branch and tag, repository default branch; the threads fix is stack commit **`a7a5aefbe2`** ("web: fix HTML5 thread support (threads=yes) on WebGPU") with a docs commit above it; branch pushed and tag `4.8-beta5` **force-moved from `96a71a19bf` to `a7a5aefbe2`**. History below it: the occlusion-culling commit `96a71a19bf`, the temporal revert, pmndrs milestone-2 commit `cb0aa639c7` (superseded), spatial mode-6 commit `91a0a3e8e4` and milestone-1 stack `d8b3d583ae`) | godot `master` at `67421f36e5` (`4.8.0-beta`), pinned in `../patches/upstream.lock` |
 
 The 4.7.2 stack was dropped on 2026-11-26 (branch deleted locally and from
 GitHub). The full-source `4.7.2` branch remains on GitHub for history only.
@@ -54,9 +54,10 @@ layer list (`servers/rendering/renderer_rd/environment/gi.h`,
 `…/shaders/environment/sdfgi_integrate.glsl`), so the previously tagged stack
 could not reproduce the SDFGI build even though its round-trip looked clean.
 The regeneration added them to `0005` and they are **kept after the temporal
-revert**, so the current spatial-only layer list is **159 paths** (`0005` =
-5,940,065 B). After the web occlusion-culling override all **56/56**
-worktree-changed paths are covered (`0003`'s list already contained
+revert** (layer list 156 → 159 paths, `0005` 5,936,829 → 5,940,065 B). The
+threads fix then added `servers/rendering/renderer_rd/renderer_compositor_rd.h`
+to `0005` (→ **160** paths, `0005` **5,941,474 B**), and all **57/57**
+worktree-changed paths are now covered (`0003` already contained
 `platform/web/detect.py`). Regeneration must cross-check
 `git -C /tmp/godot48 status` paths against the union of all layer lists in
 addition to the round-trip.
@@ -86,8 +87,8 @@ restore upstream's memory-optimized default. Verified 2026-11-28 02:17: 0
 shader errors, 59-60 fps, real `RaycastOcclusionCull`/Embree strings in the
 wasm. Measured TPS cull yield is zero (the test camera never fully occludes an
 instance AABB; instrumentation removed) — see `WEBGPU_HANDOFF.md`
-web-platform section. `threads=yes` remains **broken/not shipped** (the web
-template builds and boots, then the page wedges); the preset stays
+web-platform section. `threads=yes` is now **fixed and verified** (see below;
+opt-in because it needs COOP/COEP hosting); the default preset stays
 `variant/thread_support=false`.
 
 Verified 2026-11-27 ~21:55 for the first-class pmndrs spatial scaling mode: the
@@ -117,9 +118,26 @@ Applying the full stack to a pristine `67421f36e5` checkout (`/tmp/applytest`,
 all 1,787 layer paths staged) and re-diffing every layer with its
 `layers/*.files` list reproduces **all 8 `patches/*.patch` files
 byte-identically** (independently re-checked). The editor is unchanged
-(`detect.py` is web-build config only). The change is **committed next**; the
-branch is then pushed and tag `4.8-beta5` force-moved from `d5638f1b61` to the
-new stack commit.
+(`detect.py` is web-build config only). That change became stack commit
+`96a71a19bf`.
+
+**Verified 2026-11-28 ~09:58 for the fixed HTML5 threads support:** only
+`patches/0003` and `patches/0005` changed. `0003` is **46,060 B** (`detect.py`:
+restores upstream's `-pthread` + `PTHREAD_POOL_SIZE=Module['emscriptenPoolSize']||8`
++ `MAXIMUM_MEMORY=2048MB` instead of the legacy `-sUSE_PTHREADS`/pool=0 scheme;
++12/−22 vs the occlusion-only commit). `0005` is **5,941,474 B** (+26:
+`renderer_compositor_rd.h` `can_create_resources_async()` now returns false
+under `WEBGPU_ENABLED`, so threaded resource creation is queued on the
+render/main thread instead of calling emdawnwebgpu from a pthread). The `0005`
+layer list gained `servers/rendering/renderer_rd/renderer_compositor_rd.h`
+(159 → 160 paths, 1,788 total layer paths). Applying the full stack to a
+pristine `67421f36e5` checkout (`/tmp/applytest`, all 1,788 layer paths staged)
+and re-diffing every layer reproduces **all 8 `patches/*.patch` files
+byte-identically** (independently re-checked), and coverage is **57/57**. The
+evidence build: threaded TPS export boots, loads and plays at 60 fps VSync with
+0 GPU/shader/worker errors (uncapped 137.3 vs 124 fps single-threaded). Stack
+commit **`a7a5aefbe2`**; a docs commit follows, the branch is pushed and tag
+`4.8-beta5` force-moved from `96a71a19bf` to `a7a5aefbe2`.
 
 Layout change 2026-11-26: the stack moved from `patches/4.8-beta5/` to the
 self-contained `patches/` bundle (patch files + `layers/` + `upstream.lock`,
@@ -134,9 +152,9 @@ current tag, so the editor and the layout are updated together.
 |---|---:|---|
 | `0001-modules-grit` | 39 | Fast/Grit AOT export compiler, runtime and editor plugins (adapted to 4.8 GDScript internals: `GDType` member maps, const `MethodBind` codegen, parser `resolved_type`/`type_constraint`) |
 | `0002-modules-cffi` | 53 | CFFI module |
-| `0003-web-html5-fast-export` | 17 | "HTML5 Fast" export platform + web platform hooks (detect.py, js/engine, display server, export options). **Web occlusion culling enabled (2026-11-28)**: overrides upstream's `detect.py` `module_raycast_enabled: False` to `True` so the `raycast`/Embree CPU culler is compiled into web builds and `rendering/occlusion_culling/use_occlusion_culling` is honoured (upstream disables it for memory reasons, GH-70621 / commit `8c40edf8c0`; cost ≈+1.18 MB wasm + Embree memory; remove the override to return to the upstream stub + build-time warning) |
+| `0003-web-html5-fast-export` | 17 | "HTML5 Fast" export platform + web platform hooks (detect.py, js/engine, display server, export options). **Web occlusion culling enabled (2026-11-28)**: overrides upstream's `detect.py` `module_raycast_enabled: False` to `True` so the `raycast`/Embree CPU culler is compiled into web builds and `rendering/occlusion_culling/use_occlusion_culling` is honoured (upstream disables it for memory reasons, GH-70621 / commit `8c40edf8c0`; cost ≈+1.18 MB wasm + Embree memory; remove the override to return to the upstream stub + build-time warning). **HTML5 threads fix (2026-11-28)**: `env["threads"]` restored to upstream's config (`-pthread` in CCFLAGS/LINKFLAGS, `-sPTHREAD_POOL_SIZE=\"Module['emscriptenPoolSize']||8\"`, `-sMAXIMUM_MEMORY=2048MB`; the legacy `-sUSE_PTHREADS`/`-sPTHREAD_POOL_SIZE=0` scheme had wedged threaded startup) |
 | `0004-webgpu-driver` | 32 | komm64/4.7 WebGPU driver (MIT) rebased onto 4.8: `buffer_flush(used_size)`, `buffer_map_ready`, `buffer_create_with_data`, readback/upload conversion, layered copy/initialize, per-stage SPIR-V version; push-constant ring (8 MB), sRGB view siblings, per-frame debug counters and the `rendering/webgpu/*` diagnostic settings. Forward+ additions: compute-pass usage-scope splitting (per-subresource writable+read conflicts), Tint-risk pre-scan/`OpBitcast` rewrite in `spirv_preprocess`, storage-texture format table (`rgb10a2unorm/uint`, integer 8-bit, B10G11R11→RGBA16F promotion + `rg11b10ufloat` WGSL rewrite), WGSL component-driven sample types, physical-format texture views, dimension/sample-type-correct fallback views, `depth32float-stencil8` feature gating, fragment-stage `read_write` storage buffers, unused-colour-target handling, non-negative LOD clamps; per-binding required sampler type map (combined sampler+texture layouts) so NonFiltering MSAA/depth samplers are always satisfied, in both bind-group creation and cross-shader rebinds. **Raw-WGSL compute path** (pmndrs milestone 1): `set_code_from_wgsl_compute()` container factory (fills reflection + per-stage WGSL, mechanically rewrites authored `@binding(N)` → `@binding(2*N)`, checks reflection↔WGSL pairs), and `_shader_build()` recognises the raw-stage marker (WGSL present, SPIR-V empty) and skips the Tint-output WGSL rewrites for it |
-| `0005-engine-renderer-patches` | 159 | engine/renderer/editor patches the driver needs: batching (`batch_instance_index`), shader container format override, driver traits, GDScript native-call hooks, export window, WGSL shader baker plugin, frame profiler, **white-box PCK encryption** (`core_builders.py` table network, `FileAccessEncrypted::open_and_parse_keystream`, pack loader keystream branches), icons/splash. Forward+: HTML5 Fast accepts `forward_plus`; cluster builder renders with plain atomics and a real colour attachment (`USE_ATTACHMENT` variant) when side-effect-only passes are unsupported; scene shader identity subgroup macros + `NO_IMAGE_ATOMICS`; FSR1/FSR2 fp16 variant gating; FSR2 WebGPU paths (B10G11R11→RGBA16F via the driver, no image atomics, no-subgroup SPD, rgba16f output); FSR1 upscales through a storage-capable intermediate; SDFGI enabled on WebGPU (RGBA16F light/probe storage+sample textures, dummy occlusion binding with occlusion disabled, integer voxel-GI default + GI binding pin, colour-framebuffer SDF pipeline with an explicit pass); volumetric-fog dead binding removed; TAA previous-velocity buffer uses RGBA16F on WebGPU (RG16F has no storage format). **pmndrs milestone 1**: raw-WGSL RenderingDevice API (`WGSLUniform`/`WGSLShaderData`, `RenderingDevice::shader_create_from_wgsl()`, shared private `_shader_register()`, default-failing non-pure `RenderingDeviceDriver::shader_create_from_wgsl()`, `SUPPORTS_RAW_WGSL_COMPUTE` feature), the `RendererRD::PmndrsSpatial` spatial upscaler (EASU+RCAS WGSL vendored from pmndrs/upscaler v0.6.0 commit `f6e52098…`, new `effects/pmndrs_upscaler*` files) and the **first-class pmndrs scaling mode** (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` / `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6, appended after `SCALING_3D_MODE_NEAREST` so old values are unchanged, `*_MAX` = 7; `rendering/scaling_3d/mode` hint `pmndrs (Spatial - Fast):6`; enum docs in `doc/classes/{Viewport,RenderingServer}.xml`; Forward+-only guard + spatial fallback semantics in `renderer_viewport.cpp`; mode-6 → PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`; the old `rendering/scaling_3d/pmndrs_spatial` bool was removed. Layer list is 159 paths: the 156 above + the three SDFGI completeness files `environment/gi.h`, `shaders/environment/gi.glsl`, `shaders/environment/sdfgi_integrate.glsl`; the M2 temporal entries were removed by the revert) |
+| `0005-engine-renderer-patches` | 160 | engine/renderer/editor patches the driver needs: batching (`batch_instance_index`), shader container format override, driver traits, GDScript native-call hooks, export window, WGSL shader baker plugin, frame profiler, **white-box PCK encryption** (`core_builders.py` table network, `FileAccessEncrypted::open_and_parse_keystream`, pack loader keystream branches), icons/splash. Forward+: HTML5 Fast accepts `forward_plus`; cluster builder renders with plain atomics and a real colour attachment (`USE_ATTACHMENT` variant) when side-effect-only passes are unsupported; scene shader identity subgroup macros + `NO_IMAGE_ATOMICS`; FSR1/FSR2 fp16 variant gating; FSR2 WebGPU paths (B10G11R11→RGBA16F via the driver, no image atomics, no-subgroup SPD, rgba16f output); FSR1 upscales through a storage-capable intermediate; SDFGI enabled on WebGPU (RGBA16F light/probe storage+sample textures, dummy occlusion binding with occlusion disabled, integer voxel-GI default + GI binding pin, colour-framebuffer SDF pipeline with an explicit pass); volumetric-fog dead binding removed; TAA previous-velocity buffer uses RGBA16F on WebGPU (RG16F has no storage format). **pmndrs milestone 1**: raw-WGSL RenderingDevice API (`WGSLUniform`/`WGSLShaderData`, `RenderingDevice::shader_create_from_wgsl()`, shared private `_shader_register()`, default-failing non-pure `RenderingDeviceDriver::shader_create_from_wgsl()`, `SUPPORTS_RAW_WGSL_COMPUTE` feature), the `RendererRD::PmndrsSpatial` spatial upscaler (EASU+RCAS WGSL vendored from pmndrs/upscaler v0.6.0 commit `f6e52098…`, new `effects/pmndrs_upscaler*` files) and the **first-class pmndrs scaling mode** (`Viewport.SCALING_3D_MODE_PMNDRS_SPATIAL` / `RenderingServer.VIEWPORT_SCALING_3D_MODE_PMNDRS_SPATIAL` = 6, appended after `SCALING_3D_MODE_NEAREST` so old values are unchanged, `*_MAX` = 7; `rendering/scaling_3d/mode` hint `pmndrs (Spatial - Fast):6`; enum docs in `doc/classes/{Viewport,RenderingServer}.xml`; Forward+-only guard + spatial fallback semantics in `renderer_viewport.cpp`; mode-6 → PmndrsSpatial selection with FSR1 fallback in `renderer_scene_render_rd.cpp`; the old `rendering/scaling_3d/pmndrs_spatial` bool was removed. **HTML5 threads fix (2026-11-28)**: `renderer_compositor_rd.h` `can_create_resources_async()` returns false under `WEBGPU_ENABLED`, so texture/buffer creation during threaded scene loading is queued to the render/main thread instead of running emdawnwebgpu on a pthread (which failed with "Cannot read properties of undefined (reading 'createTexture')"). Layer list is 160 paths: the 156 above + the three SDFGI completeness files `environment/gi.h`, `shaders/environment/gi.glsl`, `shaders/environment/sdfgi_integrate.glsl` + `renderer_compositor_rd.h` for the threads fix; the M2 temporal entries were removed by the revert) |
 | `0006-thirdparty-vendored` | 1217 | vendored Tint + SPIRV-Tools for the export-time SPIR-V→WGSL bake |
 | `0007-tools-fixtures-docs` | 251 | tools/ (grit_build.py, toolchain provisioning), test_project/, docs, webgpu notes/tests, SPIR-V fixtures |
 | `0099-misc` | 19 | remaining touched files |
@@ -176,13 +194,17 @@ re-exported the TPS demo spatial-only (111 s export → wasm 50,471,223 B sha
 running` string and **no** temporal-upscaler/`pmndrs_temporal` strings, and the
 TPS settings screen has only the "pmndrs Spatial" button (a stale saved
 `scale_filter >= SCALING_3D_MODE_MAX` is sanitized back to FSR 1).
-Web platform (2026-11-28, **uncommitted in `patches/0003` at doc time**):
-occlusion culling is compiled into the web template — the final 40 s TPS run
-has 0 "Occlusion culling is disabled at build-time" lines, 0 GPU validation
-errors, 0 shader errors, 59-60 fps and real `RaycastOcclusionCull`/Embree
-strings in the wasm — but the measured TPS cull yield is zero; `threads=yes`
-builds/boots then wedges the page and is **not shipped**
-(`variant/thread_support=false` stays). Details in `WEBGPU_HANDOFF.md`.
+Web platform (2026-11-28): occlusion culling is compiled into the web template
+(commit `96a71a19bf`) — the final TPS runs have 0 "Occlusion culling is
+disabled at build-time" lines, 0 GPU validation errors, 0 shader errors, 59-60
+fps and real `RaycastOcclusionCull`/Embree strings in the wasm — but the
+measured TPS cull yield is zero. HTML5 `threads=yes` is **fixed and
+browser-verified** (commit `a7a5aefbe2`): the threaded TPS export boots, loads
+and plays at 60 fps VSync with 0 GPU/shader/worker errors (uncapped 137.3 vs
+124 fps single-threaded), via upstream pthread flags restored in `detect.py`
+plus `can_create_resources_async()=false` under `WEBGPU_ENABLED`. It stays
+**opt-in** (needs COOP/COEP hosting for `crossOriginIsolated`), so the shipped
+preset keeps `variant/thread_support=false`. Details in `WEBGPU_HANDOFF.md`.
 
 ## Known gaps
 
@@ -213,11 +235,12 @@ builds/boots then wedges the page and is **not shipped**
   (the test camera never fully occludes an instance AABB) — benchmark a scene
   with genuinely occluded geometry before relying on it, and remove the
   `detect.py` override to go back to the upstream stub. See `WEBGPU_HANDOFF.md`.
-- Web `threads=yes` (Emscripten-6 pthreads) is **broken in this fork** and not
-  shipped: the template builds and boots, then the page wedges (main thread
-  unresponsive; reproduced with and without Embree). Any retry needs COOP/COEP
-  hosting (`crossOriginIsolated`), a fixed pthread bootstrap and a benchmark;
-  baseline is 124 fps uncapped single-threaded at 960×540 vs 60 fps VSync. See
-  `WEBGPU_HANDOFF.md`.
+- Web `threads=yes` is **fixed and browser-verified but opt-in** (2026-11-28):
+  threaded templates boot, load and play (60 fps VSync, 0 errors; 137.3 vs 124
+  fps uncapped at 960×540). They require COOP `same-origin` + COEP
+  `require-corp` hosting (`crossOriginIsolated`) for SharedArrayBuffer, which a
+  plain static host does not provide — so the shipped preset keeps
+  `variant/thread_support=false`. Threaded gains only matter above 60 Hz or in
+  CPU-heavy scenes. See `WEBGPU_HANDOFF.md`.
 - The stock editor-side CFB writer is reused for encrypted packs; the runtime
   only needs the keystream decoder (see the handoff).
