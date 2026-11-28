@@ -22604,10 +22604,10 @@ index 00000000000..8799958ecfe
 +echo "[export] serve it with: cd \"$OUT_DIR\" && python3 -m http.server 8125 --bind 127.0.0.1"
 diff --git a/tools/grit_build.py b/tools/grit_build.py
 new file mode 100755
-index 00000000000..0b85ed40ff3
+index 00000000000..a4bdebb5bc7
 --- /dev/null
 +++ b/tools/grit_build.py
-@@ -0,0 +1,960 @@
+@@ -0,0 +1,971 @@
 +#!/usr/bin/env python3
 +"""The one build script for Fast_Godot: editor, native export and HTML5 export.
 +
@@ -23302,19 +23302,30 @@ index 00000000000..0b85ed40ff3
 +        fail("Grit: scons exited with %d" % code, 5)
 +
 +    if platform == "web":
++        needs_threads = bool(threads_mode)
 +        # The exporter renames "godot" to the export name and expects canonical
 +        # entries, so the build's arch-suffixed names are rewritten here and the
 +        # loader's internal references follow the new names.
 +        prefix = "godot.web.template_%s.wasm32" % target
-+        produced = {}
++        # The profile tree is shared between threaded and single-threaded exports of
++        # every project with the same build profile, so bin/ can hold BOTH spellings
++        # at once. Picking the wrong one silently packages a stale template built
++        # earlier for another project (or with another threads setting): keep the
++        # two sets apart and use only the one this build was asked for.
++        produced_plain = {}
++        produced_nothreads = {}
 +        for item in sorted(glob.glob(os.path.join(source, "bin", prefix + "*"))):
 +            suffix = os.path.basename(item)[len(prefix):]
-+            # A threads=no build is named <prefix>.nothreads.<ext>; the extra marker
-+            # must not hide the file from the canonical mapping below (that silently
-+            # packaged a template with only the HTML shells).
 +            if suffix.startswith(".nothreads."):
-+                suffix = suffix[len(".nothreads"):]
-+            produced[suffix] = item
++                produced_nothreads[suffix[len(".nothreads"):]] = item
++            else:
++                produced_plain[suffix] = item
++        if needs_threads:
++            produced = produced_plain
++        else:
++            # A threads=no build is named <prefix>.nothreads.<ext>; fall back to the
++            # plain spelling only if the nothreads files were not produced at all.
++            produced = produced_nothreads if produced_nothreads else produced_plain
 +        if not produced:
 +            fail("Grit: build finished but no %s* files were produced in %s/bin" % (prefix, source), 6)
 +        # extension -> canonical entry name

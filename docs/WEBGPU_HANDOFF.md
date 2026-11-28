@@ -1356,6 +1356,64 @@ because it needs cross-origin-isolation hosting.
   vs 124 single-threaded). The default rc1 uncapped figure is measured after
   the rebase (not recorded here).
 
+## WebGPU shadow comparison-sampler fix — LightmapGI dynamic objects lit again (2026-11-28)
+
+**Symptom.** In Forward+ on WebGPU, LightmapGI scenes rendered the baked static level
+correctly but **dynamic objects (GI_MODE_DYNAMIC) were not lit**: characters walking
+under a (baked, shadow-casting) Light3D stayed dark/dim even though the native Metal
+build lit them. Static lightmapped geometry was unaffected, which is why the level
+looked right and only the moving objects were wrong.
+
+**Root cause.** `drivers/webgpu/rendering_device_driver_webgpu.cpp` bound *every*
+shader slot declared as `sampler_comparison` with `dummy_comparison_sampler`
+(`WGPUCompareFunction_Less`), replacing the real comparison sampler. Godot's
+Forward+ shadow sampler is created with `enable_compare = true` and
+`COMPARE_OP_GREATER` (its reverse-Z shadow convention), so the substitution
+*inverted the shadow test*: surfaces that were lit sampled as fully shadowed. For
+dynamic objects each shadowed Light3D contributes nothing (fully shadowed), while
+static lightmapped meshes skip real-time light entirely — so only dynamic objects
+went dark. No WebGPU validation or shader errors were emitted, which is why this
+went unnoticed.
+
+**Fix (patch `0004`).** Track samplers created with `enable_compare` in a
+`HashSet<WGPUSampler>` and bind them as-is; only fall back to the dummy comparison
+sampler when the bound sampler is not a real comparison sampler (the case the
+dummy exists for). Applied in both the `UNIFORM_TYPE_SAMPLER` and
+`UNIFORM_TYPE_SAMPLER_WITH_TEXTURE` paths of `uniform_set_create()`, with
+registration in `sampler_create()` and removal in `sampler_free()`. `0004` is now
+**894,675 B** (was 893,686).
+
+**Verification (Chrome for Testing 158, WebGPU/Dawn, headless).** A minimal
+Forward+ repro was built with the TPS demo's real baked LightmapGI probe data
+(`level.lmbake`), a black environment, six dynamic capsules (real, unscaled SH
+values) and TPS-like `BAKE_STATIC` omni/spot lights with shadows. Native Metal and
+WebGPU captures were compared for five runtime phases (GI present, shadows on/off,
+GI removed, lights off): **all five phases are pixel-identical** (mean abs diff
+0.000, 0 differing pixels), and disabling shadows before the fix was the only thing
+that restored the missing light. A plain real-time-lighting scene (no lightmap)
+still matches native exactly after the fix, so the change does not regress regular
+shadowing.
+
+**Also fixed in `0007` (build hygiene, found while debugging).**
+`tools/grit_build.py` packaged web templates by collapsing both the plain and the
+`.nothreads.` spellings in the shared profile `bin/` into one dict, and the plain
+(threaded) file won the last-write; a `threads=no` export could therefore silently
+package a **stale threaded template built earlier for another project** (or an
+older engine build). The packaging now keeps the two spellings apart and selects
+the one matching the requested mode. `0007` is now **3,502,327 B** (was
+3,541,650; the drop is because the noisy, editor-generated `test_project/.godot`
+cache files committed earlier are no longer rewritten by this regeneration — the
+only intentional change is the `grit_build.py` fix).
+
+**Residual.** After the fix the TPS demo's dynamic character is lit again, but the
+TPS frame still differs slightly from native Metal (the WebGPU character is
+*brighter*: mean abs diff 1.35/255, concentrated on the character). That is the
+opposite direction from the bug above and points at positional-shadow atlas
+coverage for the fully lightmapped TPS scene (web appears to miss some
+self-/environment shadowing on the dynamic object). The probe-capture path itself
+matches native exactly, so this is tracked as a follow-up, not a LightmapGI data
+problem.
+
 ## Open issues / next steps
 
 1. ~~**MSAA flicker**~~ — **RESOLVED** (see the section above). Root cause was
@@ -1369,8 +1427,12 @@ because it needs cross-origin-isolation hosting.
    single pass needing >32768 slots, which hits the old warned fallback
    (`RingOF`). Verify with `rendering/webgpu/debug_frames`: `passFlush` may be
    >0 on heavy frames, `ringOF` must stay 0.
-3. **LightmapGI/GI probes**: komm64's 4.7.2 build had them working; the 4.8
-   port has not been checked.
+3. **LightmapGI/GI probes**: **FIXED 2026-11-28** — dynamic objects were fully
+   shadowed on WebGPU because the driver replaced Godot's comparison sampler with a
+   `Less` dummy sampler (see the section above); patch `0004`. Probe capture now
+   matches native pixel-for-pixel in the controlled Forward+ repro. Residual:
+   positional-shadow coverage on the fully lightmapped TPS scene still differs
+   slightly from native Metal (web brighter).
 4. **Perf comparison**: 4.8 TPS stats - shaders=168/607/247ms, tint=370/13.7s,
    baked=280, spec_modules=788/27.5s, render_pipelines=409/34s,
    draws/frame ~1750, fps 60. The 4.7.2 stack is no longer buildable from this

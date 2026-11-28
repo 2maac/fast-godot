@@ -2048,10 +2048,10 @@ index 00000000000..e1ca81df522
 +#endif // WEBGPU_ENABLED
 diff --git a/drivers/webgpu/rendering_device_driver_webgpu.cpp b/drivers/webgpu/rendering_device_driver_webgpu.cpp
 new file mode 100644
-index 00000000000..0360a4152f3
+index 00000000000..cae94c9cbb2
 --- /dev/null
 +++ b/drivers/webgpu/rendering_device_driver_webgpu.cpp
-@@ -0,0 +1,10615 @@
+@@ -0,0 +1,10632 @@
 +/**************************************************************************/
 +/*  rendering_device_driver_webgpu.cpp                                    */
 +/**************************************************************************/
@@ -2276,6 +2276,17 @@ index 00000000000..0360a4152f3
 +static uint32_t _dbg_pass_flush = 0;
 +static uint32_t _dbg_clears = 0;
 +static uint32_t _spv_to_wgsl_cache_hits = 0;
++
++// Samplers created with enable_compare=true are already valid WebGPU comparison
++// samplers (their WGPUCompareFunction is mapped from Godot's CompareOperator,
++// e.g. COMPARE_OP_GREATER for the Forward+ shadow sampler). The uniform-set path
++// used to replace every comparison-sampler binding with a dummy
++// WGPUCompareFunction_Less sampler, which inverted Godot's shadow comparison:
++// shadowed lights then fully shadowed dynamic objects on WebGPU (lightmapped
++// static geometry was unaffected because it bypasses real-time lights), so
++// LightmapGI scenes rendered dynamic objects unlit. Track real comparison
++// samplers and bind them as-is.
++static HashSet<uint64_t> _wgpu_comparison_samplers;
 +static uint32_t _spv_to_wgsl_cache_misses = 0;
 +
 +// Cumulative shader/pipeline creation cost, reported in the [PERF] log line.
@@ -5226,6 +5237,9 @@ index 00000000000..0360a4152f3
 +
 +	WGPUSampler sampler = wgpuDeviceCreateSampler(device, &desc);
 +	ERR_FAIL_COND_V(sampler == nullptr, SamplerID());
++	if (p_state.enable_compare) {
++		_wgpu_comparison_samplers.insert((uint64_t)sampler);
++	}
 +
 +	// Store the WGPUSampler handle directly as the ID (no wrapper struct needed).
 +	return SamplerID((uint64_t)sampler);
@@ -5234,6 +5248,7 @@ index 00000000000..0360a4152f3
 +void RenderingDeviceDriverWebGPU::sampler_free(SamplerID p_sampler) {
 +	WGPUSampler sampler = (WGPUSampler)(p_sampler.id);
 +	if (sampler) {
++		_wgpu_comparison_samplers.erase((uint64_t)sampler);
 +		wgpuSamplerRelease(sampler);
 +	}
 +}
@@ -7884,7 +7899,8 @@ index 00000000000..0360a4152f3
 +								: WGPUSamplerBindingType_BindingNotUsed;
 +						if (req == WGPUSamplerBindingType_NonFiltering && dummy_nonfiltering_sampler) {
 +							entry.sampler = dummy_nonfiltering_sampler;
-+						} else if (req == WGPUSamplerBindingType_Comparison && dummy_comparison_sampler && entry.sampler != dummy_comparison_sampler) {
++						} else if (req == WGPUSamplerBindingType_Comparison && dummy_comparison_sampler &&
++								entry.sampler != dummy_comparison_sampler && !_wgpu_comparison_samplers.has((uint64_t)entry.sampler)) {
 +							entry.sampler = dummy_comparison_sampler;
 +						}
 +					}
@@ -8017,7 +8033,8 @@ index 00000000000..0360a4152f3
 +						// passes whatever sampler RID it has for this slot.
 +						if (swt_expected_sampler == WGPUSamplerBindingType_NonFiltering && dummy_nonfiltering_sampler) {
 +							se.sampler = dummy_nonfiltering_sampler;
-+						} else if (swt_expected_sampler == WGPUSamplerBindingType_Comparison && dummy_comparison_sampler && sampler != dummy_comparison_sampler) {
++						} else if (swt_expected_sampler == WGPUSamplerBindingType_Comparison && dummy_comparison_sampler &&
++								sampler != dummy_comparison_sampler && !_wgpu_comparison_samplers.has((uint64_t)sampler)) {
 +							se.sampler = dummy_comparison_sampler;
 +						} else {
 +							se.sampler = sampler;
